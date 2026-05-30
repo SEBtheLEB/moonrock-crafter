@@ -1,9 +1,12 @@
-const CACHE_NAME = 'moonrock-crafter-v1';
+const CACHE_NAME = 'moonrock-crafter-v2';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './assets/img/moonrock-icon.svg',
+  './assets/img/moonrock-icon-192.png',
+  './assets/img/moonrock-icon-512.png',
+  './assets/img/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (event) => {
