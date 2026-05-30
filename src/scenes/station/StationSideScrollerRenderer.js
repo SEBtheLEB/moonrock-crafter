@@ -19,11 +19,22 @@ export class StationSideScrollerRenderer {
   draw(ctx, { viewport, world, camera, player, interactables, activeInteractable, time }) {
     ctx.clearRect(0, 0, viewport.width, viewport.height);
     this.drawSpace(ctx, viewport, world, camera, time);
+    ctx.save();
+    this.applyWorldScale(ctx, viewport, camera.viewScale || 1);
     this.drawStationShell(ctx, viewport, world, camera, time);
     this.drawSections(ctx, world, camera, time);
     this.drawInteractables(ctx, interactables, activeInteractable, camera, time);
     player.draw(ctx, camera, time);
     this.drawForeground(ctx, viewport, world, camera, time);
+    ctx.restore();
+    this.drawWarmOverlay(ctx, viewport, time);
+  }
+
+  applyWorldScale(ctx, viewport, scale) {
+    if (Math.abs(scale - 1) < 0.001) return;
+    ctx.translate(viewport.width / 2, viewport.height);
+    ctx.scale(scale, scale);
+    ctx.translate(-viewport.width / 2, -viewport.height);
   }
 
   drawSpace(ctx, viewport, world, camera, time) {
@@ -409,6 +420,9 @@ export class StationSideScrollerRenderer {
     }
     ctx.fillStyle = 'rgba(255, 143, 61, 0.1)';
     ctx.fillRect(0, world.floorY - 2, viewport.width, 4);
+  }
+
+  drawWarmOverlay(ctx, viewport, time) {
     ctx.fillStyle = `rgba(255, 211, 107, ${0.04 + Math.sin(time * 3) * 0.02})`;
     ctx.fillRect(0, 0, viewport.width, viewport.height);
   }

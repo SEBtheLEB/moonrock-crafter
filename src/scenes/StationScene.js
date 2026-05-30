@@ -9,6 +9,7 @@ import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
 import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js';
+import { gameBalance } from '../data/gameBalance.js';
 
 const WORLD_WIDTH = 2920;
 
@@ -23,6 +24,7 @@ export class StationScene {
     this.sparkAudioTimer = 1.4;
     this.hudRefreshTimer = 0;
     this.camera = { x: 0, targetX: 0, viewportWidth: 0 };
+    this.viewScale = gameBalance.ui?.worldViewScale || 1;
     this.interactables = [];
     this.transitioning = false;
     this.lastInteractAt = 0;
@@ -37,7 +39,7 @@ export class StationScene {
     const spawnX = this.getSpawnX();
     this.player = new StationPlayer({ x: spawnX, y: 0 });
     this.player.snapToGround(this.world);
-    this.camera.x = this.clampCamera(spawnX - (this.game.viewport?.width || 0) * 0.42);
+    this.camera.x = this.clampCamera(spawnX - this.getVisibleWorldWidth() * 0.42);
     this.camera.targetX = this.camera.x;
 
     this.mountHud();
@@ -74,7 +76,8 @@ export class StationScene {
         { x: 1345, y: floorY - 64, width: 118, height: 16 },
       ],
     };
-    this.camera.viewportWidth = viewport.width;
+    this.camera.viewportWidth = this.getVisibleWorldWidth(viewport);
+    this.camera.viewScale = this.viewScale;
     this.interactables = this.createInteractables();
     this.interactionSystem.setInteractables(this.interactables);
     if (this.player) {
@@ -231,14 +234,19 @@ export class StationScene {
   }
 
   updateCamera(delta) {
-    const viewportWidth = this.game.viewport?.width || this.camera.viewportWidth || 0;
+    const viewportWidth = this.getVisibleWorldWidth();
     this.camera.targetX = this.clampCamera(this.player.centerX - viewportWidth * 0.42);
     this.camera.x += (this.camera.targetX - this.camera.x) * Math.min(1, delta * 8);
   }
 
   clampCamera(x) {
-    const viewportWidth = this.game.viewport?.width || this.camera.viewportWidth || 0;
+    const viewportWidth = this.getVisibleWorldWidth();
     return Math.max(0, Math.min(Math.max(0, this.world.width - viewportWidth), x));
+  }
+
+  getVisibleWorldWidth(viewport = this.game.viewport) {
+    const width = viewport?.width || this.camera.viewportWidth || 0;
+    return width / Math.max(0.1, this.viewScale);
   }
 
   updatePrompt(active) {
@@ -247,10 +255,20 @@ export class StationScene {
       return;
     }
     const viewport = this.game.viewport || { width: 0 };
-    const x = Math.max(112, Math.min(viewport.width - 120, active.centerX - this.camera.x));
-    const y = Math.max(82, active.y - 28);
+    const rawX = active.centerX - this.camera.x;
+    const rawY = active.y - 28;
+    const x = Math.max(112, Math.min(viewport.width - 120, this.scaleScreenX(rawX, viewport)));
+    const y = Math.max(82, this.scaleScreenY(rawY, viewport));
     const actionLabel = window.matchMedia?.('(pointer: coarse)').matches ? 'Tap' : 'E';
     this.prompt.update({ interactable: active, x, y, actionLabel });
+  }
+
+  scaleScreenX(x, viewport = this.game.viewport) {
+    return (viewport?.width || 0) * 0.5 + (x - (viewport?.width || 0) * 0.5) * this.viewScale;
+  }
+
+  scaleScreenY(y, viewport = this.game.viewport) {
+    return (viewport?.height || 0) + (y - (viewport?.height || 0)) * this.viewScale;
   }
 
   updateHud(force = false) {

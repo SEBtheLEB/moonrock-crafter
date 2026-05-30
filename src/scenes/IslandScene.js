@@ -1,6 +1,7 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
 import { IslandPlayer } from '../entities/IslandPlayer.js';
+import { gameBalance } from '../data/gameBalance.js';
 
 export class IslandScene {
   constructor(game, payload = {}) {
@@ -18,6 +19,7 @@ export class IslandScene {
     this.animals = [];
     this.time = 0;
     this.camera = { x: 0, targetX: 0 };
+    this.viewScale = gameBalance.ui?.worldViewScale || 1;
     this.promptTarget = null;
     this.hudCache = {};
     this.floatingText = [];
@@ -45,7 +47,7 @@ export class IslandScene {
     if (!viewport) return;
     const floorOffset = Math.max(54, Math.min(86, viewport.height * 0.19));
     this.world = {
-      width: Math.max(this.island.size?.width || 1280, viewport.width + 360),
+      width: Math.max(this.island.size?.width || 1280, this.getVisibleWorldWidth(viewport) + 360),
       height: viewport.height,
       floorY: Math.max(210, viewport.height - floorOffset),
     };
@@ -138,9 +140,13 @@ export class IslandScene {
   }
 
   updateCamera(delta) {
-    const viewportWidth = this.game.viewport?.width || 0;
+    const viewportWidth = this.getVisibleWorldWidth();
     this.camera.targetX = Math.max(0, Math.min(this.world.width - viewportWidth, this.player.centerX - viewportWidth * 0.42));
     this.camera.x += (this.camera.targetX - this.camera.x) * Math.min(1, delta * 8);
+  }
+
+  getVisibleWorldWidth(viewport = this.game.viewport) {
+    return (viewport?.width || 0) / Math.max(0.1, this.viewScale);
   }
 
   handleAnimalContact() {
@@ -303,12 +309,22 @@ export class IslandScene {
     const { width, height } = this.game.viewport;
     ctx.clearRect(0, 0, width, height);
     this.drawBackdrop(ctx, width, height);
+    ctx.save();
+    this.applyWorldScale(ctx, width, height);
     this.drawTerrain(ctx, width);
     this.drawShip(ctx);
     this.nodes.forEach((node) => node.draw(ctx, this.camera, this.time));
     this.animals.forEach((animal) => animal.draw(ctx, this.camera, this.time));
     this.player.draw(ctx, this.camera, this.time);
     this.drawFloatingText(ctx);
+    ctx.restore();
+  }
+
+  applyWorldScale(ctx, width, height) {
+    if (Math.abs(this.viewScale - 1) < 0.001) return;
+    ctx.translate(width / 2, height);
+    ctx.scale(this.viewScale, this.viewScale);
+    ctx.translate(-width / 2, -height);
   }
 
   drawBackdrop(ctx, width, height) {

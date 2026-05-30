@@ -29,7 +29,9 @@ export class MiningScene {
     this.asteroidPool = [];
     this.floatingText = [];
     this.floatingTextPool = [];
+    this.cargoTransferEffects = [];
     this.time = 0;
+    this.viewScale = gameBalance.ui?.worldViewScale || 1;
     this.camera = { x: 0, y: 0, shake: 0, shakeX: 0, shakeY: 0 };
     this.cameraView = {
       worldToScreen: (x, y) => ({
@@ -77,6 +79,9 @@ export class MiningScene {
     this.landingIsland = null;
     this.gpsPingTimer = 0;
     this.destinationReachedId = '';
+    this.cargoDumping = false;
+    this.cargoDumpTimer = 0;
+    this.cargoDumpSummary = null;
   }
 
   createRunStats() {
@@ -295,8 +300,22 @@ export class MiningScene {
   update(delta) {
     if (this.ending) return;
     this.time += delta;
+    if (this.cargoDumping) {
+      this.updateCargoDump(delta);
+      this.updateCamera(delta);
+      this.updateParticles(delta);
+      this.updateHud();
+      return;
+    }
     this.shieldTimer = Math.max(0, this.shieldTimer - delta);
     this.distanceFromStation = this.getDistanceFromStation();
+    this.tryAutoCargoDump();
+    if (this.cargoDumping) {
+      this.updateCargoDump(delta);
+      this.updateCamera(delta);
+      this.updateHud();
+      return;
+    }
     this.updateFuel(delta);
     this.ship.update(delta, this.game.input, this.stats.fuel / this.stats.maxFuel);
     this.distanceFromStation = this.getDistanceFromStation();
@@ -317,6 +336,67 @@ export class MiningScene {
       this.hudRefreshTimer = gameBalance.ui?.hudUpdateInterval || 0.08;
       this.updateHud();
     }
+  }
+
+  tryAutoCargoDump() {
+    if (this.cargoDumping || this.ending || this.runCargoCount <= 0) return;
+    if (this.distanceFromStation * this.distanceFromStation > DOCK_RADIUS_SQ) return;
+    this.beginCargoDump();
+  }
+
+  beginCargoDump() {
+    this.cargoDumping = true;
+    this.cargoDumpTimer = 1.15;
+    this.cargoDumpSummary = this.createSummary('docked', { ...this.runCargo });
+    this.ship.vx *= 0.2;
+    this.ship.vy *= 0.2;
+    this.stopLaserAudio();
+    this.game.ui.showToast('Cargo bay dumping to station...', 'success', 1400);
+    this.game.audio.playShipDock();
+    this.game.audio.playPickup();
+    this.spawnCargoTransferEffects();
+    this.game.systems.tutorial.onDockAvailable();
+  }
+
+  updateCargoDump(delta) {
+    this.cargoDumpTimer -= delta;
+    this.ship.vx *= Math.max(0, 1 - delta * 7);
+    this.ship.vy *= Math.max(0, 1 - delta * 7);
+    for (let index = 0; index < this.cargoTransferEffects.length; index += 1) {
+      const effect = this.cargoTransferEffects[index];
+      effect.age += delta;
+    }
+    if (this.cargoDumpTimer > 0) return;
+    this.ending = true;
+    this.game.audio.playDockSuccess();
+    this.game.dockFromMining({ cargo: this.runCargo, summary: this.cargoDumpSummary });
+  }
+
+  spawnCargoTransferEffects() {
+    this.cargoTransferEffects = [];
+    let effectIndex = 0;
+    Object.entries(this.runCargo).forEach(([materialId, amount]) => {
+      const material = this.game.systems.materials.getMaterial(materialId);
+      const visibleCount = Math.max(1, Math.min(6, amount));
+      for (let i = 0; i < visibleCount; i += 1) {
+        const spread = (effectIndex % 7) - 3;
+        this.cargoTransferEffects.push({
+          materialId,
+          icon: material?.icon || '*',
+          color: material?.color || '#ffd36b',
+          age: -effectIndex * 0.045,
+          life: 0.78 + (i % 3) * 0.08,
+          startX: this.ship.x + Math.cos(effectIndex * 1.8) * 18,
+          startY: this.ship.y + Math.sin(effectIndex * 2.1) * 14,
+          endX: spread * 10,
+          endY: -18 - (effectIndex % 3) * 7,
+          arc: 80 + (effectIndex % 4) * 18,
+          size: 15 + (effectIndex % 3) * 2,
+        });
+        effectIndex += 1;
+      }
+    });
+    this.spawnBurst(this.ship.x, this.ship.y, '#ffd36b', Math.min(22, 8 + effectIndex), 120);
   }
 
   updateDistanceProgress(delta) {
@@ -836,6 +916,10 @@ export class MiningScene {
 
   dock() {
     if (this.getDistanceFromStation() > DOCK_RADIUS || this.ending) return;
+    if (this.runCargoCount > 0) {
+      this.beginCargoDump();
+      return;
+    }
     this.ending = true;
     const summary = this.createSummary('docked', this.runCargo);
     this.game.dockFromMining({ cargo: this.runCargo, summary });
@@ -904,7 +988,7 @@ export class MiningScene {
     this.setHudClass('zoneBannerVisible', this.hud.zoneBanner, 'is-visible', this.zoneBannerTimer > 0, force);
     const angleToStation = Math.atan2(-this.ship.y, -this.ship.x);
     this.hud.stationArrow.style.transform = `rotate(${angleToStation + Math.PI / 2}rad)`;
-    const dockVisible = distance * distance <= DOCK_RADIUS_SQ;
+    const dockVisible = distance * distance <= DOCK_RADIUS_SQ && !this.cargoDumping;
     this.setHudClass('dockVisible', this.dockButton, 'is-hidden', !dockVisible, force);
     if (dockVisible && this.runCargoCount > 0) this.game.systems.tutorial.onDockAvailable();
     this.setHudClass(
@@ -950,6 +1034,8 @@ export class MiningScene {
     ctx.clearRect(0, 0, width, height);
     this.drawSpace(ctx, width, height);
     this.drawAmbientParticles(ctx);
+    ctx.save();
+    this.applyWorldScale(ctx, width, height);
     this.drawStation(ctx);
     const camera = this.cameraView;
     this.rockIslands.forEach((island) => {
@@ -966,7 +1052,52 @@ export class MiningScene {
     this.drawLaser(ctx);
     this.drawParticles(ctx);
     this.ship.draw(ctx, camera, this.game.input);
+    this.drawCargoTransferEffects(ctx);
     this.drawFloatingText(ctx);
+    ctx.restore();
+  }
+
+  drawCargoTransferEffects(ctx) {
+    if (!this.cargoTransferEffects.length) return;
+    const camera = this.cameraView;
+    this.cargoTransferEffects.forEach((effect) => {
+      if (effect.age < 0) return;
+      const t = Math.min(1, effect.age / effect.life);
+      const ease = 1 - (1 - t) ** 3;
+      const lift = Math.sin(t * Math.PI) * effect.arc;
+      const x = effect.startX + (effect.endX - effect.startX) * ease;
+      const y = effect.startY + (effect.endY - effect.startY) * ease - lift;
+      const screen = camera.worldToScreen(x, y);
+      const alpha = t > 0.86 ? Math.max(0, (1 - t) / 0.14) : Math.min(1, t / 0.16);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(screen.x, screen.y);
+      ctx.rotate(effect.age * 7);
+      ctx.fillStyle = effect.color;
+      ctx.strokeStyle = '#081626';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = effect.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#081626';
+      ctx.font = '900 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(effect.icon, 0, 1);
+      ctx.restore();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  applyWorldScale(ctx, width, height) {
+    if (Math.abs(this.viewScale - 1) < 0.001) return;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(this.viewScale, this.viewScale);
+    ctx.translate(-width / 2, -height / 2);
   }
 
   drawSpace(ctx, width, height) {

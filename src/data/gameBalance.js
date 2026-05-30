@@ -63,6 +63,7 @@ export const gameBalance = {
     maxStarterReachHint: 1700,
   },
   ui: {
+    worldViewScale: 0.88,
     hudUpdateInterval: 0.08,
     distanceObjectiveInterval: 0.45,
   },

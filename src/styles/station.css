@@ -6,7 +6,7 @@
 .station-platformer-top-bar {
   position: absolute;
   top: var(--safe-top);
-  left: var(--safe-left);
+  left: calc(var(--safe-left) + 82px);
   right: calc(var(--safe-right) + 64px);
   display: flex;
   align-items: flex-start;

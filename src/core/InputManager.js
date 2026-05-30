@@ -149,19 +149,20 @@ export class InputManager {
 
     const setVector = (event) => {
       const rect = element.getBoundingClientRect();
+      const movementRadius = Math.max(radius, rect.width * 0.34);
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
       const dx = event.clientX - centerX;
       const dy = event.clientY - centerY;
       const distance = Math.hypot(dx, dy);
-      const scale = distance > radius ? radius / distance : 1;
+      const scale = distance > movementRadius ? movementRadius / distance : 1;
       const vector = {
-        x: Math.max(-1, Math.min(1, (dx * scale) / radius)),
-        y: Math.max(-1, Math.min(1, (dy * scale) / radius)),
+        x: Math.max(-1, Math.min(1, (dx * scale) / movementRadius)),
+        y: Math.max(-1, Math.min(1, (dy * scale) / movementRadius)),
       };
       if (mode === 'aim') this.virtualAim = vector;
       else this.virtualMove = vector;
-      knob.style.transform = `translate(${vector.x * radius}px, ${vector.y * radius}px)`;
+      knob.style.transform = `translate(${vector.x * movementRadius}px, ${vector.y * movementRadius}px)`;
     };
 
     element.addEventListener('pointerdown', (event) => {

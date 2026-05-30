@@ -6,7 +6,7 @@
 .island-hud {
   position: absolute;
   top: var(--safe-top);
-  left: var(--safe-left);
+  left: calc(var(--safe-left) + 82px);
   right: calc(var(--safe-right) + 64px);
   display: grid;
   grid-template-columns: minmax(145px, 1fr) minmax(210px, 1.2fr) minmax(145px, 1fr);
