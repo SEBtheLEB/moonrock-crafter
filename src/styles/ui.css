@@ -719,12 +719,23 @@
   pointer-events: auto;
   touch-action: none;
   opacity: 0.62;
-  transition: opacity 120ms ease, filter 120ms ease;
+  transform: translate3d(var(--joystick-float-x, 0), var(--joystick-float-y, 0), 0);
+  transition: opacity 120ms ease, filter 120ms ease, transform 120ms ease;
+  will-change: transform;
 }
 
 .joystick.is-active {
   opacity: 0.86;
   filter: saturate(1.08);
+  transition: opacity 90ms ease, filter 90ms ease;
+}
+
+.joystick.is-floating {
+  opacity: 0.42;
+}
+
+.joystick.is-floating.is-active {
+  opacity: 0.88;
 }
 
 .joystick-label {

@@ -250,6 +250,10 @@ export class StationScene {
   }
 
   updatePrompt(active) {
+    if (this.game.ui.hasBlockingOverlay()) {
+      this.prompt.update({ interactable: null });
+      return;
+    }
     if (!active) {
       this.prompt.update({ interactable: null });
       return;

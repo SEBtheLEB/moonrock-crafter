@@ -185,6 +185,11 @@ export class UIManager {
     this.dialogueOverlay.classList.add('is-hidden');
   }
 
+  hasBlockingOverlay() {
+    return Boolean(this.modalLayer?.children.length)
+      || !this.dialogueOverlay.classList.contains('is-hidden');
+  }
+
   highlightElement(selector, label = '', { placement = 'auto' } = {}) {
     window.setTimeout(() => {
       this.clearHighlight();

@@ -143,15 +143,30 @@ export class InputManager {
     };
   }
 
-  bindJoystick(element, { mode = 'move', radius = 48 } = {}) {
+  bindJoystick(element, { mode = 'move', radius = 48, floating = false, activationRegion = 'element' } = {}) {
+    element.__inputCleanup?.();
     let activePointerId = null;
+    let floatingCenter = null;
+    const windowListeners = [];
     const knob = element.querySelector('[data-joystick-knob]');
+
+    if (floating) element.classList.add('is-floating');
+
+    const getJoystickCenter = () => {
+      if (floatingCenter) return floatingCenter;
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    };
 
     const setVector = (event) => {
       const rect = element.getBoundingClientRect();
       const movementRadius = Math.max(radius, rect.width * 0.34);
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
+      const center = getJoystickCenter();
+      const centerX = center.x;
+      const centerY = center.y;
       const dx = event.clientX - centerX;
       const dy = event.clientY - centerY;
       const distance = Math.hypot(dx, dy);
@@ -165,28 +180,91 @@ export class InputManager {
       knob.style.transform = `translate(${vector.x * movementRadius}px, ${vector.y * movementRadius}px)`;
     };
 
-    element.addEventListener('pointerdown', (event) => {
+    const canActivateFromEvent = (event) => {
+      if (!floating) return true;
+      if (event.pointerType === 'mouse') return false;
+      if (!event.target.closest?.('#game-shell')) return false;
+      if (event.target.closest?.('button, .modal-backdrop, .global-dialogue-box, .debug-panel')) return false;
+      if (activationRegion === 'left' && event.clientX > window.innerWidth * 0.54) return false;
+      return true;
+    };
+
+    const positionFloatingJoystick = (event) => {
+      if (!floating) return;
+      const rect = element.getBoundingClientRect();
+      const baseCenterX = rect.left + rect.width / 2;
+      const baseCenterY = rect.top + rect.height / 2;
+      const leftLimit = Math.max(8, window.innerWidth * 0.08);
+      const rightLimit = Math.max(leftLimit, window.innerWidth * 0.54 - rect.width * 0.5);
+      const topLimit = 44;
+      const bottomLimit = Math.max(topLimit, window.innerHeight - rect.height * 0.42);
+      const centerX = Math.max(leftLimit, Math.min(rightLimit, event.clientX));
+      const centerY = Math.max(topLimit, Math.min(bottomLimit, event.clientY));
+      floatingCenter = { x: centerX, y: centerY };
+      element.style.setProperty('--joystick-float-x', `${Math.round(centerX - baseCenterX)}px`);
+      element.style.setProperty('--joystick-float-y', `${Math.round(centerY - baseCenterY)}px`);
+    };
+
+    const activate = (event) => {
+      if (!canActivateFromEvent(event)) return;
+      if (activePointerId !== null) return;
       activePointerId = event.pointerId;
-      element.setPointerCapture?.(event.pointerId);
+      positionFloatingJoystick(event);
+      try {
+        element.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Floating joysticks may begin from a sibling/canvas pointer target.
+      }
       element.classList.add('is-active');
       setVector(event);
-    });
+    };
 
-    element.addEventListener('pointermove', (event) => {
+    element.addEventListener('pointerdown', activate);
+    if (floating) {
+      window.addEventListener('pointerdown', activate, { passive: false, capture: true });
+      windowListeners.push(['pointerdown', activate]);
+    }
+
+    const move = (event) => {
       if (event.pointerId === activePointerId) setVector(event);
-    });
+    };
+    element.addEventListener('pointermove', move);
+    if (floating) {
+      window.addEventListener('pointermove', move, { passive: false, capture: true });
+      windowListeners.push(['pointermove', move]);
+    }
 
     const release = (event) => {
       if (event.pointerId !== activePointerId) return;
       activePointerId = null;
+      floatingCenter = null;
       if (mode === 'aim') this.virtualAim = { x: 0, y: 0 };
       else this.virtualMove = { x: 0, y: 0 };
       knob.style.transform = 'translate(0, 0)';
+      element.style.setProperty('--joystick-float-x', '0px');
+      element.style.setProperty('--joystick-float-y', '0px');
       element.classList.remove('is-active');
     };
 
     element.addEventListener('pointerup', release);
     element.addEventListener('pointercancel', release);
+    if (floating) {
+      window.addEventListener('pointerup', release, { passive: false, capture: true });
+      window.addEventListener('pointercancel', release, { passive: false, capture: true });
+      windowListeners.push(['pointerup', release], ['pointercancel', release]);
+    }
+
+    element.__inputCleanup = () => {
+      windowListeners.forEach(([type, listener]) => {
+        window.removeEventListener(type, listener, { capture: true });
+      });
+      if (activePointerId !== null) {
+        activePointerId = null;
+        floatingCenter = null;
+        if (mode === 'aim') this.virtualAim = { x: 0, y: 0 };
+        else this.virtualMove = { x: 0, y: 0 };
+      }
+    };
   }
 
   bindHoldButton(element, actionName) {

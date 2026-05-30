@@ -64,6 +64,7 @@ export const gameBalance = {
   },
   ui: {
     worldViewScale: 0.88,
+    miningViewScale: 0.76,
     hudUpdateInterval: 0.08,
     distanceObjectiveInterval: 0.45,
   },

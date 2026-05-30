@@ -6,10 +6,11 @@ export class Ship {
     this.vy = 0;
     this.angle = 0;
     this.radius = 22;
-    this.acceleration = 500 + (stats.acceleration || 1) * 48;
-    this.drag = 0.9;
-    this.maxSpeed = 250 + (stats.speed || 1) * 30;
-    this.turnSpeed = 8 + (stats.handling || 1) * 1.1;
+    this.acceleration = 370 + (stats.acceleration || 1) * 42;
+    this.drag = 0.68;
+    this.activeControl = 2.9 + (stats.handling || 1) * 0.35;
+    this.maxSpeed = 198 + (stats.speed || 1) * 24;
+    this.turnSpeed = 9.5 + (stats.handling || 1) * 1.2;
     this.hitCooldown = 0;
   }
 
@@ -19,9 +20,18 @@ export class Ship {
     const fuelFactor = fuelRatio > 0 ? 1 : 0.28;
 
     if (thrust > 0.05) {
-      this.vx += move.x * this.acceleration * fuelFactor * delta;
-      this.vy += move.y * this.acceleration * fuelFactor * delta;
-      const targetAngle = Math.atan2(move.y, move.x);
+      const moveLength = Math.hypot(move.x, move.y) || 1;
+      const nx = move.x / moveLength;
+      const ny = move.y / moveLength;
+      this.vx += nx * this.acceleration * fuelFactor * delta;
+      this.vy += ny * this.acceleration * fuelFactor * delta;
+      const along = this.vx * nx + this.vy * ny;
+      const lateralX = this.vx - nx * along;
+      const lateralY = this.vy - ny * along;
+      const lateralCorrection = Math.min(1, this.activeControl * delta);
+      this.vx -= lateralX * lateralCorrection;
+      this.vy -= lateralY * lateralCorrection;
+      const targetAngle = Math.atan2(ny, nx);
       this.angle = this.rotateToward(this.angle, targetAngle, this.turnSpeed * delta);
     } else if (Math.hypot(this.vx, this.vy) > 8) {
       const driftAngle = Math.atan2(this.vy, this.vx);

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moonrock-crafter-v5';
+const CACHE_NAME = 'moonrock-crafter-v7';
 const CORE_ASSETS = [
   './',
   './index.html',

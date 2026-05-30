@@ -27,7 +27,7 @@ export class MobileStationControls {
   mount() {
     this.container = this.game.ui.addControls([this.moveStick, this.actionCluster]);
     this.container.classList.add('station-mobile-controls');
-    this.game.input.bindJoystick(this.moveStick, { mode: 'move', radius: 46 });
+    this.game.input.bindJoystick(this.moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(this.jumpButton, 'jump');
     this.game.input.bindHoldButton(this.interactButton, 'interact');
     this.setActiveInteractable(null);
@@ -41,6 +41,7 @@ export class MobileStationControls {
   }
 
   destroy() {
+    this.moveStick?.__inputCleanup?.();
     this.game.input.virtualButtons.set('jump', false);
     this.game.input.virtualButtons.set('interact', false);
     this.container?.remove();

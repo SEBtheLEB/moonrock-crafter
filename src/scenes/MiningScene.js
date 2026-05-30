@@ -31,7 +31,7 @@ export class MiningScene {
     this.floatingTextPool = [];
     this.cargoTransferEffects = [];
     this.time = 0;
-    this.viewScale = gameBalance.ui?.worldViewScale || 1;
+    this.viewScale = gameBalance.ui?.miningViewScale || gameBalance.ui?.worldViewScale || 1;
     this.camera = { x: 0, y: 0, shake: 0, shakeX: 0, shakeY: 0 };
     this.cameraView = {
       worldToScreen: (x, y) => ({
@@ -200,15 +200,17 @@ export class MiningScene {
       variant: 'forge',
       holdAction: 'mine',
     }).element;
+    this.moveStick = moveStick;
     this.mineButton = mineButton;
     this.mineButtonLabel = mineButton.querySelector('span:last-child');
     this.mineButtonIcon = mineButton.querySelector('.button-icon');
     this.game.ui.addControls([moveStick, mineButton]);
-    this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46 });
+    this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(mineButton, 'mine');
   }
 
   exit() {
+    this.moveStick?.__inputCleanup?.();
     this.game.audio.stopLaserLoop();
     this.game.audio.stopEngineBoost();
     this.game.audio.setDangerMode(false);

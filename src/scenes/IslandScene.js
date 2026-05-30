@@ -86,6 +86,7 @@ export class IslandScene {
 
   mountControls() {
     const moveStick = new Joystick({ label: 'Walk', className: 'island-joystick' }).element;
+    this.moveStick = moveStick;
     const jumpButton = new Button('Jump', () => {}, {
       icon: '^',
       className: 'island-jump-button',
@@ -109,7 +110,7 @@ export class IslandScene {
     actions.append(jumpButton, interactButton, toolButton);
     this.controls = this.game.ui.addControls([moveStick, actions]);
     this.controls.classList.add('island-mobile-controls');
-    this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46 });
+    this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(jumpButton, 'jump');
     this.game.input.bindHoldButton(interactButton, 'interact');
     this.game.input.bindHoldButton(toolButton, 'tool');
@@ -418,6 +419,7 @@ export class IslandScene {
   }
 
   exit() {
+    this.moveStick?.__inputCleanup?.();
     this.game.input.virtualButtons.set('jump', false);
     this.game.input.virtualButtons.set('interact', false);
     this.game.input.virtualButtons.set('tool', false);
