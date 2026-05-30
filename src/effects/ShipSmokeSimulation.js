@@ -3,14 +3,14 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 const SMOKE_SETTINGS = {
   resolution: 92,
-  dissipation: 0.986,
-  velocityDissipation: 0.978,
+  dissipation: 0.989,
+  velocityDissipation: 0.981,
   pressure: 0.34,
   pressureIterations: 6,
-  curl: 0.58,
-  force: 0.42,
-  intensity: 0.56,
-  splatRadius: 9,
+  curl: 0.62,
+  force: 0.48,
+  intensity: 0.92,
+  splatRadius: 12,
 };
 
 // Adapted from the FX Lab smoke-flow grid simulation. This version is scoped to
@@ -114,7 +114,7 @@ export class ShipSmokeSimulation {
     const minY = Math.max(0, Math.floor(gy - radius * 2));
     const maxY = Math.min(this.rows - 1, Math.ceil(gy + radius * 2));
     const velocityScale = SMOKE_SETTINGS.force * 0.58;
-    const dyeAmount = amount * (0.32 + SMOKE_SETTINGS.intensity * 0.32);
+    const dyeAmount = amount * (0.48 + SMOKE_SETTINGS.intensity * 0.42);
 
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
@@ -123,7 +123,7 @@ export class ShipSmokeSimulation {
         const falloff = Math.exp(-(px * px + py * py) * 1.65);
         if (falloff < 0.012) continue;
         const idx = this.index(x, y);
-        this.dye[idx] = Math.min(1.35, this.dye[idx] + dyeAmount * falloff);
+        this.dye[idx] = Math.min(1.85, this.dye[idx] + dyeAmount * falloff);
         this.vx[idx] += dx * velocityScale * falloff;
         this.vy[idx] += dy * velocityScale * falloff;
       }
@@ -151,10 +151,10 @@ export class ShipSmokeSimulation {
     const exhaustDistance = 40 * shipScale;
     const sideAngle = ship.angle + Math.PI * 0.5;
     const speed = Math.hypot(ship.vx, ship.vy);
-    const power = clamp(thrust * (0.68 + fuelRatio * 0.22) + speed / Math.max(1, ship.maxSpeed) * 0.11, 0.12, 0.82);
+    const power = clamp(thrust * (0.72 + fuelRatio * 0.24) + speed / Math.max(1, ship.maxSpeed) * 0.14, 0.16, 0.98);
     const jitter = Math.sin(this.time * 16.7) * 1.35;
     const screenFlowScale = Math.max(0.72, viewScale);
-    const baseFlow = (16 + speed * 0.055 + power * 12) * screenFlowScale;
+    const baseFlow = (20 + speed * 0.065 + power * 15) * screenFlowScale;
     const flowX = Math.cos(exhaustAngle) * baseFlow - ship.vx * 0.035 * screenFlowScale;
     const flowY = Math.sin(exhaustAngle) * baseFlow - ship.vy * 0.035 * screenFlowScale;
     this.flowX = lerp(this.flowX, flowX, clamp(delta * 7, 0, 1));
@@ -174,8 +174,8 @@ export class ShipSmokeSimulation {
         screen.y + Math.cos(this.time * 19 + i) * 0.85,
         flowX + Math.cos(sideAngle) * side * (2.6 + jitter),
         flowY + Math.sin(sideAngle) * side * (2.6 - jitter),
-        power * delta * 4.8,
-        (7.5 + power * 5.5) * shipScale,
+        power * delta * 8.6,
+        (9.5 + power * 7.2) * shipScale,
       );
     }
     return true;
@@ -307,7 +307,7 @@ export class ShipSmokeSimulation {
     const data = this.imageData.data;
     for (let i = 0; i < this.dye.length; i += 1) {
       const p = i * 4;
-      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.15, 0, 0.95);
+      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.28, 0, 1.15);
       if (value <= 0.004) {
         data[p] = 0;
         data[p + 1] = 0;
@@ -315,21 +315,21 @@ export class ShipSmokeSimulation {
         data[p + 3] = 0;
         continue;
       }
-      const shade = clamp(0.58 + value * 0.3, 0.5, 0.88);
-      data[p] = clamp(116 * shade, 0, 255);
-      data[p + 1] = clamp(122 * shade, 0, 255);
-      data[p + 2] = clamp(128 * shade, 0, 255);
-      data[p + 3] = clamp(value * 92, 0, 112);
+      const shade = clamp(0.68 + value * 0.34, 0.6, 1.02);
+      data[p] = clamp(134 * shade, 0, 255);
+      data[p + 1] = clamp(140 * shade, 0, 255);
+      data[p + 2] = clamp(148 * shade, 0, 255);
+      data[p + 3] = clamp(value * 122, 0, 156);
     }
 
     this.ctx.putImageData(this.imageData, 0, 0);
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.62;
+    ctx.globalAlpha = 0.78;
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
-    ctx.globalAlpha = 0.14;
-    ctx.filter = 'blur(4px)';
+    ctx.globalAlpha = 0.22;
+    ctx.filter = 'blur(5px)';
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
     ctx.restore();
   }
