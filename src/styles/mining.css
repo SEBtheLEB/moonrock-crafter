@@ -1,0 +1,444 @@
+.mining-screen .ui-scene-layer {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  padding-bottom: calc(var(--safe-bottom) + 116px);
+}
+
+.mining-hud {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1.1fr) minmax(150px, 1fr);
+  grid-template-areas:
+    "hull fuel cargo"
+    "radar zone warning";
+  gap: 8px;
+  padding-right: 70px;
+  pointer-events: none;
+}
+
+.mining-bar {
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), transparent 38%),
+    linear-gradient(180deg, #244e67, #0f263c);
+  box-shadow: 0 6px 0 rgba(4, 10, 20, 0.62), 0 0 18px rgba(118, 243, 255, 0.09);
+  color: var(--cream);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.hull-bar {
+  grid-area: hull;
+}
+
+.fuel-bar {
+  grid-area: fuel;
+}
+
+.cargo-bar {
+  grid-area: cargo;
+}
+
+.mining-bar span,
+.mining-bar strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mining-bar strong {
+  color: var(--forge-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-bar div {
+  grid-column: 1 / -1;
+  height: 11px;
+  border: 3px solid #071524;
+  border-radius: 999px;
+  background: #081626;
+  overflow: hidden;
+}
+
+.mining-bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--mint-glow), var(--forge-yellow));
+  transition: width 120ms ease;
+}
+
+.mining-bar.is-low {
+  animation: mining-warning-pulse 680ms ease-in-out infinite alternate;
+}
+
+.hull-bar i {
+  background: linear-gradient(90deg, #8df0a4, #ffd36b);
+}
+
+.fuel-bar i {
+  background: linear-gradient(90deg, #76f3ff, #376fff);
+}
+
+.cargo-bar i {
+  background: linear-gradient(90deg, #ffd36b, #ff8f3d);
+}
+
+.station-radar {
+  grid-area: radar;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 5px 10px;
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 42%),
+    rgba(15, 38, 60, 0.86);
+  box-shadow: 0 6px 0 rgba(4, 10, 20, 0.58), 0 0 16px rgba(255, 211, 107, 0.1);
+}
+
+.zone-chip {
+  grid-area: zone;
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 5px 12px;
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 211, 107, 0.12), transparent 42%),
+    rgba(15, 38, 60, 0.86);
+  box-shadow: 0 6px 0 rgba(4, 10, 20, 0.58), 0 0 18px rgba(255, 143, 61, 0.12);
+  color: var(--forge-yellow);
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-align: center;
+}
+
+.zone-banner {
+  position: absolute;
+  left: 50%;
+  top: 82px;
+  min-width: 210px;
+  padding: 10px 18px;
+  border: 4px solid var(--outline);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 242, 207, 0.18), transparent 38%),
+    linear-gradient(180deg, #315a78, #102238);
+  box-shadow: var(--shadow-chunky), 0 0 24px rgba(118, 243, 255, 0.22);
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: clamp(20px, 3vw, 30px);
+  font-weight: 900;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-12px) scale(0.96);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.zone-banner.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.gps-destination-hud {
+  position: absolute;
+  right: calc(var(--safe-right) + 76px);
+  top: calc(var(--safe-top) + 112px);
+  min-width: 230px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 4px solid var(--outline);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(118, 243, 255, 0.18), transparent 38%),
+    rgba(7, 21, 36, 0.88);
+  box-shadow: var(--shadow-chunky), 0 0 24px rgba(118, 243, 255, 0.24);
+  pointer-events: none;
+}
+
+.gps-destination-hud.is-hidden {
+  display: none;
+}
+
+.gps-arrow {
+  width: 0;
+  height: 0;
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+  border-bottom: 27px solid var(--mint-glow);
+  transform-origin: 50% 58%;
+  filter: drop-shadow(0 2px 0 var(--outline));
+}
+
+.gps-destination-hud div {
+  display: grid;
+  gap: 1px;
+}
+
+.gps-destination-hud strong {
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.gps-destination-hud em {
+  color: var(--forge-yellow);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.gps-destination-hud small {
+  min-height: 14px;
+  color: #ff756f;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.landing-zone-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 94px);
+  min-width: min(380px, 72vw);
+  display: grid;
+  place-items: center;
+  padding: 9px 14px;
+  border: 4px solid var(--outline);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 242, 207, 0.2), transparent 38%),
+    linear-gradient(180deg, #315a72, #102238);
+  color: var(--forge-yellow);
+  font-family: var(--font-display);
+  font-weight: 950;
+  text-align: center;
+  box-shadow: var(--shadow-chunky), 0 0 22px rgba(255, 211, 107, 0.28);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.landing-zone-prompt.is-hidden {
+  display: none;
+}
+
+.radar-arrow {
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 20px solid var(--forge-yellow);
+  transform-origin: 50% 58%;
+  filter: drop-shadow(0 2px 0 var(--outline));
+  animation: radar-nudge 1s ease-in-out infinite alternate;
+}
+
+.station-radar strong {
+  color: var(--cream);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-warning {
+  grid-area: warning;
+  align-self: center;
+  justify-self: end;
+  color: #ffdd75;
+  font-family: var(--font-display);
+  font-size: clamp(14px, 2vw, 18px);
+  font-weight: 900;
+  text-shadow: 0 3px 0 var(--outline), 0 0 14px rgba(255, 117, 111, 0.7);
+}
+
+.mining-warning.is-pulsing {
+  animation: mining-warning-pulse 520ms ease-in-out infinite alternate;
+}
+
+.cargo-bar.is-shaking {
+  animation: cargo-full-shake 280ms ease both;
+}
+
+.dock-button {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 16px);
+  min-width: 150px;
+  min-height: 62px;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 0 #071222, 0 0 24px rgba(141, 240, 164, 0.38);
+  z-index: 3;
+}
+
+.dock-button:hover {
+  transform: translateX(-50%) translateY(-2px) scale(1.03);
+}
+
+.dock-button.is-hidden {
+  display: none;
+}
+
+.recall-button {
+  position: absolute;
+  right: calc(var(--safe-right) + 12px);
+  bottom: calc(var(--safe-bottom) + 18px);
+  min-width: 126px;
+  min-height: 56px;
+  pointer-events: auto;
+  box-shadow: 0 7px 0 #071222, 0 0 22px rgba(118, 243, 255, 0.3);
+  z-index: 3;
+}
+
+.recall-button.is-hidden {
+  display: none;
+}
+
+.mining-summary-modal .modal-panel {
+  width: min(470px, 88vw);
+}
+
+.summary-details {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.summary-details div,
+.summary-cargo span {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 3px solid var(--outline);
+  border-radius: 12px;
+  background: rgba(8, 22, 38, 0.55);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.summary-details strong,
+.summary-cargo strong {
+  color: var(--forge-yellow);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-cargo {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.summary-cargo h2 {
+  margin: 5px 0 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.summary-rarity {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 3px solid var(--outline);
+  border-radius: 14px;
+  background: rgba(8, 22, 38, 0.4);
+}
+
+.summary-rarity h3 {
+  margin: 0;
+  color: var(--rarity-color);
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.summary-cargo .summary-material {
+  border-color: color-mix(in srgb, var(--material-color), var(--outline) 48%);
+}
+
+@media (max-width: 760px) {
+  .mining-screen .ui-scene-layer {
+    padding-bottom: calc(var(--safe-bottom) + 96px);
+  }
+
+  .mining-hud {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .mining-bar {
+    min-height: 42px;
+    padding: 5px 7px;
+  }
+
+  .mining-bar span,
+  .mining-bar strong {
+    font-size: 11px;
+  }
+
+  .station-radar {
+    min-height: 34px;
+  }
+
+  .zone-chip {
+    min-height: 34px;
+    font-size: 12px;
+  }
+
+  .summary-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@keyframes mining-warning-pulse {
+  from {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  to {
+    filter: brightness(1.22);
+    transform: scale(1.02);
+  }
+}
+
+@keyframes cargo-full-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+}
+
+@keyframes radar-nudge {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.12;
+  }
+}

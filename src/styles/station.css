@@ -1,0 +1,264 @@
+.station-platformer-screen .ui-scene-layer {
+  display: block;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.station-platformer-top-bar {
+  position: absolute;
+  top: var(--safe-top);
+  left: var(--safe-left);
+  right: calc(var(--safe-right) + 64px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.station-platformer-resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-width: min(58vw, 620px);
+}
+
+.station-platformer-objective {
+  min-width: min(310px, 36vw);
+  max-width: min(430px, 42vw);
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 11px;
+  border: 4px solid var(--outline);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 242, 207, 0.92), rgba(231, 187, 115, 0.92));
+  color: var(--ink);
+  box-shadow: var(--shadow-chunky), 0 0 18px rgba(255, 143, 61, 0.16);
+}
+
+.station-platformer-objective span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 3px solid var(--outline);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--forge-yellow), var(--forge-orange));
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.station-platformer-objective strong {
+  overflow: hidden;
+  color: #3b2417;
+  font-family: var(--font-display);
+  font-size: clamp(14px, 1.7vw, 19px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station-platformer-objective em {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #102033;
+  color: var(--forge-yellow);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.interact-prompt {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(330px, 42vw);
+  padding: 8px 12px 8px 9px;
+  border: 4px solid var(--outline);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 242, 207, 0.96), rgba(231, 187, 115, 0.96));
+  color: var(--ink);
+  box-shadow: var(--shadow-chunky), 0 0 22px rgba(255, 211, 107, 0.28);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.interact-prompt::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  width: 22px;
+  height: 22px;
+  border-right: 4px solid var(--outline);
+  border-bottom: 4px solid var(--outline);
+  background: #e7bb73;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.interact-prompt.is-hidden {
+  opacity: 0;
+  transform: translate(-50%, -88%) scale(0.96);
+}
+
+.interact-key {
+  z-index: 1;
+  min-width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 4px solid var(--outline);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, #76f3ff, #315a72);
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 950;
+  box-shadow: 0 4px 0 rgba(5, 12, 22, 0.55);
+}
+
+.interact-prompt div {
+  z-index: 1;
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.interact-prompt strong {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interact-prompt span:last-child {
+  overflow: hidden;
+  color: #5b3c22;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station-mobile-controls {
+  align-items: end;
+  gap: 18px;
+}
+
+.station-action-controls {
+  display: flex;
+  align-items: end;
+  gap: clamp(8px, 1.6vw, 14px);
+  pointer-events: none;
+}
+
+.station-jump-button,
+.station-interact-button {
+  pointer-events: auto;
+  min-width: clamp(82px, 13vw, 118px);
+  min-height: clamp(64px, 11vw, 90px);
+  border-radius: 22px;
+  box-shadow: 0 8px 0 rgba(5, 12, 22, 0.7), 0 16px 24px rgba(0, 0, 0, 0.25);
+}
+
+.station-jump-button .button-icon,
+.station-interact-button .button-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+.station-jump-button.is-held {
+  filter: brightness(1.16) saturate(1.1);
+  transform: translateY(3px) scale(0.98);
+}
+
+.station-interact-button.is-active {
+  animation: station-interact-ready 720ms ease-in-out infinite alternate;
+}
+
+.shop-confirm-modal .modal-panel {
+  width: min(420px, 86vw);
+}
+
+@keyframes station-interact-ready {
+  from {
+    filter: brightness(1);
+    box-shadow: 0 8px 0 rgba(5, 12, 22, 0.7), 0 0 16px rgba(118, 243, 255, 0.22);
+  }
+
+  to {
+    filter: brightness(1.12) saturate(1.1);
+    box-shadow: 0 8px 0 rgba(5, 12, 22, 0.7), 0 0 28px rgba(255, 211, 107, 0.48);
+  }
+}
+
+@media (max-width: 880px) {
+  .station-platformer-top-bar {
+    right: calc(var(--safe-right) + 58px);
+  }
+
+  .station-platformer-resources {
+    max-width: 47vw;
+  }
+
+  .station-platformer-objective {
+    min-width: min(300px, 42vw);
+    max-width: 42vw;
+    grid-template-columns: auto 1fr;
+  }
+
+  .station-platformer-objective em {
+    display: none;
+  }
+
+  .interact-prompt {
+    max-width: 46vw;
+  }
+}
+
+@media (max-height: 380px) {
+  .station-platformer-objective {
+    min-height: 38px;
+    padding: 4px 8px;
+  }
+
+  .station-platformer-objective span {
+    min-height: 18px;
+    font-size: 9px;
+  }
+
+  .station-platformer-objective strong {
+    font-size: 13px;
+  }
+
+  .interact-prompt {
+    padding: 6px 9px 6px 7px;
+  }
+
+  .interact-key {
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .station-jump-button,
+  .station-interact-button {
+    min-width: 78px;
+    min-height: 58px;
+    flex-direction: row;
+  }
+}

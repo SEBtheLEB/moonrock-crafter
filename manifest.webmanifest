@@ -1,0 +1,19 @@
+{
+  "name": "Moonrock Crafter",
+  "short_name": "Moonrock",
+  "description": "A cozy space blacksmith prototype with mining, crafting, shop, upgrades, GPS, and island exploration.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050614",
+  "theme_color": "#102033",
+  "icons": [
+    {
+      "src": "./assets/img/moonrock-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

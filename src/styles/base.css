@@ -1,0 +1,297 @@
+:root {
+  --font-display: Inter, ui-rounded, "Arial Rounded MT Bold", ui-sans-serif, system-ui, sans-serif;
+  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --space-void: #050614;
+  --space-navy: #0c1d36;
+  --space-blue: #143954;
+  --space-purple: #221235;
+  --forge-orange: #ff8f3d;
+  --forge-yellow: #ffd36b;
+  --mint-glow: #76f3ff;
+  --ink: #102033;
+  --cream: #fff2cf;
+  --text: #f9fbff;
+  --muted: #bbd2df;
+  --outline: #102033;
+  --parchment: #fff0bf;
+  --parchment-deep: #e7bb73;
+  --metal-dark: #071524;
+  --metal-mid: #315a72;
+  --wood-warm: #8a5630;
+  --bevel-light: rgba(255, 255, 255, 0.18);
+  --bevel-dark: rgba(5, 10, 20, 0.36);
+  --panel-bg: rgba(13, 31, 50, 0.9);
+  --panel-light: #234e6b;
+  --shadow-soft: 0 14px 0 rgba(7, 13, 24, 0.34), 0 22px 52px rgba(0, 0, 0, 0.34);
+  --shadow-chunky: 0 8px 0 rgba(5, 12, 22, 0.72), 0 18px 34px rgba(0, 0, 0, 0.3);
+  --glow-forge: 0 0 18px rgba(255, 143, 61, 0.48), 0 0 38px rgba(255, 211, 107, 0.22);
+  --radius-panel: 18px;
+  --radius-control: 14px;
+  --safe-top: max(env(safe-area-inset-top), 10px);
+  --safe-right: max(env(safe-area-inset-right), 10px);
+  --safe-bottom: max(env(safe-area-inset-bottom), 10px);
+  --safe-left: max(env(safe-area-inset-left), 10px);
+  color-scheme: dark;
+  font-family: var(--font-body);
+  background: var(--space-void);
+  color: var(--text);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
+}
+
+button,
+canvas {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.game-shell {
+  width: 100vw;
+  height: 100dvh;
+  min-width: 420px;
+  min-height: 260px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 88%, rgba(255, 143, 61, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 20%, rgba(118, 243, 255, 0.1), transparent 30%),
+    linear-gradient(135deg, var(--space-navy), var(--space-purple) 58%, var(--space-void));
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  font-family: var(--font-body);
+}
+
+.ui-scene-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(250px, 36vw) 1fr minmax(88px, 16vw);
+  grid-template-rows: auto 1fr;
+  gap: clamp(8px, 1.6vw, 16px);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  pointer-events: none;
+}
+
+.ui-controls-layer,
+.ui-global-layer,
+.ui-modal-layer,
+.ui-toast-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.screen-shake {
+  animation: screen-shake 220ms ease both;
+}
+
+.craft-success-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 211, 107, 0.28), rgba(255, 143, 61, 0.1) 38%, transparent 70%);
+  animation: craft-success-flash 520ms ease both;
+}
+
+.ui-root.scene-enter::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 211, 107, 0), rgba(255, 211, 107, 0.18), rgba(255, 211, 107, 0)),
+    linear-gradient(90deg, rgba(5, 6, 20, 0.5), rgba(5, 6, 20, 0));
+  transform: translateX(-105%);
+  animation: scene-wipe 330ms ease both;
+}
+
+.ui-root.launch-wipe::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 58%, rgba(255, 211, 107, 0.32), transparent 18%),
+    linear-gradient(100deg, transparent 0 32%, rgba(255, 143, 61, 0.22) 42%, rgba(118, 243, 255, 0.16) 54%, transparent 68%);
+  animation: launch-streak 360ms ease both;
+}
+
+.ui-root.dock-wipe::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 72% 55%, rgba(118, 243, 255, 0.35), transparent 10%),
+    linear-gradient(280deg, transparent 0 30%, rgba(118, 243, 255, 0.22) 44%, rgba(255, 211, 107, 0.18) 58%, transparent 74%);
+  animation: dock-streak 410ms ease both;
+}
+
+.rotate-device-overlay {
+  display: none;
+}
+
+@media (orientation: portrait) {
+  .rotate-device-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+    background:
+      radial-gradient(circle at 50% 18%, rgba(255, 211, 107, 0.16), transparent 32%),
+      linear-gradient(160deg, #101a33, #251238 62%, #050614);
+    color: var(--cream);
+    text-align: center;
+  }
+
+  .rotate-card {
+    width: min(340px, 86vw);
+    border: 4px solid var(--outline);
+    border-radius: 22px;
+    background: linear-gradient(180deg, #28506b, #102238);
+    box-shadow: var(--shadow-soft);
+    padding: 24px;
+  }
+
+  .rotate-icon {
+    width: 86px;
+    height: 58px;
+    margin: 0 auto 18px;
+    border: 5px solid var(--forge-yellow);
+    border-radius: 14px;
+    box-shadow: inset 0 0 0 4px rgba(16, 32, 51, 0.42);
+    transform: rotate(90deg);
+  }
+
+  .rotate-card h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 25px;
+    line-height: 1;
+  }
+
+  .rotate-card p {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 980px) {
+  .ui-scene-layer {
+    grid-template-columns: 340px 1fr 180px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@keyframes screen-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(var(--feedback-shake, 7px), -2px);
+  }
+  40% {
+    transform: translate(calc(var(--feedback-shake, 7px) * -0.7), 2px);
+  }
+  65% {
+    transform: translate(calc(var(--feedback-shake, 7px) * 0.45), -1px);
+  }
+}
+
+@keyframes craft-success-flash {
+  from {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes scene-wipe {
+  0% {
+    opacity: 0.95;
+    transform: translateX(-105%);
+  }
+  48% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(105%);
+  }
+}
+
+@keyframes launch-streak {
+  from {
+    opacity: 0;
+    transform: translateX(-16%) scaleX(0.82);
+  }
+  38% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(18%) scaleX(1.12);
+  }
+}
+
+@keyframes dock-streak {
+  from {
+    opacity: 0;
+    transform: translateX(18%) scaleX(1.08);
+  }
+  42% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-12%) scaleX(0.9);
+  }
+}

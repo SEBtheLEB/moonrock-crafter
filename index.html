@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#102033" />
+    <title>Moonrock Crafter</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./assets/img/moonrock-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/img/moonrock-icon.svg" />
+    <link rel="stylesheet" href="./src/styles/base.css" />
+    <link rel="stylesheet" href="./src/styles/ui.css" />
+    <link rel="stylesheet" href="./src/styles/station.css" />
+    <link rel="stylesheet" href="./src/styles/navigation.css" />
+    <link rel="stylesheet" href="./src/styles/mining.css" />
+    <link rel="stylesheet" href="./src/styles/shop.css" />
+    <link rel="stylesheet" href="./src/styles/crafting.css" />
+    <link rel="stylesheet" href="./src/styles/upgrades.css" />
+    <link rel="stylesheet" href="./src/styles/storage.css" />
+    <link rel="stylesheet" href="./src/styles/island.css" />
+  </head>
+  <body>
+    <div id="game-shell" class="game-shell">
+      <canvas id="game-canvas" aria-label="Moonrock Crafter playfield"></canvas>
+      <div id="ui-root" class="ui-root" aria-live="polite"></div>
+      <div class="rotate-device-overlay" aria-hidden="true">
+        <div class="rotate-card">
+          <div class="rotate-icon"></div>
+          <h1>Turn the station sideways</h1>
+          <p>Moonrock Crafter is tuned for landscape play with big touch controls.</p>
+        </div>
+      </div>
+    </div>
+    <noscript>Moonrock Crafter needs JavaScript enabled.</noscript>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+        });
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

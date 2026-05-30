@@ -1,0 +1,394 @@
+import { StationPlayer } from '../entities/StationPlayer.js';
+import { StationInteractable } from '../entities/StationInteractable.js';
+import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
+import { Button } from '../ui/Button.js';
+import { InteractPrompt } from '../ui/InteractPrompt.js';
+import { MobileStationControls } from '../ui/MobileStationControls.js';
+import { Modal } from '../ui/Modal.js';
+import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
+import { NavigationMap } from '../ui/NavigationMap.js';
+import { ResourceCounter } from '../ui/ResourceCounter.js';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js';
+
+const WORLD_WIDTH = 2920;
+
+export class StationScene {
+  constructor(game, payload = {}) {
+    this.game = game;
+    this.payload = payload;
+    this.renderer = new StationSideScrollerRenderer();
+    this.interactionSystem = new StationInteractionSystem();
+    this.prompt = new InteractPrompt();
+    this.time = 0;
+    this.sparkAudioTimer = 1.4;
+    this.hudRefreshTimer = 0;
+    this.camera = { x: 0, targetX: 0, viewportWidth: 0 };
+    this.interactables = [];
+    this.transitioning = false;
+    this.lastInteractAt = 0;
+    this.lastObjectiveKey = '';
+  }
+
+  enter() {
+    this.game.systems.upgrades.applyUpgrades();
+    this.game.ui.setScreen('station-platformer-screen');
+    this.resize(this.game.viewport);
+
+    const spawnX = this.getSpawnX();
+    this.player = new StationPlayer({ x: spawnX, y: 0 });
+    this.player.snapToGround(this.world);
+    this.camera.x = this.clampCamera(spawnX - (this.game.viewport?.width || 0) * 0.42);
+    this.camera.targetX = this.camera.x;
+
+    this.mountHud();
+    this.controls = new MobileStationControls(this.game, {
+      onInteract: () => this.tryInteract(),
+    });
+    this.controls.mount();
+    this.prompt.mount(this.game.ui.sceneLayer);
+
+    if (this.payload.miningSummary) {
+      this.game.ui.root.classList.add('dock-wipe');
+      window.setTimeout(() => this.game.ui.root.classList.remove('dock-wipe'), 420);
+      const modal = createMiningSummaryModal(this.game, this.payload.miningSummary, () => {
+        this.game.systems.tutorial.onMiningSummaryClosed();
+      });
+      this.game.ui.showModal(modal);
+    }
+
+    this.game.systems.tutorial.onStationEnter(this.payload);
+  }
+
+  resize(viewport = this.game.viewport) {
+    if (!viewport) return;
+    const floorOffset = Math.max(54, Math.min(92, viewport.height * 0.2));
+    const floorY = Math.max(206, viewport.height - floorOffset);
+    this.world = {
+      minX: 0,
+      width: Math.max(WORLD_WIDTH, viewport.width + 560),
+      height: viewport.height,
+      floorY,
+      gravity: 1680,
+      platforms: [
+        { x: 585, y: floorY - 72, width: 116, height: 16 },
+        { x: 1345, y: floorY - 64, width: 118, height: 16 },
+      ],
+    };
+    this.camera.viewportWidth = viewport.width;
+    this.interactables = this.createInteractables();
+    this.interactionSystem.setInteractables(this.interactables);
+    if (this.player) {
+      this.player.y = Math.min(this.player.y, this.world.floorY - this.player.height);
+      if (this.player.onGround) this.player.snapToGround(this.world);
+      this.camera.x = this.clampCamera(this.camera.x);
+    }
+  }
+
+  createInteractables() {
+    const floorY = this.world.floorY;
+    return [
+      new StationInteractable({
+        id: 'storage',
+        label: 'Storage',
+        prompt: 'Open station crates',
+        icon: '#',
+        station: 'Storage',
+        x: 96,
+        y: floorY - 148,
+        width: 250,
+        height: 148,
+      }),
+      new StationInteractable({
+        id: 'forge',
+        label: 'Forge',
+        prompt: 'Free craft practice',
+        icon: 'F',
+        station: 'Crafting',
+        x: 468,
+        y: floorY - 170,
+        width: 320,
+        height: 170,
+      }),
+      new StationInteractable({
+        id: 'upgrades',
+        label: 'Upgrade Bench',
+        prompt: 'Tune ship and station',
+        icon: '+',
+        station: 'Upgrades',
+        x: 872,
+        y: floorY - 142,
+        width: 300,
+        height: 142,
+      }),
+      new StationInteractable({
+        id: 'research',
+        label: 'Research Terminal',
+        prompt: 'Open star map research',
+        icon: 'R',
+        station: 'Research',
+        x: 1218,
+        y: floorY - 136,
+        width: 220,
+        height: 136,
+      }),
+      new StationInteractable({
+        id: 'navigation',
+        label: 'Navigation Room',
+        prompt: this.game.systems.navigation.isUnlocked() ? 'Open GPS scanner' : 'Repair GPS scanner',
+        icon: 'N',
+        station: 'Navigation',
+        x: 1480,
+        y: floorY - 150,
+        width: 250,
+        height: 150,
+      }),
+      new StationInteractable({
+        id: 'shop',
+        label: 'Shop Counter',
+        prompt: 'Open shop for customers',
+        icon: '$',
+        station: 'Shop',
+        x: 1810,
+        y: floorY - 158,
+        width: 350,
+        height: 158,
+      }),
+      new StationInteractable({
+        id: 'launch',
+        label: 'Launch Bay',
+        prompt: 'Fly out to mine asteroids',
+        icon: 'A',
+        station: 'Mining',
+        x: 2360,
+        y: floorY - 162,
+        width: 360,
+        height: 162,
+        triggerPadding: 90,
+      }),
+    ];
+  }
+
+  getSpawnX() {
+    if (this.payload.miningSummary) return this.getInteractableCenter('launch') - 34;
+    const savedX = this.game.state.station?.hubPlayerX;
+    if (Number.isFinite(savedX)) return Math.max(24, Math.min(this.world.width - 80, savedX));
+    return this.getInteractableCenter('forge') - 20;
+  }
+
+  getInteractableCenter(id) {
+    const interactable = this.interactables.find((item) => item.id === id);
+    return interactable ? interactable.centerX : 520;
+  }
+
+  mountHud() {
+    const topBar = document.createElement('header');
+    topBar.className = 'station-platformer-top-bar';
+
+    const resources = document.createElement('div');
+    resources.className = 'station-platformer-resources';
+    this.resourceCounters = {
+      credits: new ResourceCounter('Credits', this.game.state.credits, { icon: '$' }),
+      research: new ResourceCounter('Research', this.game.state.researchPoints, { icon: 'R' }),
+      reputation: new ResourceCounter('Rep', this.game.state.reputation, { icon: '*' }),
+    };
+    resources.append(
+      this.resourceCounters.credits.element,
+      this.resourceCounters.research.element,
+      this.resourceCounters.reputation.element,
+    );
+
+    this.objectiveChip = document.createElement('div');
+    this.objectiveChip.className = 'station-platformer-objective';
+    topBar.append(resources, this.objectiveChip);
+    this.game.ui.addSceneElement(topBar);
+    this.updateHud(true);
+  }
+
+  update(delta) {
+    this.time += delta;
+    this.sparkAudioTimer -= delta;
+    if (this.sparkAudioTimer <= 0) {
+      this.sparkAudioTimer = 1.6 + Math.random() * 2.3;
+      this.game.audio.playSparkPop();
+    }
+
+    const actions = this.game.input.actions;
+    const spaceJump = actions.justPressed.mine && this.game.input.keys.has(' ');
+    const keyboardJump = actions.justPressed.up
+      && (this.game.input.keys.has('w') || this.game.input.keys.has('W') || this.game.input.keys.has('ArrowUp'));
+    this.player.update(delta, {
+      moveX: this.game.input.moveVector.x,
+      jumpPressed: actions.justPressed.jump || keyboardJump || spaceJump,
+    }, this.world);
+
+    this.updateCamera(delta);
+    const active = this.interactionSystem.update(this.player);
+    this.controls?.setActiveInteractable(active);
+    this.updatePrompt(active);
+
+    if (actions.justPressed.interact || actions.justPressed.confirm) this.tryInteract();
+    this.updateHud();
+  }
+
+  updateCamera(delta) {
+    const viewportWidth = this.game.viewport?.width || this.camera.viewportWidth || 0;
+    this.camera.targetX = this.clampCamera(this.player.centerX - viewportWidth * 0.42);
+    this.camera.x += (this.camera.targetX - this.camera.x) * Math.min(1, delta * 8);
+  }
+
+  clampCamera(x) {
+    const viewportWidth = this.game.viewport?.width || this.camera.viewportWidth || 0;
+    return Math.max(0, Math.min(Math.max(0, this.world.width - viewportWidth), x));
+  }
+
+  updatePrompt(active) {
+    if (!active) {
+      this.prompt.update({ interactable: null });
+      return;
+    }
+    const viewport = this.game.viewport || { width: 0 };
+    const x = Math.max(112, Math.min(viewport.width - 120, active.centerX - this.camera.x));
+    const y = Math.max(82, active.y - 28);
+    const actionLabel = window.matchMedia?.('(pointer: coarse)').matches ? 'Tap' : 'E';
+    this.prompt.update({ interactable: active, x, y, actionLabel });
+  }
+
+  updateHud(force = false) {
+    this.hudRefreshTimer -= 1 / 60;
+    if (!force && this.hudRefreshTimer > 0) return;
+    this.hudRefreshTimer = 0.2;
+    this.resourceCounters?.credits.update(this.game.state.credits);
+    this.resourceCounters?.research.update(this.game.state.researchPoints);
+    this.resourceCounters?.reputation.update(this.game.state.reputation);
+
+    const objective = this.game.systems.objectives.getCurrentObjective();
+    const progress = this.game.systems.objectives.getProgress(objective);
+    const key = objective ? `${objective.id}:${progress.text}` : 'complete';
+    if (!force && this.lastObjectiveKey === key) return;
+    this.lastObjectiveKey = key;
+    if (!objective) {
+      this.objectiveChip.innerHTML = '<span>Objective</span><strong>Keep forging</strong>';
+      return;
+    }
+    this.objectiveChip.innerHTML = `
+      <span>Objective</span>
+      <strong>${objective.label}</strong>
+      <em>${progress.text}</em>
+    `;
+  }
+
+  tryInteract() {
+    if (this.transitioning) return;
+    if (this.game.ui.modalLayer?.children.length) return;
+    const now = performance.now();
+    if (now - this.lastInteractAt < 220) return;
+    this.lastInteractAt = now;
+
+    if (!this.interactionSystem.active) {
+      this.game.audio.playError();
+      this.game.ui.showToast('Move closer to a station.', 'default', 1000);
+      return;
+    }
+
+    this.interactionSystem.tryInteract((interactable) => this.handleInteractable(interactable));
+  }
+
+  handleInteractable(interactable) {
+    this.game.audio.playSuccess();
+    if (interactable.id === 'storage') {
+      this.rememberPlayerPosition();
+      this.game.audio.playPickup();
+      this.game.sceneManager.switchTo('storage');
+      return;
+    }
+    if (interactable.id === 'forge') {
+      this.rememberPlayerPosition();
+      this.game.audio.playFurnaceIgnite();
+      this.game.sceneManager.switchTo('crafting', { mode: 'free-craft' });
+      return;
+    }
+    if (interactable.id === 'upgrades') {
+      this.rememberPlayerPosition();
+      this.game.ui.clearHighlight();
+      this.game.sceneManager.switchTo('upgrades');
+      return;
+    }
+    if (interactable.id === 'research') {
+      this.rememberPlayerPosition();
+      this.game.sceneManager.switchTo('upgrades', { tab: 'research' });
+      return;
+    }
+    if (interactable.id === 'navigation') {
+      this.showNavigationMap();
+      return;
+    }
+    if (interactable.id === 'shop') {
+      this.showShopConfirm();
+      return;
+    }
+    if (interactable.id === 'launch') {
+      this.startLaunchSequence();
+    }
+  }
+
+  showShopConfirm() {
+    const modal = new Modal({
+      title: 'Open Shop?',
+      body: 'Open shop for customers?',
+      className: 'shop-confirm-modal',
+      children: [
+        new Button('Open Shop', () => {
+          this.rememberPlayerPosition();
+          this.game.audio.playCustomerArrive();
+          this.game.systems.tutorial.onOpenShop();
+          this.game.ui.hideModal();
+          this.game.sceneManager.switchTo('shop');
+        }, { icon: '$', variant: 'success' }).element,
+        new Button('Not Now', () => this.game.ui.hideModal(), { icon: '<', variant: 'metal' }).element,
+      ],
+    }).element;
+    this.game.ui.showModal(modal);
+  }
+
+  showNavigationMap() {
+    this.rememberPlayerPosition();
+    this.game.audio.playGpsOpen?.();
+    this.game.ui.showModal(new NavigationMap(this.game).element);
+  }
+
+  startLaunchSequence() {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    this.rememberPlayerPosition();
+    this.game.audio.playShipLaunch();
+    this.game.systems.tutorial.onLaunch();
+    this.game.ui.root.classList.add('launch-wipe');
+    window.setTimeout(() => {
+      this.game.ui.root.classList.remove('launch-wipe');
+      this.game.sceneManager.switchTo('mining');
+    }, 360);
+  }
+
+  rememberPlayerPosition() {
+    this.game.state.station ||= {};
+    this.game.state.station.hubPlayerX = this.player?.x || this.getInteractableCenter('forge');
+  }
+
+  render(ctx) {
+    this.renderer.draw(ctx, {
+      viewport: this.game.viewport,
+      world: this.world,
+      camera: this.camera,
+      player: this.player,
+      interactables: this.interactables,
+      activeInteractable: this.interactionSystem.active,
+      time: this.time,
+    });
+  }
+
+  exit() {
+    this.controls?.destroy();
+    this.prompt?.destroy();
+    this.game.ui.clearHighlight();
+  }
+}

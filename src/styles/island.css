@@ -1,0 +1,155 @@
+.island-screen .ui-scene-layer {
+  display: block;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.island-hud {
+  position: absolute;
+  top: var(--safe-top);
+  left: var(--safe-left);
+  right: calc(var(--safe-right) + 64px);
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) minmax(210px, 1.2fr) minmax(145px, 1fr);
+  gap: 8px;
+  pointer-events: none;
+}
+
+.island-meter,
+.island-title-chip,
+.island-prompt {
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 242, 207, 0.14), transparent 36%),
+    linear-gradient(180deg, #244e67, #0f263c);
+  box-shadow: 0 6px 0 rgba(4, 10, 20, 0.62), 0 0 18px rgba(118, 243, 255, 0.1);
+  color: var(--cream);
+}
+
+.island-meter {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 7px 9px;
+}
+
+.island-meter span,
+.island-meter strong,
+.island-title-chip span,
+.island-title-chip strong {
+  font-weight: 950;
+}
+
+.island-meter strong {
+  color: var(--forge-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+.island-meter div {
+  grid-column: 1 / -1;
+  height: 11px;
+  overflow: hidden;
+  border: 3px solid #071524;
+  border-radius: 999px;
+  background: #081626;
+}
+
+.island-meter i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8df0a4, var(--forge-yellow));
+  transition: width 120ms ease;
+}
+
+.cargo-meter i {
+  background: linear-gradient(90deg, var(--forge-yellow), var(--forge-orange));
+}
+
+.island-title-chip {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  padding: 5px 10px;
+  text-align: center;
+}
+
+.island-title-chip span {
+  color: var(--mint-glow);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.island-title-chip strong {
+  font-family: var(--font-display);
+  font-size: clamp(15px, 2vw, 22px);
+  line-height: 1;
+}
+
+.island-prompt {
+  grid-column: 1 / -1;
+  justify-self: center;
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 5px 12px;
+  color: var(--forge-yellow);
+  font-family: var(--font-display);
+  font-weight: 950;
+}
+
+.island-mobile-controls {
+  align-items: end;
+}
+
+.island-action-controls {
+  display: flex;
+  gap: clamp(7px, 1.2vw, 12px);
+  align-items: end;
+  pointer-events: none;
+}
+
+.island-jump-button,
+.island-interact-button,
+.island-tool-button {
+  pointer-events: auto;
+  min-width: clamp(76px, 12vw, 112px);
+  min-height: clamp(58px, 10vw, 84px);
+  border-radius: 21px;
+}
+
+.island-jump-button .button-icon,
+.island-interact-button .button-icon,
+.island-tool-button .button-icon {
+  width: 30px;
+  height: 30px;
+}
+
+@media (max-width: 820px) {
+  .island-hud {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .island-meter {
+    min-height: 42px;
+    padding: 5px 7px;
+  }
+
+  .island-meter span,
+  .island-meter strong {
+    font-size: 11px;
+  }
+
+  .island-title-chip strong {
+    font-size: 14px;
+  }
+
+  .island-prompt {
+    min-height: 32px;
+    font-size: 12px;
+  }
+}
