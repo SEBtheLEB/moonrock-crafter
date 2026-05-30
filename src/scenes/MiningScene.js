@@ -82,6 +82,8 @@ export class MiningScene {
     this.cargoDumping = false;
     this.cargoDumpTimer = 0;
     this.cargoDumpSummary = null;
+    this.cargoDumpReturnToStation = false;
+    this.cargoDumpCooldown = 0;
   }
 
   createRunStats() {
@@ -234,7 +236,8 @@ export class MiningScene {
       zone = this.getZoneForDistance(Math.sqrt(x * x + y * y));
       if (x * x + y * y > 260 * 260) break;
     }
-    const type = this.chooseAsteroidType(zone.id);
+    const spawnDistanceFromStation = Math.sqrt(x * x + y * y);
+    const type = this.chooseAsteroidType(spawnDistanceFromStation, zone.id);
     const asteroidMeta = ASTEROID_META_BY_ID[type];
     const asteroid = this.acquireAsteroid({
       x,
@@ -261,9 +264,15 @@ export class MiningScene {
     if (this.asteroidPool.length < (gameBalance.mining.maxAsteroidPool || 24)) this.asteroidPool.push(asteroid);
   }
 
-  chooseAsteroidType(zoneId) {
+  chooseAsteroidType(distanceFromStation, zoneId) {
+    const distanceBand = gameBalance.mining.asteroidDistanceBands
+      ?.find((band) => distanceFromStation >= band.minDistance && distanceFromStation < band.maxDistance);
+    const sourceWeights = distanceBand?.weights;
     const weighted = asteroidData
-      .map((asteroid) => ({ id: asteroid.id, weight: asteroid.zoneWeights[zoneId] || 0 }))
+      .map((asteroid) => ({
+        id: asteroid.id,
+        weight: sourceWeights?.[asteroid.id] ?? asteroid.zoneWeights[zoneId] ?? 0,
+      }))
       .filter((entry) => entry.weight > 0);
     const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
     let roll = Math.random() * total;
@@ -302,6 +311,7 @@ export class MiningScene {
   update(delta) {
     if (this.ending) return;
     this.time += delta;
+    this.cargoDumpCooldown = Math.max(0, this.cargoDumpCooldown - delta);
     if (this.cargoDumping) {
       this.updateCargoDump(delta);
       this.updateCamera(delta);
@@ -341,19 +351,26 @@ export class MiningScene {
   }
 
   tryAutoCargoDump() {
-    if (this.cargoDumping || this.ending || this.runCargoCount <= 0) return;
+    if (this.cargoDumping || this.ending || this.cargoDumpCooldown > 0 || this.runCargoCount <= 0) return;
     if (this.distanceFromStation * this.distanceFromStation > DOCK_RADIUS_SQ) return;
-    this.beginCargoDump();
+    this.beginCargoDump({ returnToStation: false });
   }
 
-  beginCargoDump() {
+  beginCargoDump({ returnToStation = false } = {}) {
     this.cargoDumping = true;
     this.cargoDumpTimer = 1.15;
+    this.cargoDumpReturnToStation = returnToStation;
     this.cargoDumpSummary = this.createSummary('docked', { ...this.runCargo });
-    this.ship.vx *= 0.2;
-    this.ship.vy *= 0.2;
+    if (returnToStation) {
+      this.ship.vx *= 0.2;
+      this.ship.vy *= 0.2;
+    }
     this.stopLaserAudio();
-    this.game.ui.showToast('Cargo bay dumping to station...', 'success', 1400);
+    this.game.ui.showToast(
+      returnToStation ? 'Docking and unloading cargo...' : 'Cargo bay dumping to station...',
+      'success',
+      1400,
+    );
     this.game.audio.playShipDock();
     this.game.audio.playPickup();
     this.spawnCargoTransferEffects();
@@ -362,16 +379,50 @@ export class MiningScene {
 
   updateCargoDump(delta) {
     this.cargoDumpTimer -= delta;
-    this.ship.vx *= Math.max(0, 1 - delta * 7);
-    this.ship.vy *= Math.max(0, 1 - delta * 7);
+    if (this.cargoDumpReturnToStation) {
+      this.ship.vx *= Math.max(0, 1 - delta * 7);
+      this.ship.vy *= Math.max(0, 1 - delta * 7);
+    } else {
+      this.ship.update(delta, this.game.input, this.stats.fuel / this.stats.maxFuel);
+      this.distanceFromStation = this.getDistanceFromStation();
+      this.updateEngineAudio();
+    }
     for (let index = 0; index < this.cargoTransferEffects.length; index += 1) {
       const effect = this.cargoTransferEffects[index];
       effect.age += delta;
     }
     if (this.cargoDumpTimer > 0) return;
-    this.ending = true;
+    if (this.cargoDumpReturnToStation) {
+      this.ending = true;
+      this.game.audio.playDockSuccess();
+      this.game.dockFromMining({ cargo: this.runCargo, summary: this.cargoDumpSummary });
+      return;
+    }
+    this.finishCargoDumpAndContinue();
+  }
+
+  finishCargoDumpAndContinue() {
+    const cargoSnapshot = { ...this.runCargo };
+    const totalItems = Object.values(cargoSnapshot).reduce((total, amount) => total + amount, 0);
+    const { cargoValue } = this.game.depositMiningCargo({
+      cargo: cargoSnapshot,
+      summary: this.cargoDumpSummary,
+      recordDocked: true,
+    });
+    this.runCargo = this.game.systems.inventory.getRunCargo();
+    this.runCargoCount = 0;
+    this.runCargoWeight = 0;
+    this.stats.cargo = 0;
+    this.cargoDumping = false;
+    this.cargoDumpReturnToStation = false;
+    this.cargoDumpTimer = 0;
+    this.cargoDumpSummary = null;
+    this.cargoDumpCooldown = 1.25;
+    this.cargoTransferEffects = [];
     this.game.audio.playDockSuccess();
-    this.game.dockFromMining({ cargo: this.runCargo, summary: this.cargoDumpSummary });
+    this.game.ui.showToast(`Cargo stored: ${totalItems} items (${cargoValue}c)`, 'success', 1800);
+    this.addFloatingText(this.ship.x, this.ship.y - 34, 'Cargo Stored', { color: '#ffd36b', rarity: 'uncommon' });
+    this.updateHud(true);
   }
 
   spawnCargoTransferEffects() {
@@ -919,7 +970,7 @@ export class MiningScene {
   dock() {
     if (this.getDistanceFromStation() > DOCK_RADIUS || this.ending) return;
     if (this.runCargoCount > 0) {
-      this.beginCargoDump();
+      this.beginCargoDump({ returnToStation: true });
       return;
     }
     this.ending = true;

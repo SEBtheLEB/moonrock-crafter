@@ -322,7 +322,7 @@ export class Game {
     window.setTimeout(() => this.uiRoot.classList.remove('craft-success-flash'), 520);
   }
 
-  dockFromMining({ cargo = {}, summary = null } = {}) {
+  depositMiningCargo({ cargo = {}, summary = null, recordDocked = false } = {}) {
     const cargoValue = this.systems.materials.getCargoValue(cargo);
     if (summary) {
       summary.cargoValue = cargoValue;
@@ -337,8 +337,6 @@ export class Game {
       }
       this.systems.inventory.add(itemId, amount, { skipSave: true });
     });
-    this.state.ship.fuel = this.state.ship.maxFuel || 100;
-    this.state.ship.hull = this.state.ship.maxHull || 100;
     this.state.ship.cargo = 0;
     this.systems.inventory.clearRunCargo();
     this.state.station.storageUsed = this.systems.inventory.getTotalStored();
@@ -346,8 +344,19 @@ export class Game {
       this.state.stats.farthestDistanceReached || 0,
       summary?.distance || 0,
     );
+    if (recordDocked) this.systems.objectives.record('docked', { summary });
+    this.saveGame();
+    return {
+      cargoValue,
+      cargoWeight: summary?.cargoWeight || this.systems.materials.getCargoWeight(cargo),
+    };
+  }
+
+  dockFromMining({ cargo = {}, summary = null } = {}) {
+    this.depositMiningCargo({ cargo, summary, recordDocked: true });
+    this.state.ship.fuel = this.state.ship.maxFuel || 100;
+    this.state.ship.hull = this.state.ship.maxHull || 100;
     this.systems.tutorial.onDocked(summary);
-    this.systems.objectives.record('docked', { summary });
     this.saveGame();
     this.audio.playDockSuccess();
     this.audio.playShipDock();
