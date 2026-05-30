@@ -1,6 +1,5 @@
 import { Button } from '../ui/Button.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { TabButton } from '../ui/TabButton.js';
 import { upgradeCategories } from '../data/upgrades.js';
 
 const TABS = [
@@ -14,6 +13,8 @@ export class UpgradeScene {
     this.activeTab = payload.tab || 'ship';
     this.time = 0;
     this.purchaseFlashId = '';
+    this.selectedUpgradeId = null;
+    this.selectedResearchId = null;
   }
 
   enter() {
@@ -53,12 +54,19 @@ export class UpgradeScene {
   renderTabs() {
     this.tabs.replaceChildren();
     TABS.forEach((tab) => {
-      const button = new TabButton(`${tab.icon} ${tab.label}`, () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `upgrade-category-tab ${this.activeTab === tab.id ? 'is-active' : ''}`.trim();
+      button.setAttribute('aria-label', tab.label);
+      button.innerHTML = `<span>${tab.icon}</span><strong>${tab.label}</strong>`;
+      button.addEventListener('click', () => {
         this.activeTab = tab.id;
+        this.selectedUpgradeId = null;
+        this.selectedResearchId = null;
         this.game.audio.playTabSwitch();
         this.renderTabs();
         this.renderContent();
-      }, { active: this.activeTab === tab.id }).element;
+      });
       this.tabs.append(button);
     });
   }
@@ -71,8 +79,10 @@ export class UpgradeScene {
 
   renderUpgradeCards(categoryId) {
     const category = upgradeCategories.find((entry) => entry.id === categoryId);
-    const list = document.createElement('section');
-    list.className = 'upgrade-card-grid';
+    const upgrades = this.game.systems.upgrades.getByCategory(categoryId);
+    if (this.selectedUpgradeId && !upgrades.some((upgrade) => upgrade.id === this.selectedUpgradeId)) {
+      this.selectedUpgradeId = null;
+    }
     const heading = document.createElement('header');
     heading.className = 'upgrade-section-heading';
     heading.innerHTML = `
@@ -82,11 +92,96 @@ export class UpgradeScene {
         <p>${this.getCategoryCopy(categoryId)}</p>
       </div>
     `;
-    this.content.append(heading, list);
 
-    this.game.systems.upgrades.getByCategory(categoryId).forEach((upgrade) => {
-      list.append(this.createUpgradeCard(upgrade));
+    const board = document.createElement('section');
+    board.className = `upgrade-icon-board ${this.selectedUpgradeId ? 'has-detail' : ''}`.trim();
+    const grid = document.createElement('div');
+    grid.className = 'upgrade-icon-grid';
+    upgrades.forEach((upgrade) => {
+      grid.append(this.createUpgradeIcon(upgrade));
     });
+    board.append(grid);
+    if (this.selectedUpgradeId) {
+      const selected = this.game.systems.upgrades.getUpgrade(this.selectedUpgradeId);
+      if (selected) board.append(this.createUpgradeDetail(selected));
+    }
+
+    this.content.append(heading, board);
+  }
+
+  createUpgradeIcon(upgrade) {
+    const state = this.game.systems.upgrades.getPurchaseState(upgrade.id);
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = [
+      'upgrade-icon-tile',
+      state.maxed ? 'is-maxed' : state.ok ? 'is-available' : 'is-locked',
+      this.selectedUpgradeId === upgrade.id ? 'is-selected' : '',
+      this.purchaseFlashId === upgrade.id ? 'is-purchased' : '',
+    ].filter(Boolean).join(' ');
+    tile.setAttribute('aria-label', `Inspect ${upgrade.name}`);
+    tile.innerHTML = `
+      <span class="upgrade-icon-symbol">${upgrade.icon}</span>
+      <strong>${upgrade.name}</strong>
+      <em>Lv ${state.level}/${upgrade.maxLevel}</em>
+    `;
+    tile.addEventListener('click', () => {
+      this.selectedUpgradeId = upgrade.id;
+      this.game.audio.playButtonClick();
+      this.renderContent();
+    });
+    return tile;
+  }
+
+  createUpgradeDetail(upgrade) {
+    const state = this.game.systems.upgrades.getPurchaseState(upgrade.id);
+    const panel = document.createElement('aside');
+    panel.className = `upgrade-detail-popover ${state.maxed ? 'is-maxed' : state.ok ? 'is-available' : 'is-locked'}`.trim();
+    panel.innerHTML = `
+      <header>
+        <span class="upgrade-detail-icon">${upgrade.icon}</span>
+        <div>
+          <h2>${upgrade.name}</h2>
+          <small>Level ${state.level}/${upgrade.maxLevel}</small>
+        </div>
+        <button type="button" class="upgrade-detail-close" aria-label="Close upgrade details">x</button>
+      </header>
+      <p>${upgrade.description}</p>
+      <div class="upgrade-detail-preview">
+        ${state.preview.map((preview) => `
+          <span>
+            <small>${preview.label}</small>
+            <strong>${preview.current} <b>></b> ${state.maxed ? preview.current : preview.next}</strong>
+          </span>
+        `).join('')}
+      </div>
+      <div class="upgrade-detail-cost">
+        <h3>${state.maxed ? 'Installed' : 'Cost'}</h3>
+        ${state.maxed ? '<span class="upgrade-cost-chip success">Max Level</span>' : this.renderCost(state.cost)}
+        ${state.missing.length ? `<div class="upgrade-missing">Missing: ${state.missing.map((entry) => entry.label).join(', ')}</div>` : ''}
+      </div>
+      <div class="upgrade-detail-actions"></div>
+    `;
+    panel.querySelector('.upgrade-detail-close').addEventListener('click', () => {
+      this.selectedUpgradeId = null;
+      this.game.audio.playModalClose();
+      this.renderContent();
+    });
+    const actions = panel.querySelector('.upgrade-detail-actions');
+    const buyButton = new Button(state.maxed ? 'Maxed' : 'Install', () => this.buyUpgrade(upgrade.id), {
+      icon: state.maxed ? '*' : '+',
+      variant: state.ok ? 'forge' : 'metal',
+    }).element;
+    buyButton.disabled = !state.ok;
+    actions.append(
+      buyButton,
+      new Button('Close', () => {
+        this.selectedUpgradeId = null;
+        this.game.audio.playModalClose();
+        this.renderContent();
+      }, { icon: '<', variant: 'metal' }).element,
+    );
+    return panel;
   }
 
   createUpgradeCard(upgrade) {
@@ -160,11 +255,84 @@ export class UpgradeScene {
       <div class="research-board"></div>
     `;
     const board = wrap.querySelector('.research-board');
-    board.append(this.createResearchLines());
+    if (this.selectedResearchId) board.classList.add('has-detail');
+    const grid = document.createElement('div');
+    grid.className = 'research-icon-grid';
     this.game.systems.research.research.forEach((node) => {
-      board.append(this.createResearchNode(node));
+      grid.append(this.createResearchIcon(node));
     });
+    board.append(grid);
+    if (this.selectedResearchId) {
+      const node = this.game.systems.research.getNode(this.selectedResearchId);
+      if (node) board.append(this.createResearchDetail(node));
+    }
     this.content.append(wrap);
+  }
+
+  createResearchIcon(node) {
+    const state = this.game.systems.research.getNodeState(node.id);
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = [
+      'research-icon-tile',
+      state.unlocked ? 'is-unlocked' : state.available ? 'is-available' : 'is-locked',
+      this.selectedResearchId === node.id ? 'is-selected' : '',
+    ].filter(Boolean).join(' ');
+    tile.setAttribute('aria-label', `Inspect ${node.name}`);
+    tile.innerHTML = `
+      <span>${node.icon}</span>
+      <strong>${node.name}</strong>
+      <em>${state.unlocked ? 'Done' : `${node.cost} RP`}</em>
+    `;
+    tile.addEventListener('click', () => {
+      this.selectedResearchId = node.id;
+      this.game.audio.playButtonClick();
+      this.renderContent();
+    });
+    return tile;
+  }
+
+  createResearchDetail(node) {
+    const state = this.game.systems.research.getNodeState(node.id);
+    const panel = document.createElement('aside');
+    panel.className = `upgrade-detail-popover research-detail-popover ${state.unlocked ? 'is-maxed' : state.available ? 'is-available' : 'is-locked'}`.trim();
+    panel.innerHTML = `
+      <header>
+        <span class="upgrade-detail-icon">${node.icon}</span>
+        <div>
+          <h2>${node.name}</h2>
+          <small>${state.unlocked ? 'Unlocked' : `${node.cost} Research`}</small>
+        </div>
+        <button type="button" class="upgrade-detail-close" aria-label="Close research details">x</button>
+      </header>
+      <p>${node.description}</p>
+      <div class="upgrade-detail-cost">
+        <h3>${state.unlocked ? 'Status' : 'Requirements'}</h3>
+        ${state.unlocked ? '<span class="upgrade-cost-chip success">Unlocked</span>' : `<span class="upgrade-cost-chip"><b>R</b>${node.cost} Research</span>`}
+        ${state.missing.length ? `<div class="upgrade-missing">Missing: ${state.missing.map((entry) => entry.label).join(', ')}</div>` : ''}
+      </div>
+      <div class="upgrade-detail-actions"></div>
+    `;
+    panel.querySelector('.upgrade-detail-close').addEventListener('click', () => {
+      this.selectedResearchId = null;
+      this.game.audio.playModalClose();
+      this.renderContent();
+    });
+    const actions = panel.querySelector('.upgrade-detail-actions');
+    const unlockButton = new Button(state.unlocked ? 'Unlocked' : 'Unlock', () => this.unlockResearch(node.id), {
+      icon: state.unlocked ? '*' : '+',
+      variant: state.available ? 'forge' : 'metal',
+    }).element;
+    unlockButton.disabled = state.unlocked || !state.available;
+    actions.append(
+      unlockButton,
+      new Button('Close', () => {
+        this.selectedResearchId = null;
+        this.game.audio.playModalClose();
+        this.renderContent();
+      }, { icon: '<', variant: 'metal' }).element,
+    );
+    return panel;
   }
 
   createResearchLines() {

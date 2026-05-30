@@ -138,7 +138,6 @@ export class StationSideScrollerRenderer {
   drawSections(ctx, world, camera, time) {
     const floorY = world.floorY;
     const sections = [
-      { x: 40, w: 330, title: 'STORAGE', color: '#33485a' },
       { x: 430, w: 370, title: 'FORGE', color: '#76543a' },
       { x: 850, w: 360, title: 'ENGINEERING', color: '#2b4557' },
       { x: 1190, w: 250, title: 'RESEARCH', color: '#37405f' },
@@ -222,7 +221,6 @@ export class StationSideScrollerRenderer {
     for (const interactable of interactables) {
       const sx = interactable.x - camera.x;
       if (sx + interactable.width < -180 || sx > camera.viewportWidth + 180) continue;
-      if (interactable.id === 'storage') this.drawStorage(ctx, sx, interactable.y, interactable, activeInteractable);
       if (interactable.id === 'forge') this.drawForge(ctx, sx, interactable.y, interactable, activeInteractable, time);
       if (interactable.id === 'upgrades') this.drawWorkbench(ctx, sx, interactable.y, interactable, activeInteractable);
       if (interactable.id === 'research') this.drawResearch(ctx, sx, interactable.y, interactable, activeInteractable, time);

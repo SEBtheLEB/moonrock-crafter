@@ -10,6 +10,7 @@ export class StorageScene {
     this.game = game;
     this.activeTab = 'all';
     this.sortMode = 'quantity';
+    this.selectedMaterialId = null;
     this.time = 0;
   }
 
@@ -57,16 +58,16 @@ export class StorageScene {
   renderTabs() {
     this.tabs.replaceChildren();
     const tabs = [
-      { id: 'all', label: 'All', icon: '*' },
+      { id: 'all', label: 'All' },
       ...RARITY_ORDER.map((rarity) => ({
         id: rarity,
         label: materialRarities[rarity].name,
-        icon: rarity[0].toUpperCase(),
       })),
     ];
     tabs.forEach((tab) => {
-      const button = new TabButton(`${tab.icon} ${tab.label}`, () => {
+      const button = new TabButton(tab.label, () => {
         this.activeTab = tab.id;
+        this.selectedMaterialId = null;
         this.game.audio.playTabSwitch();
         this.renderTabs();
         this.renderContent();
@@ -110,6 +111,12 @@ export class StorageScene {
   renderContent() {
     this.content.replaceChildren();
     const visibleRarities = this.activeTab === 'all' ? RARITY_ORDER : [this.activeTab];
+    this.content.classList.toggle('is-all-tab', this.activeTab === 'all');
+    if (this.selectedMaterialId) {
+      const selected = materials.find((material) => material.id === this.selectedMaterialId);
+      if (!selected || (this.activeTab !== 'all' && selected.rarity !== this.activeTab)) this.selectedMaterialId = null;
+    }
+    this.content.classList.toggle('has-detail', Boolean(this.selectedMaterialId));
     visibleRarities.forEach((rarity) => {
       this.content.append(this.createRarityShelf(rarity));
     });
@@ -118,6 +125,10 @@ export class StorageScene {
       empty.className = 'storage-empty-note';
       empty.innerHTML = '<strong>No ore stored yet</strong><span>Launch a mining run, dock safely, and these shelves will fill up.</span>';
       this.content.prepend(empty);
+    }
+    if (this.selectedMaterialId) {
+      const material = materials.find((item) => item.id === this.selectedMaterialId);
+      if (material) this.content.append(this.createMaterialDetail(material));
     }
   }
 
@@ -134,10 +145,9 @@ export class StorageScene {
     }, 0);
     shelf.innerHTML = `
       <header>
-        <span class="storage-rarity-icon">${rarity[0].toUpperCase()}</span>
         <div>
           <h1>${rarityInfo.name}</h1>
-          <p>${ownedCount} units stored - $${shelfValue} value</p>
+          <p>${ownedCount} stored - $${shelfValue} value</p>
         </div>
       </header>
       <div class="storage-card-grid"></div>
@@ -167,27 +177,61 @@ export class StorageScene {
 
   createMaterialCard(material) {
     const amount = this.game.systems.inventory.getStoredAmount(material.id);
-    const totalValue = this.game.systems.materials.getValue(material.id, amount);
-    const totalWeight = amount * material.weight;
-    const card = document.createElement('article');
-    card.className = `storage-material-card ${amount > 0 ? 'has-stock' : 'is-empty'}`;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `storage-material-card storage-material-tile ${amount > 0 ? 'has-stock' : 'is-empty'} ${this.selectedMaterialId === material.id ? 'is-selected' : ''}`;
     card.style.setProperty('--material-color', material.color);
+    card.setAttribute('aria-label', `${material.name}, ${amount} stored`);
+    card.title = material.name;
     card.innerHTML = `
       <span class="storage-material-icon">${material.icon}</span>
-      <div class="storage-material-copy">
-        <h2>${material.name}</h2>
-        <span class="storage-material-rarity">${materialRarities[material.rarity]?.name || material.rarity}</span>
-        <p>${material.description}</p>
-      </div>
       <strong class="storage-material-amount">${amount}</strong>
-      <div class="storage-material-meta">
-        <span>Each <b>$${material.baseValue}</b></span>
-        <span>Total <b>$${totalValue}</b></span>
-        <span>Weight <b>${totalWeight.toFixed(1)}</b></span>
-        <span>${material.zoneAvailability.map((zone) => this.formatZone(zone)).join(', ')}</span>
-      </div>
     `;
+    card.addEventListener('click', () => {
+      this.selectedMaterialId = material.id;
+      this.renderContent();
+    });
     return card;
+  }
+
+  createMaterialDetail(material) {
+    const amount = this.game.systems.inventory.getStoredAmount(material.id);
+    const rarityInfo = materialRarities[material.rarity];
+    const totalValue = this.game.systems.materials.getValue(material.id, amount);
+    const totalWeight = amount * material.weight;
+    const detail = document.createElement('aside');
+    detail.className = 'storage-detail-popover';
+    detail.style.setProperty('--material-color', material.color);
+    detail.style.setProperty('--rarity-color', rarityInfo?.color || material.color);
+    detail.innerHTML = `
+      <header>
+        <span class="storage-detail-icon">${material.icon}</span>
+        <div>
+          <p>${rarityInfo?.name || material.rarity}</p>
+          <h2>${material.name}</h2>
+        </div>
+      </header>
+      <p class="storage-detail-description">${material.description}</p>
+      <dl class="storage-detail-stats">
+        <div><dt>Stored</dt><dd>${amount}</dd></div>
+        <div><dt>Each Value</dt><dd>$${material.baseValue}</dd></div>
+        <div><dt>Total Value</dt><dd>$${totalValue}</dd></div>
+        <div><dt>Each Weight</dt><dd>${material.weight.toFixed(1)}</dd></div>
+        <div><dt>Total Weight</dt><dd>${totalWeight.toFixed(1)}</dd></div>
+      </dl>
+      <section class="storage-detail-zones">
+        <strong>Found In</strong>
+        <span>${material.zoneAvailability.map((zone) => this.formatZone(zone)).join(', ')}</span>
+      </section>
+      <div class="storage-detail-actions"></div>
+    `;
+    detail.querySelector('.storage-detail-actions').append(
+      new Button('Close', () => {
+        this.selectedMaterialId = null;
+        this.renderContent();
+      }, { icon: 'x', variant: 'metal', className: 'storage-detail-close' }).element,
+    );
+    return detail;
   }
 
   formatZone(zoneId) {

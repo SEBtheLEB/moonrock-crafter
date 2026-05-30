@@ -9,7 +9,7 @@ import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
 import { createObjectiveModal } from '../ui/ObjectiveModal.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=20';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=23';
 import { gameBalance } from '../data/gameBalance.js?v=20';
 
 const WORLD_WIDTH = 2920;
@@ -91,17 +91,6 @@ export class StationScene {
   createInteractables() {
     const floorY = this.world.floorY;
     return [
-      new StationInteractable({
-        id: 'storage',
-        label: 'Storage',
-        prompt: 'Open station crates',
-        icon: '#',
-        station: 'Storage',
-        x: 96,
-        y: floorY - 148,
-        width: 250,
-        height: 148,
-      }),
       new StationInteractable({
         id: 'forge',
         label: 'Forge',
@@ -201,6 +190,13 @@ export class StationScene {
       this.resourceCounters.reputation.element,
     );
 
+    this.storageQuickButton = new Button('Storage', () => this.openStorage(), {
+      icon: '#',
+      variant: 'metal',
+      className: 'station-storage-quick-button',
+    }).element;
+    this.storageQuickButton.setAttribute('aria-label', 'Open storage inventory');
+
     this.objectiveChip = document.createElement('button');
     this.objectiveChip.type = 'button';
     this.objectiveChip.className = 'station-platformer-objective';
@@ -208,6 +204,7 @@ export class StationScene {
     this.objectiveChip.addEventListener('click', () => this.showObjectiveDetails());
     topBar.append(resources, this.objectiveChip);
     this.game.ui.addSceneElement(topBar);
+    this.game.ui.addSceneElement(this.storageQuickButton);
     this.updateHud(true);
   }
 
@@ -309,6 +306,13 @@ export class StationScene {
     }));
   }
 
+  openStorage() {
+    if (this.transitioning || this.game.ui.hasBlockingOverlay()) return;
+    this.rememberPlayerPosition();
+    this.game.audio.playPickup();
+    this.game.sceneManager.switchTo('storage');
+  }
+
   tryInteract() {
     if (this.transitioning) return;
     if (this.game.ui.modalLayer?.children.length) return;
@@ -327,12 +331,6 @@ export class StationScene {
 
   handleInteractable(interactable) {
     this.game.audio.playSuccess();
-    if (interactable.id === 'storage') {
-      this.rememberPlayerPosition();
-      this.game.audio.playPickup();
-      this.game.sceneManager.switchTo('storage');
-      return;
-    }
     if (interactable.id === 'forge') {
       this.rememberPlayerPosition();
       this.game.audio.playFurnaceIgnite();
