@@ -165,7 +165,7 @@ export class NavigationMap {
   renderStarfield(container) {
     container.replaceChildren();
     const locations = this.game.systems.navigation.getLocations({ tab: 'locations', includeLocked: false });
-    const maxDistance = 6500;
+    const maxDistance = 19500;
     locations.forEach((location) => {
       const dot = document.createElement('button');
       const discovered = this.game.systems.navigation.isDiscovered(location.id);

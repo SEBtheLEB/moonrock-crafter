@@ -8,10 +8,18 @@ export function createMiningSummaryModal(game, summary, onContinue) {
     ? 'Ship recovered. A little cargo survived the impact.'
     : summary.type === 'recalled'
       ? 'Recall beacon caught the ship. Cargo transferred to storage.'
-      : 'Docking clamps locked. Cargo transferred to storage.';
+      : summary.type === 'outOfFuel'
+        ? 'The station tow beam dragged the ship home. Cargo transferred to storage.'
+        : 'Docking clamps locked. Cargo transferred to storage.';
 
   const modal = new Modal({
-    title: summary.type === 'crashed' ? 'Crash Recovery' : summary.type === 'recalled' ? 'Emergency Recall' : 'Mining Summary',
+    title: summary.type === 'crashed'
+      ? 'Crash Recovery'
+      : summary.type === 'recalled'
+        ? 'Emergency Recall'
+        : summary.type === 'outOfFuel'
+          ? 'Out Of Fuel'
+          : 'Mining Summary',
     body,
     className: 'mining-summary-modal',
     children: [

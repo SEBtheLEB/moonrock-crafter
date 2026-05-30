@@ -1,4 +1,4 @@
-import { StationPlayer } from '../entities/StationPlayer.js';
+import { StationPlayer } from '../entities/StationPlayer.js?v=20';
 import { StationInteractable } from '../entities/StationInteractable.js';
 import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
 import { Button } from '../ui/Button.js';
@@ -7,9 +7,10 @@ import { MobileStationControls } from '../ui/MobileStationControls.js';
 import { Modal } from '../ui/Modal.js';
 import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
+import { createObjectiveModal } from '../ui/ObjectiveModal.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js';
-import { gameBalance } from '../data/gameBalance.js';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=20';
+import { gameBalance } from '../data/gameBalance.js?v=20';
 
 const WORLD_WIDTH = 2920;
 
@@ -200,8 +201,11 @@ export class StationScene {
       this.resourceCounters.reputation.element,
     );
 
-    this.objectiveChip = document.createElement('div');
+    this.objectiveChip = document.createElement('button');
+    this.objectiveChip.type = 'button';
     this.objectiveChip.className = 'station-platformer-objective';
+    this.objectiveChip.setAttribute('aria-label', 'Open objective details');
+    this.objectiveChip.addEventListener('click', () => this.showObjectiveDetails());
     topBar.append(resources, this.objectiveChip);
     this.game.ui.addSceneElement(topBar);
     this.updateHud(true);
@@ -297,6 +301,12 @@ export class StationScene {
       <strong>${objective.label}</strong>
       <em>${progress.text}</em>
     `;
+  }
+
+  showObjectiveDetails() {
+    this.game.ui.showModal(createObjectiveModal(this.game, {
+      onClose: () => this.game.ui.hideModal(),
+    }));
   }
 
   tryInteract() {

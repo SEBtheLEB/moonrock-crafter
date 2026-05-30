@@ -1,5 +1,5 @@
-const PLAYER_WIDTH = 42;
-const PLAYER_HEIGHT = 68;
+const PLAYER_WIDTH = 34;
+const PLAYER_HEIGHT = 58;
 const MOVE_ACCELERATION = 14;
 const GROUND_DRAG = 13;
 const AIR_DRAG = 4.5;
@@ -111,52 +111,44 @@ export class StationPlayer {
     ctx.scale(squashX, squashY);
     ctx.translate(-this.width / 2, -this.height / 2);
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
     ctx.beginPath();
-    ctx.ellipse(this.width / 2, this.height + 7, 22, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.width / 2, this.height + 5, 17, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#ffd36b';
-    ctx.strokeStyle = '#102033';
-    ctx.lineWidth = 4;
+    const bodyGradient = ctx.createLinearGradient(0, 6, 0, this.height - 4);
+    bodyGradient.addColorStop(0, '#f1e6c8');
+    bodyGradient.addColorStop(0.52, '#d9c79a');
+    bodyGradient.addColorStop(1, '#b9915e');
+    ctx.fillStyle = bodyGradient;
+    ctx.strokeStyle = 'rgba(8, 17, 26, 0.55)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(6, 21, 30, 38, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#ff8f3d';
-    ctx.beginPath();
-    ctx.roundRect(8, 17, 26, 16, 8);
+    ctx.roundRect(5, 8, 24, 45, 12);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#fff2cf';
+    ctx.fillStyle = 'rgba(217, 134, 66, 0.38)';
     ctx.beginPath();
-    ctx.roundRect(10, 7, 22, 22, 9);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#102033';
-    const eyeX = this.facing > 0 ? 24 : 15;
-    ctx.beginPath();
-    ctx.arc(eyeX, 17, 2.4, 0, Math.PI * 2);
+    ctx.roundRect(8, 36, 18, 9, 5);
     ctx.fill();
 
-    ctx.strokeStyle = '#102033';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
+    ctx.fillStyle = '#101923';
     ctx.beginPath();
-    ctx.moveTo(this.facing > 0 ? 33 : 9, 37);
-    ctx.lineTo(this.facing > 0 ? 42 : 0, 47 + Math.sin(time * 6) * 2);
-    ctx.moveTo(15, 58);
-    ctx.lineTo(11, 69);
-    ctx.moveTo(27, 58);
-    ctx.lineTo(31, 69);
-    ctx.stroke();
+    ctx.roundRect(8, 14, 18, 13, 7);
+    ctx.fill();
 
-    ctx.fillStyle = 'rgba(118, 243, 255, 0.55)';
+    const visorGradient = ctx.createLinearGradient(8, 14, 26, 27);
+    visorGradient.addColorStop(0, 'rgba(102, 216, 232, 0.9)');
+    visorGradient.addColorStop(1, 'rgba(102, 216, 232, 0.28)');
+    ctx.fillStyle = visorGradient;
     ctx.beginPath();
-    ctx.arc(this.facing > 0 ? 6 : 36, 11, 4, 0, Math.PI * 2);
+    ctx.roundRect(this.facing > 0 ? 15 : 8, 17, 9, 5, 3);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(102, 216, 232, 0.5)';
+    ctx.beginPath();
+    ctx.arc(this.facing > 0 ? 7 : 27, 10, 2.6 + Math.sin(time * 2.8) * 0.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

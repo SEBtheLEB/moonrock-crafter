@@ -153,3 +153,33 @@
     font-size: 12px;
   }
 }
+
+.island-meter,
+.island-title-chip,
+.island-prompt {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(9, 17, 28, 0.58);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.island-meter div {
+  height: 7px;
+  border: 1px solid rgba(236, 231, 216, 0.12);
+  background: rgba(2, 8, 16, 0.62);
+}
+
+.island-meter span,
+.island-meter strong,
+.island-title-chip span,
+.island-title-chip strong,
+.island-prompt {
+  font-weight: 720;
+}
+
+.island-jump-button,
+.island-interact-button,
+.island-tool-button {
+  border-radius: 14px;
+}

@@ -6,10 +6,10 @@ export class Ship {
     this.vy = 0;
     this.angle = 0;
     this.radius = 22;
-    this.acceleration = 370 + (stats.acceleration || 1) * 42;
+    this.acceleration = 326 + (stats.acceleration || 1) * 36;
     this.drag = 0.68;
     this.activeControl = 2.9 + (stats.handling || 1) * 0.35;
-    this.maxSpeed = 198 + (stats.speed || 1) * 24;
+    this.maxSpeed = 176 + (stats.speed || 1) * 21;
     this.turnSpeed = 9.5 + (stats.handling || 1) * 1.2;
     this.hitCooldown = 0;
   }
@@ -83,23 +83,23 @@ export class Ship {
 
     if (this.isThrusting(input)) {
       ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = '#ff8f3d';
-      ctx.shadowColor = '#ffd36b';
-      ctx.shadowBlur = 16;
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = '#d98642';
+      ctx.shadowColor = '#d98642';
+      ctx.shadowBlur = 10;
       ctx.beginPath();
-      ctx.moveTo(-28, 0);
-      ctx.lineTo(-52 - Math.random() * 8, -10);
-      ctx.lineTo(-42, 0);
-      ctx.lineTo(-52 - Math.random() * 8, 10);
+      ctx.moveTo(-25, 0);
+      ctx.lineTo(-45 - Math.random() * 5, -7);
+      ctx.lineTo(-37, 0);
+      ctx.lineTo(-45 - Math.random() * 5, 7);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
 
-    ctx.fillStyle = flashing ? '#fff2cf' : '#d7f7ff';
-    ctx.strokeStyle = '#081626';
-    ctx.lineWidth = 4;
+    ctx.fillStyle = flashing ? '#ece7d8' : '#dce6ec';
+    ctx.strokeStyle = 'rgba(8, 17, 26, 0.62)';
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
     ctx.moveTo(30, 0);
     ctx.lineTo(-20, -18);
@@ -109,15 +109,15 @@ export class Ship {
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#76f3ff';
-    ctx.strokeStyle = '#081626';
-    ctx.lineWidth = 3;
+    ctx.fillStyle = 'rgba(102, 216, 232, 0.82)';
+    ctx.strokeStyle = 'rgba(8, 17, 26, 0.42)';
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.arc(6, 0, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#ffb84d';
+    ctx.fillStyle = '#d98642';
     ctx.fillRect(-32, -7, 11, 14);
     ctx.restore();
   }

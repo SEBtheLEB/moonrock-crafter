@@ -632,3 +632,73 @@
     height: 52px;
   }
 }
+
+.customer-dock-window,
+.shop-open-sign,
+.customer-card,
+.order-ticket-panel,
+.ticket-meta span,
+.order-ticket-panel li,
+.missing-note,
+.ticket-stamp,
+.shop-dialogue-box,
+.shop-summary-grid span,
+.dialogue-continue {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.customer-dock-window,
+.customer-card,
+.shop-dialogue-box,
+.shop-summary-grid span {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent),
+    rgba(10, 18, 28, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.customer-dock-window::before,
+.order-ticket-panel::before {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(236, 231, 216, 0.1);
+}
+
+.customer-dock-window::after {
+  height: 4px;
+  border: 0;
+  background: linear-gradient(90deg, var(--mint-glow), var(--forge-yellow));
+}
+
+.shop-open-sign {
+  background: rgba(82, 181, 122, 0.82);
+  font-weight: 720;
+}
+
+.customer-mini-portrait,
+.dialogue-portrait {
+  border: 1px solid var(--glass-border);
+  box-shadow: none;
+}
+
+.order-ticket-panel {
+  background: rgba(236, 231, 216, 0.9);
+}
+
+.ticket-meta span,
+.order-ticket-panel li {
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.order-ticket-panel h1,
+.order-ticket-panel h2,
+.customer-card strong,
+.dialogue-copy strong {
+  font-weight: 720;
+}
+
+.shop-action-dock {
+  gap: 7px;
+}

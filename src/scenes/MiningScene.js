@@ -1,12 +1,12 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Ship } from '../entities/Ship.js';
-import { Asteroid } from '../entities/Asteroid.js';
+import { Ship } from '../entities/Ship.js?v=20';
+import { Asteroid } from '../entities/Asteroid.js?v=20';
 import { MineralPickup } from '../entities/MineralPickup.js';
 import { RockIsland } from '../entities/RockIsland.js';
 import { asteroids as asteroidData } from '../data/asteroids.js';
 import { islands as islandData } from '../data/islands.js';
-import { gameBalance } from '../data/gameBalance.js';
+import { gameBalance } from '../data/gameBalance.js?v=20';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -84,6 +84,7 @@ export class MiningScene {
     this.cargoDumpSummary = null;
     this.cargoDumpReturnToStation = false;
     this.cargoDumpCooldown = 0;
+    this.outOfFuelReturnQueued = false;
   }
 
   createRunStats() {
@@ -321,6 +322,7 @@ export class MiningScene {
     }
     this.shieldTimer = Math.max(0, this.shieldTimer - delta);
     this.distanceFromStation = this.getDistanceFromStation();
+    if (this.handleOutOfFuelReturn()) return;
     this.tryAutoCargoDump();
     if (this.cargoDumping) {
       this.updateCargoDump(delta);
@@ -329,12 +331,14 @@ export class MiningScene {
       return;
     }
     this.updateFuel(delta);
+    if (this.handleOutOfFuelReturn() || this.ending) return;
     this.ship.update(delta, this.game.input, this.stats.fuel / this.stats.maxFuel);
     this.distanceFromStation = this.getDistanceFromStation();
     this.updateEngineAudio();
     this.updateDistanceProgress(delta);
     this.updateZone(delta);
     this.updateNavigation(delta);
+    this.updateDockInput();
     this.updateLanding(delta);
     this.updateCamera(delta);
     this.updateAsteroids(delta);
@@ -356,11 +360,11 @@ export class MiningScene {
     this.beginCargoDump({ returnToStation: false });
   }
 
-  beginCargoDump({ returnToStation = false } = {}) {
+  beginCargoDump({ returnToStation = false, summaryType = 'docked' } = {}) {
     this.cargoDumping = true;
     this.cargoDumpTimer = 1.15;
     this.cargoDumpReturnToStation = returnToStation;
-    this.cargoDumpSummary = this.createSummary('docked', { ...this.runCargo });
+    this.cargoDumpSummary = this.createSummary(summaryType, { ...this.runCargo });
     if (returnToStation) {
       this.ship.vx *= 0.2;
       this.ship.vy *= 0.2;
@@ -469,7 +473,7 @@ export class MiningScene {
     const distance = this.distanceFromStation;
     if (distance * distance < STATION_SAFE_RADIUS_SQ) return;
     const moving = Math.hypot(this.game.input.moveVector.x, this.game.input.moveVector.y);
-    const distancePressure = Math.max(0, distance - 900) / 900;
+    const distancePressure = Math.max(0, distance - 2700) / 2700;
     const drain = gameBalance.mining.baseFuelDrain
       + moving * gameBalance.mining.movingFuelDrain * (1 + this.currentZone.difficulty * 0.55)
       + (this.game.input.actions.mine ? gameBalance.mining.miningFuelDrain : 0)
@@ -816,6 +820,26 @@ export class MiningScene {
     this.mineButton?.classList.remove('is-land-mode');
   }
 
+  updateDockInput() {
+    if (this.cargoDumping || this.ending) return;
+    if (this.distanceFromStation * this.distanceFromStation > DOCK_RADIUS_SQ) return;
+    const actions = this.game.input.actions;
+    if (actions.justPressed.interact || actions.justPressed.confirm) this.dock();
+  }
+
+  handleOutOfFuelReturn() {
+    if (this.stats.fuel > 0 || this.ending || this.outOfFuelReturnQueued) return false;
+    if (this.distanceFromStation * this.distanceFromStation <= DOCK_RADIUS_SQ && this.runCargoCount > 0) {
+      this.outOfFuelReturnQueued = true;
+      this.game.ui.showToast('Out of fuel. Docking after cargo drop...', 'danger', 2400);
+      this.game.audio.playLowFuelWarning();
+      this.beginCargoDump({ returnToStation: true, summaryType: 'outOfFuel' });
+      return true;
+    }
+    this.queueOutOfFuelReturn();
+    return true;
+  }
+
   landOnIsland(island) {
     if (this.ending) return;
     this.ending = true;
@@ -976,6 +1000,24 @@ export class MiningScene {
     this.ending = true;
     const summary = this.createSummary('docked', this.runCargo);
     this.game.dockFromMining({ cargo: this.runCargo, summary });
+  }
+
+  queueOutOfFuelReturn() {
+    if (this.ending || this.outOfFuelReturnQueued) return;
+    this.outOfFuelReturnQueued = true;
+    this.ending = true;
+    this.stopLaserAudio();
+    this.game.audio.stopEngineBoost();
+    this.addScreenShake(0.45);
+    this.spawnBurst(this.ship.x, this.ship.y, '#ff756f', 18, 120);
+    this.addFloatingText(this.ship.x, this.ship.y - 34, 'Out of Fuel', { color: '#ff756f', rarity: 'rare' });
+    this.game.ui.showToast('Out of fuel. Station tow engaged.', 'danger', 2400);
+    this.game.audio.playLowFuelWarning();
+    this.game.audio.playSceneTransition();
+    const summary = this.createSummary('outOfFuel', this.runCargo);
+    window.setTimeout(() => {
+      this.game.dockFromMining({ cargo: this.runCargo, summary });
+    }, 650);
   }
 
   recallToStation() {

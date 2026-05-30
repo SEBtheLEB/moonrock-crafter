@@ -1,36 +1,40 @@
 :root {
   --font-display: Inter, ui-rounded, "Arial Rounded MT Bold", ui-sans-serif, system-ui, sans-serif;
   --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --space-void: #050614;
-  --space-navy: #0c1d36;
-  --space-blue: #143954;
-  --space-purple: #221235;
-  --forge-orange: #ff8f3d;
-  --forge-yellow: #ffd36b;
-  --mint-glow: #76f3ff;
-  --ink: #102033;
-  --cream: #fff2cf;
-  --text: #f9fbff;
-  --muted: #bbd2df;
-  --outline: #102033;
-  --parchment: #fff0bf;
-  --parchment-deep: #e7bb73;
-  --metal-dark: #071524;
-  --metal-mid: #315a72;
-  --wood-warm: #8a5630;
-  --bevel-light: rgba(255, 255, 255, 0.18);
-  --bevel-dark: rgba(5, 10, 20, 0.36);
-  --panel-bg: rgba(13, 31, 50, 0.9);
-  --panel-light: #234e6b;
-  --shadow-soft: 0 14px 0 rgba(7, 13, 24, 0.34), 0 22px 52px rgba(0, 0, 0, 0.34);
-  --shadow-chunky: 0 8px 0 rgba(5, 12, 22, 0.72), 0 18px 34px rgba(0, 0, 0, 0.3);
-  --glow-forge: 0 0 18px rgba(255, 143, 61, 0.48), 0 0 38px rgba(255, 211, 107, 0.22);
-  --radius-panel: 18px;
-  --radius-control: 14px;
-  --safe-top: max(env(safe-area-inset-top), 10px);
-  --safe-right: max(env(safe-area-inset-right), 10px);
-  --safe-bottom: max(env(safe-area-inset-bottom), 10px);
-  --safe-left: max(env(safe-area-inset-left), 10px);
+  --space-void: #050914;
+  --space-navy: #0b1724;
+  --space-blue: #14283a;
+  --space-purple: #171426;
+  --forge-orange: #d98642;
+  --forge-yellow: #e7b85c;
+  --mint-glow: #66d8e8;
+  --ink: #101923;
+  --cream: #ece7d8;
+  --text: #f4f7fb;
+  --muted: #9fb3c4;
+  --outline: rgba(236, 231, 216, 0.22);
+  --parchment: #ece7d8;
+  --parchment-deep: #c8a46b;
+  --metal-dark: #0a141f;
+  --metal-mid: #253b4c;
+  --wood-warm: #76543a;
+  --bevel-light: rgba(255, 255, 255, 0.1);
+  --bevel-dark: rgba(0, 0, 0, 0.28);
+  --panel-bg: rgba(10, 18, 28, 0.72);
+  --panel-light: rgba(34, 54, 68, 0.78);
+  --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.22);
+  --shadow-chunky: 0 12px 28px rgba(0, 0, 0, 0.26);
+  --glow-forge: 0 0 18px rgba(217, 134, 66, 0.28);
+  --glass-bg: rgba(10, 18, 28, 0.64);
+  --glass-bg-strong: rgba(12, 22, 33, 0.82);
+  --glass-border: rgba(236, 231, 216, 0.16);
+  --hairline: rgba(236, 231, 216, 0.2);
+  --radius-panel: 12px;
+  --radius-control: 10px;
+  --safe-top: max(env(safe-area-inset-top), 7px);
+  --safe-right: max(env(safe-area-inset-right), 7px);
+  --safe-bottom: max(env(safe-area-inset-bottom), 7px);
+  --safe-left: max(env(safe-area-inset-left), 7px);
   color-scheme: dark;
   font-family: var(--font-body);
   background: var(--space-void);
@@ -68,8 +72,8 @@ canvas {
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 88%, rgba(255, 143, 61, 0.16), transparent 34%),
-    radial-gradient(circle at 82% 20%, rgba(118, 243, 255, 0.1), transparent 30%),
+    radial-gradient(circle at 18% 88%, rgba(217, 134, 66, 0.12), transparent 34%),
+    radial-gradient(circle at 82% 20%, rgba(102, 216, 232, 0.08), transparent 30%),
     linear-gradient(135deg, var(--space-navy), var(--space-purple) 58%, var(--space-void));
 }
 
@@ -95,7 +99,7 @@ canvas {
   display: grid;
   grid-template-columns: minmax(250px, 36vw) 1fr minmax(88px, 16vw);
   grid-template-rows: auto 1fr;
-  gap: clamp(8px, 1.6vw, 16px);
+  gap: clamp(6px, 1vw, 11px);
   padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   pointer-events: none;
 }

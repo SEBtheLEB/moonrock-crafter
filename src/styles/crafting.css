@@ -309,3 +309,43 @@
     width: min(360px, 70vw);
   }
 }
+
+.crafting-screen .ui-scene-layer::before {
+  border: 1px solid rgba(236, 231, 216, 0.12);
+  border-radius: 18px;
+  box-shadow: inset 0 0 44px rgba(217, 134, 66, 0.08), 0 0 22px rgba(217, 134, 66, 0.08);
+}
+
+.crafting-top-bar span,
+.crafting-side-panel,
+.craft-result-panel,
+.crafting-side-panel li {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent),
+    rgba(10, 18, 28, 0.68);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.crafting-top-bar span::after {
+  display: none;
+}
+
+.crafting-top-bar strong,
+.crafting-side-panel h2,
+.crafting-side-panel h3,
+.craft-result-panel h1,
+.craft-result-panel h2 {
+  font-weight: 720;
+}
+
+.crafting-side-panel li::before {
+  border-width: 1px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--material-color, var(--forge-yellow)), transparent 42%);
+}
+
+.heat-hold-button {
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24), 0 0 20px rgba(217, 134, 66, 0.18);
+}

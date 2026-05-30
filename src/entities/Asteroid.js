@@ -106,7 +106,7 @@ export class Asteroid {
       ctx.save();
       ctx.globalAlpha = this.data.rarity === 'epic' ? 0.52 : 0.34;
       ctx.strokeStyle = this.data.accent;
-      ctx.lineWidth = this.data.rarity === 'epic' ? 7 : 5;
+      ctx.lineWidth = this.data.rarity === 'epic' ? 3.2 : 2.4;
       ctx.shadowColor = this.data.accent;
       ctx.shadowBlur = 16;
       this.drawSilhouette(ctx, 1.08);
@@ -114,16 +114,16 @@ export class Asteroid {
       ctx.restore();
     }
 
-    ctx.fillStyle = this.flash > 0 ? '#fff2cf' : this.data.color;
+    ctx.fillStyle = this.flash > 0 ? '#ece7d8' : this.data.color;
     ctx.strokeStyle = this.data.accent;
-    ctx.lineWidth = this.data.rarity === 'epic' ? 4 : 3;
+    ctx.lineWidth = this.data.rarity === 'epic' ? 2.2 : 1.6;
     this.drawSilhouette(ctx);
     ctx.fill();
     ctx.stroke();
     this.drawFacetHighlights(ctx);
 
     ctx.strokeStyle = 'rgba(8, 22, 38, 0.68)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.2;
     this.cracks.forEach((crack, index) => {
       if (healthRatio > 0.78 - index * 0.09) return;
       ctx.beginPath();
@@ -157,7 +157,7 @@ export class Asteroid {
     ctx.save();
     ctx.globalAlpha = 0.28;
     ctx.strokeStyle = this.data.rarity === 'common' ? 'rgba(255, 242, 207, 0.24)' : this.data.accent;
-    ctx.lineWidth = this.data.rarity === 'epic' ? 2.6 : 1.8;
+    ctx.lineWidth = this.data.rarity === 'epic' ? 1.5 : 1.1;
     for (let i = 0; i < 4; i += 1) {
       const a = this.seed * 6 + i * 1.7;
       const inner = this.radius * (0.12 + i * 0.03);
@@ -169,7 +169,7 @@ export class Asteroid {
     }
     if (['rare', 'epic'].includes(this.data.rarity)) {
       ctx.globalAlpha = 0.72;
-      ctx.fillStyle = '#fff2cf';
+      ctx.fillStyle = '#ece7d8';
       ctx.shadowColor = this.data.accent;
       ctx.shadowBlur = 10;
       ctx.beginPath();

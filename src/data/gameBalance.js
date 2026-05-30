@@ -46,27 +46,27 @@ export const gameBalance = {
     pourMoldUnlocked: false,
   },
   mining: {
-    targetAsteroidCount: 32,
-    maxAsteroidCount: 40,
+    targetAsteroidCount: 38,
+    maxAsteroidCount: 50,
     maxActiveParticles: 150,
     maxFloatingText: 24,
     maxPickupPool: 80,
     maxAsteroidPool: 24,
-    asteroidSpawnMinDistance: 430,
-    asteroidSpawnMaxDistance: 1350,
-    asteroidCullDistance: 1900,
-    pickupCullDistance: 1200,
+    asteroidSpawnMinDistance: 620,
+    asteroidSpawnMaxDistance: 2100,
+    asteroidCullDistance: 3200,
+    pickupCullDistance: 1800,
     stationDockRadius: 155,
     baseFuelDrain: 0.24,
     movingFuelDrain: 0.68,
     miningFuelDrain: 0.18,
-    maxStarterReachHint: 1700,
+    maxStarterReachHint: 5100,
     asteroidDistanceBands: [
       {
         id: 'innerScrap',
         label: 'Inner Scrap Circle',
         minDistance: 0,
-        maxDistance: 950,
+        maxDistance: 2850,
         weights: {
           stone: 66,
           copperVein: 28,
@@ -76,8 +76,8 @@ export const gameBalance = {
       {
         id: 'crystalRim',
         label: 'Crystal Rim',
-        minDistance: 950,
-        maxDistance: 2000,
+        minDistance: 2850,
+        maxDistance: 6000,
         weights: {
           stone: 34,
           copperVein: 30,
@@ -89,8 +89,8 @@ export const gameBalance = {
       {
         id: 'rareDrift',
         label: 'Rare Drift',
-        minDistance: 2000,
-        maxDistance: 3500,
+        minDistance: 6000,
+        maxDistance: 10500,
         weights: {
           stone: 8,
           copperVein: 16,
@@ -105,8 +105,8 @@ export const gameBalance = {
       {
         id: 'deepReef',
         label: 'Deep Reef',
-        minDistance: 3500,
-        maxDistance: 5200,
+        minDistance: 10500,
+        maxDistance: 15600,
         weights: {
           copperVein: 6,
           crystal: 12,
@@ -120,7 +120,7 @@ export const gameBalance = {
       {
         id: 'outerGraveyard',
         label: 'Outer Graveyard',
-        minDistance: 5200,
+        minDistance: 15600,
         maxDistance: Infinity,
         weights: {
           crystal: 6,
@@ -135,7 +135,7 @@ export const gameBalance = {
   },
   ui: {
     worldViewScale: 0.88,
-    miningViewScale: 0.76,
+    miningViewScale: 0.42,
     hudUpdateInterval: 0.08,
     distanceObjectiveInterval: 0.45,
   },
@@ -198,7 +198,7 @@ export const gameBalance = {
       targetFirstCraftMinutes: [3, 5],
       targetFirstUpgradeMinutes: [5, 7],
       starterZone: 'scrapBelt',
-      previewZoneDistance: 1500,
+      previewZoneDistance: 4500,
     },
     objectives: [
       {
@@ -259,9 +259,9 @@ export const gameBalance = {
       },
       {
         id: 'reachEmberPreview',
-        label: 'Reach 1500m from station',
-        description: 'Peek at the edge of Ember Drift, then get home.',
-        condition: { type: 'distanceReached', amount: 1500 },
+        label: 'Reach 4500m from station',
+        description: 'Peek at the far edge of the Scrap Belt, then get home.',
+        condition: { type: 'distanceReached', amount: 4500 },
         reward: { credits: 18 },
       },
       {
@@ -292,7 +292,7 @@ export const gameBalance = {
       id: 'scrapBelt',
       name: 'Scrap Belt',
       minDistance: 0,
-      maxDistance: 1500,
+      maxDistance: 4500,
       difficulty: 1,
       background: { inner: '#183149', middle: '#0b1730', outer: '#050614' },
       particleColor: '#c9d6dc',
@@ -301,8 +301,8 @@ export const gameBalance = {
     {
       id: 'emberDrift',
       name: 'Ember Drift',
-      minDistance: 1500,
-      maxDistance: 3000,
+      minDistance: 4500,
+      maxDistance: 9000,
       researchId: 'emberDrift',
       difficulty: 2,
       background: { inner: '#3c1d2a', middle: '#462033', outer: '#100713' },
@@ -312,8 +312,8 @@ export const gameBalance = {
     {
       id: 'frostRing',
       name: 'Frost Ring',
-      minDistance: 3000,
-      maxDistance: 4500,
+      minDistance: 9000,
+      maxDistance: 13500,
       researchId: 'frostRing',
       difficulty: 3,
       background: { inner: '#143b5b', middle: '#0b2a4d', outer: '#04101e' },
@@ -323,8 +323,8 @@ export const gameBalance = {
     {
       id: 'voidReef',
       name: 'Void Reef',
-      minDistance: 4500,
-      maxDistance: 6500,
+      minDistance: 13500,
+      maxDistance: 19500,
       researchId: 'voidReef',
       difficulty: 4,
       background: { inner: '#26154b', middle: '#160b33', outer: '#050414' },
@@ -334,7 +334,7 @@ export const gameBalance = {
     {
       id: 'starGraveyard',
       name: 'Star Graveyard',
-      minDistance: 6500,
+      minDistance: 19500,
       maxDistance: Infinity,
       researchId: 'starGraveyard',
       difficulty: 5,
