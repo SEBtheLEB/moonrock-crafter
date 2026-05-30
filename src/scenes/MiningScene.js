@@ -1,13 +1,13 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Ship } from '../entities/Ship.js?v=30';
-import { Asteroid } from '../entities/Asteroid.js?v=30';
+import { Ship } from '../entities/Ship.js?v=31';
+import { Asteroid } from '../entities/Asteroid.js?v=31';
 import { MineralPickup } from '../entities/MineralPickup.js';
 import { RockIsland } from '../entities/RockIsland.js';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=30';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=30';
-import { islands as islandData } from '../data/islands.js?v=30';
-import { gameBalance } from '../data/gameBalance.js?v=30';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=31';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=31';
+import { islands as islandData } from '../data/islands.js?v=31';
+import { gameBalance } from '../data/gameBalance.js?v=31';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;

@@ -1,5 +1,5 @@
-import { locations } from '../data/locations.js?v=30';
-import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=30';
+import { locations } from '../data/locations.js?v=31';
+import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=31';
 
 export class NavigationSystem {
   constructor(game) {

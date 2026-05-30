@@ -1,4 +1,4 @@
-import { asteroids as asteroidData } from '../data/asteroids.js?v=30';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=31';
 
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 
