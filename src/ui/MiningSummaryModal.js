@@ -35,6 +35,7 @@ export function createMiningSummaryModal(game, summary, onContinue) {
   details.className = 'summary-details';
   details.innerHTML = `
     <div><span>Distance</span><strong>${summary.distance || 0}m</strong></div>
+    <div><span>Assay Credits</span><strong>+${summary.creditsEarned ?? 0}c</strong></div>
     <div><span>Cargo Value</span><strong>$${summary.cargoValue ?? game.systems.materials.getCargoValue(summary.cargo || {})}</strong></div>
     <div><span>Asteroids</span><strong>${summary.asteroidsMined || 0}</strong></div>
     <div><span>Rare Finds</span><strong>${summary.rareFinds || 0}</strong></div>

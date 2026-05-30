@@ -27,7 +27,7 @@ export const islands = [
     animals: ['spaceBoar', 'glowbird'],
     layoutId: 'forestRock',
     requiredScannerLevel: 3,
-    description: 'A forested stone island with richer crafting materials and livelier wildlife.',
+    description: 'A forested stone island with richer upgrade materials and livelier wildlife.',
   },
   {
     id: 'crystalIsland',

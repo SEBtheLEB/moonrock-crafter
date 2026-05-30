@@ -1,4 +1,4 @@
-import { dialogue } from '../data/dialogue.js';
+import { dialogue } from '../data/dialogue.js?v=30';
 
 export class DialogueSystem {
   constructor(game) {
@@ -62,17 +62,6 @@ export class DialogueSystem {
       meta: { ...meta, setId, key },
       mood,
     }, { enqueue });
-  }
-
-  startForCustomer(customer, key, fallback = '', options = {}) {
-    const lines = this.getLines(customer.dialogueSetId, key);
-    return this.start({
-      speaker: customer.name,
-      portraitStyle: customer.portraitStyle,
-      lines: lines.length ? lines : [fallback],
-      meta: { customerId: customer.id, key },
-      ...options,
-    }, { enqueue: options.enqueue });
   }
 
   getLines(setId, key) {

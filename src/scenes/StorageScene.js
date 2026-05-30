@@ -50,7 +50,6 @@ export class StorageScene {
       new ResourceCounter('Storage', `${this.game.systems.inventory.getTotalStored()}/${this.game.state.station.storageMax}`, { icon: '#' }).element,
       new ResourceCounter('Credits', this.game.state.credits, { icon: '$' }).element,
       new ResourceCounter('Research', this.game.state.researchPoints, { icon: 'R' }).element,
-      new ResourceCounter('Rep', this.game.state.reputation, { icon: '*' }).element,
       new Button('Station', () => this.game.sceneManager.switchTo('station'), { icon: '<', variant: 'metal', className: 'storage-back-button' }).element,
     );
   }

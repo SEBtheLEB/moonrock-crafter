@@ -133,16 +133,6 @@ canvas {
   animation: screen-shake 220ms ease both;
 }
 
-.craft-success-flash::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 211, 107, 0.28), rgba(255, 143, 61, 0.1) 38%, transparent 70%);
-  animation: craft-success-flash 520ms ease both;
-}
-
 .ui-root.scene-enter::before {
   content: "";
   position: absolute;
@@ -260,18 +250,6 @@ canvas {
   }
   65% {
     transform: translate(calc(var(--feedback-shake, 7px) * 0.45), -1px);
-  }
-}
-
-@keyframes craft-success-flash {
-  from {
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
   }
 }
 

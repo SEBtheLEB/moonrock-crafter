@@ -138,11 +138,9 @@ export class StationSideScrollerRenderer {
   drawSections(ctx, world, camera, time) {
     const floorY = world.floorY;
     const sections = [
-      { x: 430, w: 370, title: 'FORGE', color: '#76543a' },
       { x: 850, w: 360, title: 'ENGINEERING', color: '#2b4557' },
       { x: 1190, w: 250, title: 'RESEARCH', color: '#37405f' },
       { x: 1460, w: 290, title: 'STAR MAP', color: '#30455e' },
-      { x: 1780, w: 390, title: 'SHOP', color: '#5b4655' },
       { x: 2290, w: 500, title: 'LAUNCH BAY', color: '#294358' },
     ];
 
@@ -154,7 +152,6 @@ export class StationSideScrollerRenderer {
       ctx.fillRect(sx + 12, floorY - 198, section.w - 24, 2);
     }
 
-    this.drawForgeGlow(ctx, 620 - camera.x, floorY, time);
     this.drawPipes(ctx, camera, floorY, time);
   }
 
@@ -179,17 +176,6 @@ export class StationSideScrollerRenderer {
     ctx.beginPath();
     ctx.arc(-56, 17, 2.2, 0, Math.PI * 2);
     ctx.arc(56, 17, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawForgeGlow(ctx, x, floorY, time) {
-    const flicker = 0.86 + Math.sin(time * 14) * 0.08 + Math.sin(time * 29) * 0.04;
-    ctx.save();
-    ctx.globalAlpha = flicker;
-    ctx.fillStyle = 'rgba(217, 134, 66, 0.18)';
-    ctx.beginPath();
-    ctx.ellipse(x + 45, floorY - 70, 155, 70, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -221,11 +207,9 @@ export class StationSideScrollerRenderer {
     for (const interactable of interactables) {
       const sx = interactable.x - camera.x;
       if (sx + interactable.width < -180 || sx > camera.viewportWidth + 180) continue;
-      if (interactable.id === 'forge') this.drawForge(ctx, sx, interactable.y, interactable, activeInteractable, time);
       if (interactable.id === 'upgrades') this.drawWorkbench(ctx, sx, interactable.y, interactable, activeInteractable);
       if (interactable.id === 'research') this.drawResearch(ctx, sx, interactable.y, interactable, activeInteractable, time);
       if (interactable.id === 'navigation') this.drawNavigation(ctx, sx, interactable.y, interactable, activeInteractable, time);
-      if (interactable.id === 'shop') this.drawShop(ctx, sx, interactable.y, interactable, activeInteractable, time);
       if (interactable.id === 'launch') this.drawLaunchBay(ctx, sx, interactable.y, interactable, activeInteractable, time);
       this.drawInteractableGlow(ctx, sx, interactable, activeInteractable);
     }
@@ -248,49 +232,6 @@ export class StationSideScrollerRenderer {
     ctx.ellipse(sx + interactable.width / 2, y - 4, interactable.width * 0.38, 20, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-  }
-
-  drawStorage(ctx, x, y) {
-    for (let i = 0; i < 5; i += 1) {
-      const crateX = x + 16 + (i % 3) * 62;
-      const crateY = y + 36 + Math.floor(i / 3) * 47;
-      ctx.fillStyle = '#76543a';
-      ctx.strokeStyle = 'rgba(236, 231, 216, 0.16)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.roundRect(crateX, crateY, 55, 41, 8);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(231, 184, 92, 0.2)';
-      ctx.fillRect(crateX + 8, crateY + 9, 39, 6);
-    }
-  }
-
-  drawForge(ctx, x, y, interactable, activeInteractable, time) {
-    const flicker = 0.84 + Math.sin(time * 13) * 0.12;
-    ctx.fillStyle = '#101923';
-    ctx.beginPath();
-    ctx.roundRect(x + 45, y + 28, 112, 112, 18);
-    ctx.fill();
-    ctx.fillStyle = `rgba(217, 134, 66, ${0.64 * flicker})`;
-    ctx.beginPath();
-    ctx.roundRect(x + 62, y + 54, 78, 58, 16);
-    ctx.fill();
-    ctx.fillStyle = '#253b4c';
-    ctx.beginPath();
-    ctx.roundRect(x + 176, y + 92, 74, 28, 12);
-    ctx.fill();
-    ctx.fillStyle = '#101923';
-    ctx.fillRect(x + 195, y + 120, 16, 42);
-
-    if (interactable === activeInteractable) {
-      for (let i = 0; i < 7; i += 1) {
-        ctx.fillStyle = i % 2 ? '#e7b85c' : '#d98642';
-        ctx.beginPath();
-        ctx.arc(x + 86 + i * 10, y + 28 - ((time * 35 + i * 12) % 45), 2.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
   }
 
   drawWorkbench(ctx, x, y) {
@@ -358,29 +299,6 @@ export class StationSideScrollerRenderer {
     ctx.roundRect(x + 16, y + 122, 198, 26, 10);
     ctx.fill();
     ctx.stroke();
-  }
-
-  drawShop(ctx, x, y, interactable, activeInteractable, time) {
-    ctx.fillStyle = '#76543a';
-    ctx.strokeStyle = 'rgba(236, 231, 216, 0.16)';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.roundRect(x + 44, y + 90, 210, 58, 14);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = activeInteractable === interactable ? '#e7b85c' : '#9c4a44';
-    ctx.beginPath();
-    ctx.roundRect(x + 82, y + 48, 132, 38, 12);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#101923';
-    ctx.font = '720 16px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(activeInteractable === interactable ? 'OPEN?' : 'SHOP', x + 148, y + 73);
-    ctx.fillStyle = 'rgba(102, 216, 232, 0.16)';
-    ctx.beginPath();
-    ctx.ellipse(x + 288, y + 38 + Math.sin(time * 2) * 3, 42, 22, 0, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   drawLaunchBay(ctx, x, y, interactable, activeInteractable, time) {

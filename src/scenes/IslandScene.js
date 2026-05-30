@@ -1,7 +1,7 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
 import { IslandPlayer } from '../entities/IslandPlayer.js';
-import { gameBalance } from '../data/gameBalance.js';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class IslandScene {
   constructor(game, payload = {}) {

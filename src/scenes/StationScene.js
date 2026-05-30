@@ -1,16 +1,15 @@
-import { StationPlayer } from '../entities/StationPlayer.js?v=20';
+import { StationPlayer } from '../entities/StationPlayer.js?v=30';
 import { StationInteractable } from '../entities/StationInteractable.js';
 import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
 import { Button } from '../ui/Button.js';
 import { InteractPrompt } from '../ui/InteractPrompt.js';
 import { MobileStationControls } from '../ui/MobileStationControls.js';
-import { Modal } from '../ui/Modal.js';
 import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
 import { createObjectiveModal } from '../ui/ObjectiveModal.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=23';
-import { gameBalance } from '../data/gameBalance.js?v=20';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=30';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 const WORLD_WIDTH = 2920;
 
@@ -92,20 +91,9 @@ export class StationScene {
     const floorY = this.world.floorY;
     return [
       new StationInteractable({
-        id: 'forge',
-        label: 'Forge',
-        prompt: 'Free craft practice',
-        icon: 'F',
-        station: 'Crafting',
-        x: 468,
-        y: floorY - 170,
-        width: 320,
-        height: 170,
-      }),
-      new StationInteractable({
         id: 'upgrades',
         label: 'Upgrade Bench',
-        prompt: 'Tune ship and station',
+        prompt: 'Upgrade the ship',
         icon: '+',
         station: 'Upgrades',
         x: 872,
@@ -127,24 +115,13 @@ export class StationScene {
       new StationInteractable({
         id: 'navigation',
         label: 'Navigation Room',
-        prompt: this.game.systems.navigation.isUnlocked() ? 'Open GPS scanner' : 'Repair GPS scanner',
+        prompt: this.game.systems.navigation.isUnlocked() ? 'Chart the far planet' : 'Repair GPS scanner',
         icon: 'N',
         station: 'Navigation',
         x: 1480,
         y: floorY - 150,
         width: 250,
         height: 150,
-      }),
-      new StationInteractable({
-        id: 'shop',
-        label: 'Shop Counter',
-        prompt: 'Open shop for customers',
-        icon: '$',
-        station: 'Shop',
-        x: 1810,
-        y: floorY - 158,
-        width: 350,
-        height: 158,
       }),
       new StationInteractable({
         id: 'launch',
@@ -165,7 +142,7 @@ export class StationScene {
     if (this.payload.miningSummary) return this.getInteractableCenter('launch') - 34;
     const savedX = this.game.state.station?.hubPlayerX;
     if (Number.isFinite(savedX)) return Math.max(24, Math.min(this.world.width - 80, savedX));
-    return this.getInteractableCenter('forge') - 20;
+    return this.getInteractableCenter('upgrades') - 20;
   }
 
   getInteractableCenter(id) {
@@ -182,12 +159,10 @@ export class StationScene {
     this.resourceCounters = {
       credits: new ResourceCounter('Credits', this.game.state.credits, { icon: '$' }),
       research: new ResourceCounter('Research', this.game.state.researchPoints, { icon: 'R' }),
-      reputation: new ResourceCounter('Rep', this.game.state.reputation, { icon: '*' }),
     };
     resources.append(
       this.resourceCounters.credits.element,
       this.resourceCounters.research.element,
-      this.resourceCounters.reputation.element,
     );
 
     this.storageQuickButton = new Button('Storage', () => this.openStorage(), {
@@ -282,7 +257,6 @@ export class StationScene {
     this.hudRefreshTimer = 0.2;
     this.resourceCounters?.credits.update(this.game.state.credits);
     this.resourceCounters?.research.update(this.game.state.researchPoints);
-    this.resourceCounters?.reputation.update(this.game.state.reputation);
 
     const objective = this.game.systems.objectives.getCurrentObjective();
     const progress = this.game.systems.objectives.getProgress(objective);
@@ -290,7 +264,7 @@ export class StationScene {
     if (!force && this.lastObjectiveKey === key) return;
     this.lastObjectiveKey = key;
     if (!objective) {
-      this.objectiveChip.innerHTML = '<span>Objective</span><strong>Keep forging</strong>';
+      this.objectiveChip.innerHTML = '<span>Objective</span><strong>Reach the far planet</strong>';
       return;
     }
     this.objectiveChip.innerHTML = `
@@ -331,12 +305,6 @@ export class StationScene {
 
   handleInteractable(interactable) {
     this.game.audio.playSuccess();
-    if (interactable.id === 'forge') {
-      this.rememberPlayerPosition();
-      this.game.audio.playFurnaceIgnite();
-      this.game.sceneManager.switchTo('crafting', { mode: 'free-craft' });
-      return;
-    }
     if (interactable.id === 'upgrades') {
       this.rememberPlayerPosition();
       this.game.ui.clearHighlight();
@@ -352,32 +320,9 @@ export class StationScene {
       this.showNavigationMap();
       return;
     }
-    if (interactable.id === 'shop') {
-      this.showShopConfirm();
-      return;
-    }
     if (interactable.id === 'launch') {
       this.startLaunchSequence();
     }
-  }
-
-  showShopConfirm() {
-    const modal = new Modal({
-      title: 'Open Shop?',
-      body: 'Open shop for customers?',
-      className: 'shop-confirm-modal',
-      children: [
-        new Button('Open Shop', () => {
-          this.rememberPlayerPosition();
-          this.game.audio.playCustomerArrive();
-          this.game.systems.tutorial.onOpenShop();
-          this.game.ui.hideModal();
-          this.game.sceneManager.switchTo('shop');
-        }, { icon: '$', variant: 'success' }).element,
-        new Button('Not Now', () => this.game.ui.hideModal(), { icon: '<', variant: 'metal' }).element,
-      ],
-    }).element;
-    this.game.ui.showModal(modal);
   }
 
   showNavigationMap() {
@@ -401,7 +346,7 @@ export class StationScene {
 
   rememberPlayerPosition() {
     this.game.state.station ||= {};
-    this.game.state.station.hubPlayerX = this.player?.x || this.getInteractableCenter('forge');
+    this.game.state.station.hubPlayerX = this.player?.x || this.getInteractableCenter('upgrades');
   }
 
   render(ctx) {

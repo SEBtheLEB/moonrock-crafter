@@ -1,6 +1,6 @@
 # Moonrock Crafter
 
-Moonrock Crafter is a mobile-first landscape HTML/CSS/JavaScript game about running a cozy space blacksmith station. Active gameplay uses canvas, while menus, HUD, dialogue, and debug tools use HTML/CSS overlays.
+Moonrock Crafter is a mobile-first landscape HTML/CSS/JavaScript game about mining asteroid fields, unloading ore at a station, upgrading a ship, and pushing toward a very distant planet. Active gameplay uses canvas, while menus, HUD, dialogue, and debug tools use HTML/CSS overlays.
 
 ## Run Locally
 
@@ -24,11 +24,10 @@ The game uses ES modules, so opening `index.html` directly from the filesystem i
 - `src/main.js` creates the game instance.
 - `src/core/` owns engine-level services: game loop, scenes, input, save, audio, and events.
 - `src/scenes/` owns scene-specific orchestration and rendering.
-- `src/entities/` owns canvas gameplay objects such as the ship, asteroids, pickups, rock islands, customers, and station/island players.
-- `src/systems/` owns saveable game logic: inventory, materials, economy, customers, dialogue, crafting, upgrades, research, navigation, islands, objectives, and achievements.
+- `src/entities/` owns canvas gameplay objects such as the ship, asteroids, pickups, rock islands, and station/island players.
+- `src/systems/` owns saveable game logic: inventory, materials, economy, dialogue, upgrades, research, navigation, islands, objectives, and achievements.
 - `src/ui/` owns reusable DOM UI components and overlays.
 - `src/data/` owns balance and content.
-- `src/minigames/` owns individual crafting mini-game modules.
 - `src/styles/` owns screen and component CSS.
 - `assets/` is where final image and audio files should be swapped in later.
 
@@ -36,8 +35,6 @@ The game uses ES modules, so opening `index.html` directly from the filesystem i
 
 - Materials: edit `src/data/materials.js`.
 - Asteroids and drop tables: edit `src/data/asteroids.js`.
-- Recipes: edit `src/data/recipes.js` and item requirements in `src/data/items.js`.
-- Customers: edit `src/data/customers.js`.
 - Dialogue: edit `src/data/dialogue.js`.
 - Upgrades: edit `src/data/upgrades.js`.
 - GPS locations and scanner upgrades: edit `src/data/locations.js` and `src/data/scannerUpgrades.js`.
@@ -46,14 +43,15 @@ The game uses ES modules, so opening `index.html` directly from the filesystem i
 
 Keep tuning in data files when possible. Systems should read data and apply rules; scenes should avoid hardcoded balance values.
 
-## Adding Mini-Games
+## Progression Loop
 
-1. Create a new class in `src/minigames/`.
-2. Match the existing mini-game interface: `update(delta, input, bounds)`, `draw(ctx, bounds, time)`, `complete`, and `getResult()`.
-3. Import it in `src/scenes/CraftingScene.js`.
-4. Add the mini-game id to an item in `src/data/items.js`.
+The current prototype loop is:
 
-`CraftingScene` controls flow. Mini-game classes should only manage their own input, scoring, drawing, and completion state.
+1. Launch from the station.
+2. Mine asteroids and collect minerals into run cargo.
+3. Glide through the station beam to dump cargo into permanent storage and earn assay credits.
+4. Spend credits, materials, and research on ship, mining, utility, and route upgrades.
+5. Use the stronger and larger ship to reach farther distance rings and eventually the far planet signal.
 
 ## Placeholder Audio
 
@@ -64,7 +62,7 @@ Keep tuning in data files when possible. Systems should read data and apply rule
 3. Register files through `AudioManager.registerSoundFile()`.
 4. Replace generated tone calls with file playback behind the same public methods.
 
-Keep public methods like `playButtonClick()`, `playMineralPickup()`, and `playCraftSuccess()` stable so scenes do not care whether audio is generated or loaded from files.
+Keep public methods like `playButtonClick()`, `playMineralPickup()`, and `playPurchase()` stable so scenes do not care whether audio is generated or loaded from files.
 
 ## Placeholder Art
 
@@ -74,7 +72,6 @@ Most visuals are procedural canvas drawings or CSS shapes. Replace them graduall
 - Island backgrounds and props: `src/scenes/IslandScene.js` and island data files.
 - Mining entities: `src/entities/Ship.js`, `src/entities/Asteroid.js`, and `src/entities/MineralPickup.js`.
 - UI skins: `src/styles/ui.css` plus screen-specific CSS files.
-- Customer portraits: data-driven placeholder styles in `src/data/customers.js`.
 
 Keep asset keys stable in data and systems so art can be swapped without rewriting gameplay logic.
 
@@ -90,12 +87,11 @@ Save data is stored in localStorage with a versioned envelope through `src/core/
 
 - docking after mining
 - buying upgrades
-- completing sales
 - completing tutorial/objective steps
 - changing settings
 - manual saves
 
-The game keeps old Starforge-era localStorage keys only as migration fallbacks.
+The current expedition prototype uses a fresh `moonrock-crafter-save-v3` key because the old shop/crafting save shape is no longer compatible with the new mining-and-upgrades loop.
 
 ## Performance Notes
 

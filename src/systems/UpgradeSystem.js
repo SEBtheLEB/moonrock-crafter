@@ -1,5 +1,5 @@
-import { upgrades } from '../data/upgrades.js';
-import { gameBalance } from '../data/gameBalance.js';
+import { upgrades } from '../data/upgrades.js?v=30';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class UpgradeSystem {
   constructor(game) {
@@ -108,9 +108,6 @@ export class UpgradeSystem {
         missing.push({ type: 'research', label: this.game.systems.research.getNode(researchId)?.name || researchId });
       }
     });
-    if (requirements.reputation && (this.game.state.reputation || 0) < requirements.reputation) {
-      missing.push({ type: 'reputation', label: `Reputation ${requirements.reputation}`, needed: requirements.reputation, owned: this.game.state.reputation || 0 });
-    }
     return missing;
   }
 
@@ -137,8 +134,6 @@ export class UpgradeSystem {
       ...stats.station,
       storageMax: Math.round(stats.station.storageMax),
     };
-    this.game.state.shop = { ...stats.shop };
-    this.game.state.crafting = { ...stats.crafting };
     this.game.state.mining = { ...stats.mining };
     return stats;
   }
@@ -147,8 +142,6 @@ export class UpgradeSystem {
     const stats = {
       ship: { ...gameBalance.shipBaseStats },
       station: { ...gameBalance.stationBaseStats },
-      shop: { ...gameBalance.shopBaseStats },
-      crafting: { ...gameBalance.craftingBaseStats },
       mining: {},
     };
 

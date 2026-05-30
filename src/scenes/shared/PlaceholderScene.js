@@ -17,7 +17,6 @@ export class PlaceholderScene {
       className: 'placeholder-panel',
       children: [
         new Button('Station', () => this.game.sceneManager.switchTo('station'), { icon: '<' }).element,
-        new Button('Crafting', () => this.game.sceneManager.switchTo('crafting'), { icon: '*', variant: 'forge' }).element,
       ],
     });
   }

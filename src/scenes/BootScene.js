@@ -8,7 +8,7 @@ export class BootScene {
     this.game.ui.setScreen('boot-screen');
     this.game.ui.addPanel({
       title: 'Moonrock Crafter',
-      body: 'Igniting forge core...',
+      body: 'Charging expedition systems...',
       className: 'boot-panel',
     });
     this.game.sceneManager.switchTo('station');

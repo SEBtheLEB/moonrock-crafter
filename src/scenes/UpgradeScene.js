@@ -1,6 +1,6 @@
 import { Button } from '../ui/Button.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { upgradeCategories } from '../data/upgrades.js';
+import { upgradeCategories } from '../data/upgrades.js?v=30';
 
 const TABS = [
   ...upgradeCategories,
@@ -10,7 +10,7 @@ const TABS = [
 export class UpgradeScene {
   constructor(game, payload = {}) {
     this.game = game;
-    this.activeTab = payload.tab || 'ship';
+    this.activeTab = TABS.some((tab) => tab.id === payload.tab) ? payload.tab : 'ship';
     this.time = 0;
     this.purchaseFlashId = '';
     this.selectedUpgradeId = null;
@@ -405,11 +405,9 @@ export class UpgradeScene {
     const copy = {
       ship: 'Range, survivability, cargo, and control upgrades for deeper runs.',
       mining: 'Laser, scanner, magnet, and precision tools for better asteroid work.',
-      forge: 'Workbench improvements that make crafting easier and unlock better recipes.',
-      shop: 'Customer flow, patience, tips, and rare visitor upgrades.',
-      utility: 'Station storage and service upgrades that keep the workshop humming.',
+      utility: 'Station storage and service upgrades that support long expeditions.',
     };
-    return copy[categoryId] || 'Blueprints ready for station work.';
+    return copy[categoryId] || 'Blueprints ready for the far planet push.';
   }
 
   update(delta) {

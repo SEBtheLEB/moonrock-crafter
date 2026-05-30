@@ -1,5 +1,5 @@
-import { research } from '../data/research.js';
-import { gameBalance } from '../data/gameBalance.js';
+import { research } from '../data/research.js?v=30';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class ResearchSystem {
   constructor(game) {
@@ -53,12 +53,6 @@ export class ResearchSystem {
       this.game.state.unlockedZones = {
         ...(this.game.state.unlockedZones || {}),
         [state.node.unlocks.zone]: true,
-      };
-    }
-    if (state.node.unlocks?.recipes) {
-      this.game.state.knownRecipes = {
-        ...(this.game.state.knownRecipes || {}),
-        advancedRecipes: true,
       };
     }
     this.game.systems.objectives.record('researchUnlocked', { researchId: id });

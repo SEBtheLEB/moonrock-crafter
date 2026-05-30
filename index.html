@@ -14,16 +14,14 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./assets/img/moonrock-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/img/apple-touch-icon.png" />
-    <link rel="stylesheet" href="./src/styles/base.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/ui.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/station.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/navigation.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/mining.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/shop.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/crafting.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/upgrades.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/storage.css?v=24" />
-    <link rel="stylesheet" href="./src/styles/island.css?v=24" />
+    <link rel="stylesheet" href="./src/styles/base.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/ui.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/station.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/navigation.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/mining.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/upgrades.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/storage.css?v=30" />
+    <link rel="stylesheet" href="./src/styles/island.css?v=30" />
   </head>
   <body>
     <div id="game-shell" class="game-shell">
@@ -39,12 +37,40 @@
     </div>
     <noscript>Moonrock Crafter needs JavaScript enabled.</noscript>
     <script>
+      window.addEventListener('error', (event) => {
+        const report = document.createElement('pre');
+        report.style.cssText = 'position:fixed;inset:12px;z-index:99999;overflow:auto;padding:14px;background:#12080f;color:#ffd36b;border:1px solid #ff8f3d;font:13px/1.4 monospace;white-space:pre-wrap;';
+        report.textContent = `Moonrock boot error\n${event.message}\n${event.filename}:${event.lineno}:${event.colno}`;
+        document.body.append(report);
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        const report = document.createElement('pre');
+        report.style.cssText = 'position:fixed;inset:12px;z-index:99999;overflow:auto;padding:14px;background:#12080f;color:#ffd36b;border:1px solid #ff8f3d;font:13px/1.4 monospace;white-space:pre-wrap;';
+        report.textContent = `Moonrock async boot error\n${event.reason?.stack || event.reason}`;
+        document.body.append(report);
+      });
+    </script>
+    <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./service-worker.js?v=24').catch(() => {});
+          const localCleanupKey = 'moonrock-local-sw-clean-v30';
+          if (location.hostname === 'localhost') {
+            if (!sessionStorage.getItem(localCleanupKey)) {
+              sessionStorage.setItem(localCleanupKey, '1');
+              Promise.all([
+                navigator.serviceWorker.getRegistrations()
+                  .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))),
+                window.caches
+                  ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+                  : Promise.resolve(),
+              ]).finally(() => location.reload());
+            }
+            return;
+          }
+          navigator.serviceWorker.register('./service-worker.js?v=30').catch(() => {});
         });
       }
     </script>
-    <script type="module" src="./src/main.js?v=24"></script>
+    <script type="module" src="./src/main.js?v=30"></script>
   </body>
 </html>

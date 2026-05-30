@@ -38,29 +38,7 @@ const SFX = {
   shipDock: { category: 'sfx', frequency: 210, slideTo: 145, duration: 0.12, type: 'triangle', gain: 0.024, cooldown: 0.25 },
   shipLaunch: { category: 'sfx', frequency: 180, slideTo: 320, duration: 0.16, type: 'sawtooth', gain: 0.025, cooldown: 0.25 },
 
-  customerArrive: { category: 'sfx', frequency: 440, slideTo: 660, duration: 0.14, type: 'triangle', gain: 0.026, cooldown: 0.25 },
-  customerLeave: { category: 'sfx', frequency: 330, slideTo: 190, duration: 0.12, type: 'triangle', gain: 0.022, cooldown: 0.25 },
-  orderAccepted: { category: 'sfx', frequency: 520, slideTo: 760, duration: 0.09, type: 'triangle', gain: 0.026, cooldown: 0.14 },
-  orderRejected: { category: 'sfx', frequency: 210, slideTo: 120, duration: 0.11, type: 'square', gain: 0.02, cooldown: 0.16 },
-  saleComplete: { category: 'sfx', notes: [520, 780, 980], duration: 0.055, gap: 0.045, type: 'triangle', gain: 0.026, cooldown: 0.2 },
-  tipReceived: { category: 'sfx', notes: [840, 1120], duration: 0.045, gap: 0.04, type: 'square', gain: 0.017, cooldown: 0.2 },
-  reputationUp: { category: 'sfx', notes: [610, 760], duration: 0.06, gap: 0.06, type: 'triangle', gain: 0.022, cooldown: 0.22 },
-  reputationDown: { category: 'sfx', frequency: 190, slideTo: 115, duration: 0.15, type: 'sawtooth', gain: 0.022, cooldown: 0.22 },
   dialogueBlip: { category: 'sfx', frequency: 560, duration: 0.018, type: 'sine', gain: 0.008, cooldown: 0.045 },
-
-  rockTap: { category: 'sfx', frequency: 190, duration: 0.035, type: 'square', gain: 0.018, cooldown: 0.06 },
-  rockCrack: { category: 'sfx', frequency: 260, slideTo: 140, duration: 0.075, type: 'sawtooth', gain: 0.025, noise: 0.018, cooldown: 0.08 },
-  furnaceIgnite: { category: 'sfx', frequency: 120, slideTo: 280, duration: 0.16, type: 'sawtooth', gain: 0.022, noise: 0.02, cooldown: 0.25 },
-  heatIncrease: { category: 'sfx', frequency: 260, slideTo: 420, duration: 0.08, type: 'triangle', gain: 0.016, cooldown: 0.16 },
-  overheatWarning: { category: 'sfx', frequency: 120, slideTo: 95, duration: 0.11, type: 'square', gain: 0.021, cooldown: 0.22 },
-  perfectZoneTick: { category: 'sfx', frequency: 720, duration: 0.025, type: 'sine', gain: 0.009, cooldown: 0.3 },
-  moltenPour: { category: 'sfx', frequency: 180, slideTo: 230, duration: 0.11, type: 'sawtooth', gain: 0.016, noise: 0.012, cooldown: 0.22 },
-  hammerHit: { category: 'sfx', frequency: 170, duration: 0.05, type: 'square', gain: 0.033, noise: 0.012, cooldown: 0.07 },
-  hammerPerfect: { category: 'sfx', notes: [240, 640], duration: 0.04, gap: 0.035, type: 'triangle', gain: 0.025, cooldown: 0.14 },
-  polishSwipe: { category: 'sfx', frequency: 900, slideTo: 1250, duration: 0.08, type: 'triangle', gain: 0.018, cooldown: 0.12 },
-  craftSuccess: { category: 'sfx', notes: [440, 660, 880], duration: 0.065, gap: 0.055, type: 'triangle', gain: 0.028, cooldown: 0.25 },
-  craftFail: { category: 'sfx', frequency: 110, slideTo: 70, duration: 0.22, type: 'sawtooth', gain: 0.025, cooldown: 0.35 },
-  masterworkSting: { category: 'sfx', notes: [520, 780, 1040, 1320], duration: 0.07, gap: 0.055, type: 'triangle', gain: 0.03, cooldown: 0.5 },
 
   gpsOpen: { category: 'sfx', notes: [340, 510, 680], duration: 0.05, gap: 0.045, type: 'sine', gain: 0.02, cooldown: 0.18 },
   gpsPing: { category: 'sfx', frequency: 900, slideTo: 1180, duration: 0.06, type: 'sine', gain: 0.015, cooldown: 0.65 },
@@ -81,7 +59,6 @@ const LOOP_DEFS = {
   engineHum: { category: 'ambience', frequency: 72, type: 'sawtooth', gain: 0.006 },
   engineBoost: { category: 'sfx', frequency: 122, type: 'sawtooth', gain: 0.012 },
   laserLoop: { category: 'sfx', frequency: 320, type: 'sawtooth', gain: 0.01 },
-  furnaceLoop: { category: 'ambience', frequency: 96, type: 'sawtooth', gain: 0.011 },
   forgeCrackle: { category: 'ambience', sequence: [180, 260, 190, 330], duration: 0.035, gain: 0.008, interval: 880, jitter: 360, type: 'triangle' },
   stationAmbience: { category: 'ambience', frequency: 86, type: 'sine', gain: 0.006 },
 };
@@ -90,16 +67,12 @@ const MUSIC_THEMES = {
   station: { category: 'music', sequence: [220, 277, 330, 277], duration: 0.22, gain: 0.018, interval: 720, type: 'sine' },
   mining: { category: 'music', sequence: [146, 196, 246, 196], duration: 0.24, gain: 0.014, interval: 900, type: 'triangle' },
   dangerMining: { category: 'music', sequence: [110, 98, 110, 82], duration: 0.18, gain: 0.018, interval: 520, type: 'sawtooth' },
-  shop: { category: 'music', sequence: [294, 370, 440, 370], duration: 0.18, gain: 0.016, interval: 620, type: 'triangle' },
-  crafting: { category: 'music', sequence: [165, 220, 165, 247], duration: 0.14, gain: 0.017, interval: 460, type: 'triangle' },
   island: { category: 'music', sequence: [196, 247, 330, 294], duration: 0.2, gain: 0.014, interval: 760, type: 'triangle' },
 };
 
 const SCENE_AUDIO = {
   station: { music: 'station', loops: ['stationAmbience', 'forgeCrackle'] },
   mining: { music: 'mining', loops: ['engineHum'] },
-  shop: { music: 'shop', loops: ['stationAmbience'] },
-  crafting: { music: 'crafting', loops: ['forgeCrackle'] },
   upgrades: { music: 'station', loops: ['stationAmbience'] },
   storage: { music: 'station', loops: ['stationAmbience'] },
   island: { music: 'island', loops: ['stationAmbience'] },
@@ -222,7 +195,6 @@ export class AudioManager {
     this.stopLoopsByPrefix('scene:');
     this.stopLaserLoop();
     this.stopEngineBoost();
-    this.stopFurnaceLoop();
     const sceneAudio = SCENE_AUDIO[this.sceneName];
     if (!sceneAudio) return;
     this.playMusicTheme(sceneAudio.music);
@@ -392,14 +364,6 @@ export class AudioManager {
     this.stopLoop('laserLoop');
   }
 
-  startFurnaceLoop() {
-    this.startLoop('furnaceLoop', LOOP_DEFS.furnaceLoop);
-  }
-
-  stopFurnaceLoop() {
-    this.stopLoop('furnaceLoop');
-  }
-
   startStationAmbience() {
     this.startLoop('scene:stationAmbience', LOOP_DEFS.stationAmbience);
   }
@@ -452,29 +416,7 @@ export class AudioManager {
   playStationAmbience() { this.startStationAmbience(); }
   playForgeCrackle() { this.startForgeCrackle(); }
 
-  playCustomerArrive() { this.playSfx('customerArrive'); }
-  playCustomerLeave() { this.playSfx('customerLeave'); }
-  playOrderAccepted() { this.playSfx('orderAccepted'); }
-  playOrderRejected() { this.playSfx('orderRejected'); }
-  playSaleComplete() { this.playSfx('saleComplete'); }
-  playTipReceived() { this.playSfx('tipReceived'); }
-  playReputationUp() { this.playSfx('reputationUp'); }
-  playReputationDown() { this.playSfx('reputationDown'); }
   playDialogueBlip() { this.playSfx('dialogueBlip'); }
-
-  playRockTap() { this.playSfx('rockTap'); }
-  playRockCrack() { this.playSfx('rockCrack'); }
-  playFurnaceIgnite() { this.playSfx('furnaceIgnite'); }
-  playHeatIncrease() { this.playSfx('heatIncrease'); }
-  playOverheatWarning() { this.playSfx('overheatWarning'); }
-  playPerfectZoneTick() { this.playSfx('perfectZoneTick'); }
-  playMoltenPour() { this.playSfx('moltenPour'); }
-  playHammerHit() { this.playSfx('hammerHit'); }
-  playHammerPerfect() { this.playSfx('hammerPerfect'); }
-  playPolishSwipe() { this.playSfx('polishSwipe'); }
-  playCraftSuccess() { this.playSfx('craftSuccess'); }
-  playCraftFail() { this.playSfx('craftFail'); }
-  playMasterworkSting() { this.playSfx('masterworkSting'); }
 
   playGpsOpen() { this.playSfx('gpsOpen'); }
   playGpsPing() { this.playSfx('gpsPing'); }
@@ -494,11 +436,6 @@ export class AudioManager {
   playHover() { this.playButtonHover(); }
   playMiningLaser() { this.playAsteroidHit(); }
   playPickup() { this.playMineralPickup(); }
-  playCustomerArrival() { this.playCustomerArrive(); }
-  playCraftingHit() { this.playHammerHit(); }
-  playFurnaceLoop() { this.startFurnaceLoop(); }
-  playHeatUp() { this.playHeatIncrease(); }
-  playFailure() { this.playCraftFail(); }
   playLaunch() { this.playShipLaunch(); }
   playReset() { this.playSfx('reset'); }
 }

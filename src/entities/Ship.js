@@ -5,7 +5,8 @@ export class Ship {
     this.vx = 0;
     this.vy = 0;
     this.angle = 0;
-    this.radius = 22;
+    this.sizeScale = stats.sizeScale || 1;
+    this.radius = 22 * this.sizeScale;
     this.acceleration = 326 + (stats.acceleration || 1) * 36;
     this.drag = 0.68;
     this.activeControl = 2.9 + (stats.handling || 1) * 0.35;
@@ -80,6 +81,7 @@ export class Ship {
     ctx.save();
     ctx.translate(screen.x, screen.y);
     ctx.rotate(this.angle);
+    ctx.scale(this.sizeScale, this.sizeScale);
 
     if (this.isThrusting(input)) {
       ctx.save();

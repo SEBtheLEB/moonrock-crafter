@@ -2,31 +2,27 @@ import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
 import { InputManager } from './InputManager.js';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js';
+import { AudioManager } from './AudioManager.js?v=30';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js';
+import { DebugPanel } from '../ui/DebugPanel.js?v=30';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { CustomerSystem } from '../systems/CustomerSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js';
-import { CraftingSystem } from '../systems/CraftingSystem.js';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js';
-import { EconomySystem } from '../systems/EconomySystem.js';
-import { ResearchSystem } from '../systems/ResearchSystem.js';
-import { TutorialSystem } from '../systems/TutorialSystem.js';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=20';
-import { AchievementSystem } from '../systems/AchievementSystem.js';
-import { NavigationSystem } from '../systems/NavigationSystem.js';
-import { IslandSystem } from '../systems/IslandSystem.js';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=30';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=30';
+import { EconomySystem } from '../systems/EconomySystem.js?v=30';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=30';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=30';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=30';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=30';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=30';
+import { IslandSystem } from '../systems/IslandSystem.js?v=30';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=23';
-import { MiningScene } from '../scenes/MiningScene.js?v=24';
-import { ShopScene } from '../scenes/ShopScene.js';
-import { CraftingScene } from '../scenes/CraftingScene.js';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=22';
-import { StorageScene } from '../scenes/StorageScene.js?v=23';
-import { IslandScene } from '../scenes/IslandScene.js';
-import { gameBalance } from '../data/gameBalance.js?v=20';
+import { StationScene } from '../scenes/StationScene.js?v=30';
+import { MiningScene } from '../scenes/MiningScene.js?v=30';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=30';
+import { StorageScene } from '../scenes/StorageScene.js?v=30';
+import { IslandScene } from '../scenes/IslandScene.js?v=30';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -34,9 +30,9 @@ export class Game {
     this.ctx = canvas.getContext('2d');
     this.uiRoot = uiRoot;
     this.events = new EventBus();
-    this.save = new SaveManager('moonrock-crafter-save-v2', {
-      version: 2,
-      legacyKeys: ['starforge-station-save-v1'],
+    this.save = new SaveManager('moonrock-crafter-save-v3', {
+      version: 3,
+      legacyKeys: [],
     });
     this.audio = new AudioManager();
     this.input = new InputManager(canvas, uiRoot);
@@ -63,11 +59,8 @@ export class Game {
       day: 1,
       shift: 'Dawn',
       researchPoints: gameBalance.startingResearchPoints,
-      reputation: gameBalance.startingReputation,
       ship: { ...gameBalance.shipBaseStats },
-      station: { level: 1, forgeHeat: 0, storageUsed: 0, ...gameBalance.stationBaseStats },
-      shop: { ...gameBalance.shopBaseStats },
-      crafting: { ...gameBalance.craftingBaseStats },
+      station: { level: 1, storageUsed: 0, ...gameBalance.stationBaseStats },
       mining: {
         collectionMagnet: gameBalance.shipBaseStats.collectionMagnet,
         rareScanner: gameBalance.shipBaseStats.rareScanner,
@@ -78,27 +71,17 @@ export class Game {
       upgrades: {},
       research: {},
       unlockedZones: { scrapBelt: true },
-      knownRecipes: {
-        basicPickaxe: true,
-        miningChisel: true,
-        copperWrench: true,
-        repairHammer: true,
-      },
-      completedCustomerOrders: [],
       settings: {
         audioMuted: this.audio ? !this.audio.enabled : false,
       },
       stats: {
         totalAsteroidsMined: 0,
         totalCreditsEarned: 0,
-        totalItemsCrafted: 0,
         farthestDistanceReached: 0,
       },
       debug: {
         invincible: false,
       },
-      metCustomers: {},
-      customerTrust: {},
       tutorial: {},
       progression: {},
       achievements: {},
@@ -122,23 +105,15 @@ export class Game {
       ...savedState,
       ship: { ...defaultState.ship, ...savedState.ship },
       station: { ...defaultState.station, ...savedState.station },
-      shop: { ...defaultState.shop, ...savedState.shop },
-      crafting: { ...defaultState.crafting, ...savedState.crafting },
       mining: { ...defaultState.mining, ...savedState.mining },
       inventory: this.migrateInventory({ ...defaultState.inventory, ...savedState.inventory }),
       runCargo: this.migrateInventory({ ...defaultState.runCargo, ...savedState.runCargo }),
       upgrades: { ...defaultState.upgrades, ...savedState.upgrades },
       research: { ...defaultState.research, ...savedState.research },
       unlockedZones: { ...defaultState.unlockedZones, ...savedState.unlockedZones },
-      knownRecipes: { ...defaultState.knownRecipes, ...savedState.knownRecipes },
-      completedCustomerOrders: Array.isArray(savedState.completedCustomerOrders)
-        ? savedState.completedCustomerOrders
-        : defaultState.completedCustomerOrders,
       settings: { ...defaultState.settings, ...savedState.settings },
       stats: { ...defaultState.stats, ...savedState.stats },
       debug: { ...defaultState.debug, ...savedState.debug },
-      metCustomers: { ...defaultState.metCustomers, ...savedState.metCustomers },
-      customerTrust: { ...defaultState.customerTrust, ...savedState.customerTrust },
       tutorial: { ...defaultState.tutorial, ...savedState.tutorial },
       progression: {
         ...defaultState.progression,
@@ -149,10 +124,6 @@ export class Game {
           materialsCollected: {
             ...(defaultState.progression?.stats?.materialsCollected || {}),
             ...(savedState.progression?.stats?.materialsCollected || {}),
-          },
-          itemsCrafted: {
-            ...(defaultState.progression?.stats?.itemsCrafted || {}),
-            ...(savedState.progression?.stats?.itemsCrafted || {}),
           },
           researchUnlocked: {
             ...(defaultState.progression?.stats?.researchUnlocked || {}),
@@ -205,9 +176,7 @@ export class Game {
     return {
       inventory: new InventorySystem(this),
       materials: new MaterialSystem(this),
-      customers: new CustomerSystem(this),
       dialogue: new DialogueSystem(this),
-      crafting: new CraftingSystem(this),
       upgrades: new UpgradeSystem(this),
       economy: new EconomySystem(this),
       research: new ResearchSystem(this),
@@ -244,8 +213,6 @@ export class Game {
     this.sceneManager.register('boot', BootScene);
     this.sceneManager.register('station', StationScene);
     this.sceneManager.register('mining', MiningScene);
-    this.sceneManager.register('shop', ShopScene);
-    this.sceneManager.register('crafting', CraftingScene);
     this.sceneManager.register('upgrades', UpgradeScene);
     this.sceneManager.register('storage', StorageScene);
     this.sceneManager.register('island', IslandScene);
@@ -316,16 +283,12 @@ export class Game {
     this.ui.showToast(text, options.tone || 'default');
   }
 
-  flashCraftingSuccess() {
-    this.uiRoot.classList.remove('craft-success-flash');
-    requestAnimationFrame(() => this.uiRoot.classList.add('craft-success-flash'));
-    window.setTimeout(() => this.uiRoot.classList.remove('craft-success-flash'), 520);
-  }
-
   depositMiningCargo({ cargo = {}, summary = null, recordDocked = false } = {}) {
     const cargoValue = this.systems.materials.getCargoValue(cargo);
+    const creditsEarned = Math.round(cargoValue * (gameBalance.mining.depositCreditMultiplier ?? 0.55));
     if (summary) {
       summary.cargoValue = cargoValue;
+      summary.creditsEarned = creditsEarned;
       summary.cargoWeight = this.systems.materials.getCargoWeight(cargo);
     }
     Object.entries(cargo).forEach(([itemId, amount]) => {
@@ -337,6 +300,7 @@ export class Game {
       }
       this.systems.inventory.add(itemId, amount, { skipSave: true });
     });
+    if (creditsEarned > 0) this.systems.economy.addCredits(creditsEarned, { save: false });
     this.state.ship.cargo = 0;
     this.systems.inventory.clearRunCargo();
     this.state.station.storageUsed = this.systems.inventory.getTotalStored();
@@ -348,6 +312,7 @@ export class Game {
     this.saveGame();
     return {
       cargoValue,
+      creditsEarned,
       cargoWeight: summary?.cargoWeight || this.systems.materials.getCargoWeight(cargo),
     };
   }

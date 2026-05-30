@@ -134,6 +134,21 @@ export const locations = [
     biome: 'relic',
     canSetDestination: true,
   },
+  {
+    id: 'farawayPlanet',
+    name: 'Faraway Planet',
+    type: 'story',
+    worldPosition: { x: 42000, y: -18000 },
+    discovered: false,
+    dangerLevel: 9,
+    recommendedFuel: 420,
+    description: 'A huge planet at the edge of the chart. The ship will need many frame, fuel, and engine upgrades before this route is realistic.',
+    resources: ['starsteel', 'cometCore', 'ancientAlloy'],
+    icon: 'PL',
+    requiredScannerLevel: 5,
+    biome: 'planet',
+    canSetDestination: true,
+  },
 ];
 
 export const locationTabs = [

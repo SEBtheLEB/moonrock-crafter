@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class AchievementSystem {
   constructor(game) {
@@ -30,6 +30,5 @@ export class AchievementSystem {
   grantReward(reward = {}) {
     this.game.systems.economy.addCredits(reward.credits || 0, { save: false });
     this.game.systems.economy.addResearch(reward.researchPoints || 0, { save: false, recordObjective: false });
-    this.game.systems.economy.addReputation(reward.reputation || 0, { save: false });
   }
 }

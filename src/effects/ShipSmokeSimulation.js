@@ -3,14 +3,14 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 const SMOKE_SETTINGS = {
   resolution: 92,
-  dissipation: 0.986,
-  velocityDissipation: 0.982,
+  dissipation: 0.991,
+  velocityDissipation: 0.984,
   pressure: 0.34,
   pressureIterations: 6,
   curl: 0.78,
   force: 0.68,
-  intensity: 0.86,
-  splatRadius: 34,
+  intensity: 1.22,
+  splatRadius: 40,
 };
 
 // Adapted from the FX Lab smoke-flow grid simulation. This version is scoped to
@@ -114,7 +114,7 @@ export class ShipSmokeSimulation {
     const minY = Math.max(0, Math.floor(gy - radius * 2));
     const maxY = Math.min(this.rows - 1, Math.ceil(gy + radius * 2));
     const velocityScale = SMOKE_SETTINGS.force * 0.72;
-    const dyeAmount = amount * (0.34 + SMOKE_SETTINGS.intensity * 0.34);
+    const dyeAmount = amount * (0.46 + SMOKE_SETTINGS.intensity * 0.42);
 
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
@@ -130,7 +130,17 @@ export class ShipSmokeSimulation {
     }
   }
 
-  emitFromShip({ ship, camera, input, viewport, fuelRatio = 1, delta }) {
+  toViewScreen(point, viewport, viewScale = 1) {
+    const width = viewport?.width || this.width || 1;
+    const height = viewport?.height || this.height || 1;
+    if (Math.abs(viewScale - 1) < 0.001) return point;
+    return {
+      x: width * 0.5 + (point.x - width * 0.5) * viewScale,
+      y: height * 0.5 + (point.y - height * 0.5) * viewScale,
+    };
+  }
+
+  emitFromShip({ ship, camera, input, viewport, fuelRatio = 1, delta, viewScale = 1 }) {
     this.ensure(viewport?.width || 1, viewport?.height || 1);
     const move = input?.moveVector || { x: 0, y: 0 };
     const thrust = Math.hypot(move.x, move.y);
@@ -142,9 +152,10 @@ export class ShipSmokeSimulation {
     const speed = Math.hypot(ship.vx, ship.vy);
     const power = clamp(thrust * (0.72 + fuelRatio * 0.28) + speed / Math.max(1, ship.maxSpeed) * 0.18, 0.18, 1.25);
     const jitter = Math.sin(this.time * 16.7) * 5;
-    const baseFlow = 22 + speed * 0.1 + power * 18;
-    const flowX = Math.cos(exhaustAngle) * baseFlow - ship.vx * 0.06;
-    const flowY = Math.sin(exhaustAngle) * baseFlow - ship.vy * 0.06;
+    const screenFlowScale = Math.max(0.72, viewScale);
+    const baseFlow = (34 + speed * 0.14 + power * 28) * screenFlowScale;
+    const flowX = Math.cos(exhaustAngle) * baseFlow - ship.vx * 0.075 * screenFlowScale;
+    const flowY = Math.sin(exhaustAngle) * baseFlow - ship.vy * 0.075 * screenFlowScale;
     this.flowX = lerp(this.flowX, flowX, clamp(delta * 7, 0, 1));
     this.flowY = lerp(this.flowY, flowY, clamp(delta * 7, 0, 1));
 
@@ -156,14 +167,14 @@ export class ShipSmokeSimulation {
       const worldY = ship.y
         + Math.sin(exhaustAngle) * (exhaustDistance + i * 4)
         + Math.sin(sideAngle) * side * (4 + Math.cos(this.time * 9 + i) * 1.8);
-      const screen = camera.worldToScreen(worldX, worldY);
+      const screen = this.toViewScreen(camera.worldToScreen(worldX, worldY), viewport, viewScale);
       this.addSplat(
         screen.x + Math.sin(this.time * 21 + i) * 2,
         screen.y + Math.cos(this.time * 19 + i) * 2,
         flowX + Math.cos(sideAngle) * side * (7 + jitter),
         flowY + Math.sin(sideAngle) * side * (7 - jitter),
-        power * delta * 7.6,
-        24 + power * 16,
+        power * delta * 12.5,
+        30 + power * 22,
       );
     }
     return true;
@@ -277,11 +288,11 @@ export class ShipSmokeSimulation {
     [this.dye, this.dyeNext] = [this.dyeNext, this.dye];
   }
 
-  update({ delta, viewport, ship, camera, input, fuelRatio = 1 }) {
+  update({ delta, viewport, ship, camera, input, fuelRatio = 1, viewScale = 1 }) {
     this.ensure(viewport?.width || 1, viewport?.height || 1);
     const safeDt = clamp(delta, 0.001, 0.033);
     this.time += safeDt;
-    const emitted = this.emitFromShip({ ship, camera, input, viewport, fuelRatio, delta: safeDt });
+    const emitted = this.emitFromShip({ ship, camera, input, viewport, fuelRatio, delta: safeDt, viewScale });
     if (!emitted && this.dyeTotal <= 0.001) return;
     this.applyForces(safeDt);
     this.solveCurl(safeDt);
@@ -295,7 +306,7 @@ export class ShipSmokeSimulation {
     const data = this.imageData.data;
     for (let i = 0; i < this.dye.length; i += 1) {
       const p = i * 4;
-      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.55, 0, 2.4);
+      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.82, 0, 2.8);
       if (value <= 0.004) {
         data[p] = 0;
         data[p + 1] = 0;
@@ -308,17 +319,17 @@ export class ShipSmokeSimulation {
       data[p] = clamp(176 * shade + warm, 0, 255);
       data[p + 1] = clamp(188 * shade + warm * 0.52, 0, 255);
       data[p + 2] = clamp(194 * shade + 18, 0, 255);
-      data[p + 3] = clamp(value * 82, 0, 148);
+      data[p + 3] = clamp(value * 126, 0, 216);
     }
 
     this.ctx.putImageData(this.imageData, 0, 0);
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.82;
+    ctx.globalAlpha = 0.94;
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
-    ctx.globalAlpha = 0.22;
-    ctx.filter = 'blur(9px)';
+    ctx.globalAlpha = 0.38;
+    ctx.filter = 'blur(10px)';
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
     ctx.restore();
   }

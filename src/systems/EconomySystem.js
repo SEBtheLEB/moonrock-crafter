@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 export class EconomySystem {
   constructor(game) {
@@ -38,13 +38,6 @@ export class EconomySystem {
     this.game.state.researchPoints -= value;
     if (save) this.game.saveGame();
     return true;
-  }
-
-  addReputation(amount = 0, { save = true } = {}) {
-    const value = Math.round(Number(amount) || 0);
-    this.game.state.reputation = Math.max(0, (this.game.state.reputation || 0) + value);
-    if (save) this.game.saveGame();
-    return this.game.state.reputation;
   }
 
   canAfford(cost = {}) {

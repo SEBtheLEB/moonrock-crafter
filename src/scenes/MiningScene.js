@@ -1,13 +1,13 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Ship } from '../entities/Ship.js?v=20';
-import { Asteroid } from '../entities/Asteroid.js?v=20';
+import { Ship } from '../entities/Ship.js?v=30';
+import { Asteroid } from '../entities/Asteroid.js?v=30';
 import { MineralPickup } from '../entities/MineralPickup.js';
 import { RockIsland } from '../entities/RockIsland.js';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=24';
-import { asteroids as asteroidData } from '../data/asteroids.js';
-import { islands as islandData } from '../data/islands.js';
-import { gameBalance } from '../data/gameBalance.js?v=20';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=30';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=30';
+import { islands as islandData } from '../data/islands.js?v=30';
+import { gameBalance } from '../data/gameBalance.js?v=30';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -415,7 +415,7 @@ export class MiningScene {
   finishCargoDumpAndContinue() {
     const cargoSnapshot = { ...this.runCargo };
     const totalItems = Object.values(cargoSnapshot).reduce((total, amount) => total + amount, 0);
-    const { cargoValue } = this.game.depositMiningCargo({
+    const { creditsEarned } = this.game.depositMiningCargo({
       cargo: cargoSnapshot,
       summary: this.cargoDumpSummary,
       recordDocked: true,
@@ -431,8 +431,8 @@ export class MiningScene {
     this.cargoDumpCooldown = 1.25;
     this.cargoTransferEffects = [];
     this.game.audio.playDockSuccess();
-    this.game.ui.showToast(`Cargo stored: ${totalItems} items (${cargoValue}c)`, 'success', 1800);
-    this.addFloatingText(this.ship.x, this.ship.y - 34, 'Cargo Stored', { color: '#ffd36b', rarity: 'uncommon' });
+    this.game.ui.showToast(`Cargo stored: ${totalItems} items (+${creditsEarned}c assay)`, 'success', 1800);
+    this.addFloatingText(this.ship.x, this.ship.y - 34, `+${creditsEarned}c Assay`, { color: '#ffd36b', rarity: 'uncommon' });
     this.updateHud(true);
   }
 
@@ -535,6 +535,7 @@ export class MiningScene {
       camera: this.cameraView,
       input: this.game.input,
       fuelRatio: this.stats.fuel / Math.max(1, this.stats.maxFuel),
+      viewScale: this.viewScale,
     });
   }
 
@@ -1164,7 +1165,10 @@ export class MiningScene {
     this.asteroids.forEach((asteroid) => asteroid.draw(ctx, camera));
     this.drawLaser(ctx);
     this.drawParticles(ctx);
+    ctx.restore();
     this.drawShipSmoke(ctx);
+    ctx.save();
+    this.applyWorldScale(ctx, width, height);
     this.ship.draw(ctx, camera, this.game.input);
     this.drawCargoTransferEffects(ctx);
     this.drawFloatingText(ctx);

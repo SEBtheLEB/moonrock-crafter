@@ -65,12 +65,12 @@ export class TutorialSystem {
       return;
     }
 
-    if (payload.miningSummary && this.has('firstDocked') && !this.has('shopIntroQueued')) {
-      this.mark('shopIntroQueued', { save: false });
+    if (payload.miningSummary && this.has('firstDocked') && !this.has('upgradePrompt')) {
+      this.showUpgradePrompt();
       return;
     }
 
-    if (this.has('saleComplete') && !this.has('upgradePrompt')) {
+    if (this.has('firstDocked') && !this.has('upgradePrompt')) {
       this.showUpgradePrompt();
     }
   }
@@ -119,77 +119,12 @@ export class TutorialSystem {
   }
 
   onMiningSummaryClosed() {
-    if (this.isComplete() || this.has('shopIntro')) return;
-    this.showShopIntro();
-  }
-
-  showShopIntro() {
-    this.queueSparks([
-      {
-        key: 'shopIntro',
-        mark: 'shopIntro',
-        highlight: '.station-interact-button',
-        label: 'Shop Counter',
-        placement: 'above',
-      },
-    ]);
-  }
-
-  onOpenShop() {
-    if (this.isComplete()) return;
-    this.mark('shopOpened', { save: false });
-    this.game.systems.dialogue.clear();
-    this.clearPrompt();
-    this.game.saveGame();
-  }
-
-  onShopEnter() {
-    if (this.isComplete() || !this.has('shopOpened') || this.has('shopCustomer')) return;
-    this.mark('shopCustomer', { save: false });
-    this.startSparks('shopCustomer', {
-      enqueue: true,
-      highlight: '.accept-order-button',
-      label: 'Accept Order',
-      placement: 'above',
-      onComplete: () => this.mark('shopCustomerRead'),
-    });
-  }
-
-  onOrderAccepted() {
-    if (this.isComplete() || this.has('craftButtonPrompt')) return;
-    this.mark('craftButtonPrompt', { save: false });
-    this.game.ui.highlightElement('.craft-order-button', 'Craft Order', { placement: 'above' });
-    this.game.saveGame();
-  }
-
-  onCraftingEnter({ source = '' } = {}) {
-    if (this.isComplete() || source !== 'shop' || this.has('craftingIntro')) return;
-    this.mark('craftingIntro', { save: false });
-    this.startSparks('craftingIntro', {
-      highlight: '.crafting-top-bar',
-      label: 'Craft Steps',
-      onComplete: () => this.mark('craftingIntroRead'),
-      enqueue: true,
-    });
-  }
-
-  onSaleComplete() {
-    if (this.isComplete() || this.has('saleComplete')) return;
-    this.mark('saleComplete', { save: false });
-    this.queueSparks([
-      { key: 'saleComplete', mark: 'saleCompleteRead' },
-      { key: 'upgradesIntro', mark: 'upgradeExplained' },
-    ]);
+    if (this.isComplete() || this.has('upgradePrompt')) return;
+    this.showUpgradePrompt();
   }
 
   showUpgradePrompt() {
     if (this.isComplete() || this.has('upgradePrompt')) return;
-    if (this.has('upgradeExplained')) {
-      this.mark('upgradePrompt', { save: false });
-      this.game.ui.highlightElement('.station-interact-button', 'Upgrade Bench', { placement: 'above' });
-      this.game.saveGame();
-      return;
-    }
     this.startSparks('upgradesIntro', {
       highlight: '.station-interact-button',
       label: 'Upgrade Bench',
@@ -203,7 +138,7 @@ export class TutorialSystem {
     if (this.isComplete() || !this.has('upgradePrompt') || this.has('upgradeSceneIntro')) return;
     this.mark('upgradeSceneIntro', { save: false });
     this.startSparks('upgradeScene', {
-      highlight: '.upgrade-card.is-available',
+      highlight: '.upgrade-icon-tile.is-available',
       label: 'Buy Upgrade',
       onComplete: () => {
         this.mark('completed');

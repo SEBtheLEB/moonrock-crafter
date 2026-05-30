@@ -209,10 +209,6 @@
   animation: station-interact-ready 720ms ease-in-out infinite alternate;
 }
 
-.shop-confirm-modal .modal-panel {
-  width: min(420px, 86vw);
-}
-
 @keyframes station-interact-ready {
   from {
     filter: brightness(1);
