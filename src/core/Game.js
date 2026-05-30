@@ -20,7 +20,7 @@ import { NavigationSystem } from '../systems/NavigationSystem.js';
 import { IslandSystem } from '../systems/IslandSystem.js';
 import { BootScene } from '../scenes/BootScene.js';
 import { StationScene } from '../scenes/StationScene.js?v=23';
-import { MiningScene } from '../scenes/MiningScene.js?v=20';
+import { MiningScene } from '../scenes/MiningScene.js?v=24';
 import { ShopScene } from '../scenes/ShopScene.js';
 import { CraftingScene } from '../scenes/CraftingScene.js';
 import { UpgradeScene } from '../scenes/UpgradeScene.js?v=22';

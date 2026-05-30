@@ -4,6 +4,7 @@ import { Ship } from '../entities/Ship.js?v=20';
 import { Asteroid } from '../entities/Asteroid.js?v=20';
 import { MineralPickup } from '../entities/MineralPickup.js';
 import { RockIsland } from '../entities/RockIsland.js';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=24';
 import { asteroids as asteroidData } from '../data/asteroids.js';
 import { islands as islandData } from '../data/islands.js';
 import { gameBalance } from '../data/gameBalance.js?v=20';
@@ -27,6 +28,7 @@ export class MiningScene {
     this.particlePool = [];
     this.pickupPool = [];
     this.asteroidPool = [];
+    this.shipSmoke = new ShipSmokeSimulation();
     this.floatingText = [];
     this.floatingTextPool = [];
     this.cargoTransferEffects = [];
@@ -217,6 +219,7 @@ export class MiningScene {
     this.game.audio.stopLaserLoop();
     this.game.audio.stopEngineBoost();
     this.game.audio.setDangerMode(false);
+    this.shipSmoke?.clear();
   }
 
   seedAsteroidField() {
@@ -305,6 +308,7 @@ export class MiningScene {
     this.ship.y = 0;
     this.ship.vx = 0;
     this.ship.vy = 0;
+    this.shipSmoke?.clear();
     this.distanceFromStation = 0;
     this.updateHud(true);
   }
@@ -316,6 +320,7 @@ export class MiningScene {
     if (this.cargoDumping) {
       this.updateCargoDump(delta);
       this.updateCamera(delta);
+      this.updateShipSmoke(delta);
       this.updateParticles(delta);
       this.updateHud();
       return;
@@ -327,6 +332,7 @@ export class MiningScene {
     if (this.cargoDumping) {
       this.updateCargoDump(delta);
       this.updateCamera(delta);
+      this.updateShipSmoke(delta);
       this.updateHud();
       return;
     }
@@ -341,6 +347,7 @@ export class MiningScene {
     this.updateDockInput();
     this.updateLanding(delta);
     this.updateCamera(delta);
+    this.updateShipSmoke(delta);
     this.updateAsteroids(delta);
     this.updateMining(delta);
     this.updatePickups(delta);
@@ -518,6 +525,17 @@ export class MiningScene {
     const trauma = this.camera.shake * this.camera.shake;
     this.camera.shakeX = (Math.random() - 0.5) * trauma * 22;
     this.camera.shakeY = (Math.random() - 0.5) * trauma * 22;
+  }
+
+  updateShipSmoke(delta) {
+    this.shipSmoke.update({
+      delta,
+      viewport: this.game.viewport,
+      ship: this.ship,
+      camera: this.cameraView,
+      input: this.game.input,
+      fuelRatio: this.stats.fuel / Math.max(1, this.stats.maxFuel),
+    });
   }
 
   updateAsteroids(delta) {
@@ -1146,6 +1164,7 @@ export class MiningScene {
     this.asteroids.forEach((asteroid) => asteroid.draw(ctx, camera));
     this.drawLaser(ctx);
     this.drawParticles(ctx);
+    this.drawShipSmoke(ctx);
     this.ship.draw(ctx, camera, this.game.input);
     this.drawCargoTransferEffects(ctx);
     this.drawFloatingText(ctx);
@@ -1308,6 +1327,10 @@ export class MiningScene {
       ctx.fill();
     });
     ctx.globalAlpha = 1;
+  }
+
+  drawShipSmoke(ctx) {
+    this.shipSmoke.draw(ctx);
   }
 
   drawFloatingText(ctx) {
