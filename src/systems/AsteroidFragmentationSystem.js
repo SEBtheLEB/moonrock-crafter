@@ -22,11 +22,9 @@ export class AsteroidFragmentationSystem {
 
   spawn({ asteroid, asteroids, acquireAsteroid }) {
     if (asteroid.fragmentTier <= 0) return { didFragment: false, childCount: 0 };
-    const tierConfig = this.config.tiers?.[asteroid.fragmentTier];
-    if (!tierConfig) return { didFragment: false, childCount: 0 };
     const maxAvailable = Math.max(0, this.maxAsteroidCount - (asteroids.length - 1));
     if (maxAvailable <= 0) return { didFragment: false, childCount: 0 };
-    const requestedCount = tierConfig.childMin + Math.floor(Math.random() * (tierConfig.childMax - tierConfig.childMin + 1));
+    const requestedCount = asteroid.getSplitChildCount?.() || 2;
     const childCount = Math.min(maxAvailable, requestedCount);
     if (childCount <= 0) return { didFragment: false, childCount: 0 };
 
@@ -35,18 +33,20 @@ export class AsteroidFragmentationSystem {
     const baseAngle = Math.atan2(asteroid.vy || Math.sin(asteroid.seed), asteroid.vx || Math.cos(asteroid.seed)) + Math.PI * 0.5;
     for (let i = 0; i < childCount; i += 1) {
       const spreadAngle = baseAngle + (Math.PI * 2 * i) / childCount + (Math.random() - 0.5) * 0.45;
-      const offset = asteroid.radius * (0.35 + Math.random() * 0.2);
       const seed = Math.random();
       const child = acquireAsteroid({
-        x: asteroid.x + Math.cos(spreadAngle) * offset,
-        y: asteroid.y + Math.sin(spreadAngle) * offset,
+        x: asteroid.x,
+        y: asteroid.y,
         type: asteroid.type,
         seed,
         fragmentTier: childTier,
-        dropScale: Math.max(0.24, asteroid.dropScale * (0.64 + Math.random() * 0.12) / childCount),
+        dropScale: Math.max(0.16, asteroid.dropScale * (0.5 + Math.random() * 0.08) / childCount),
       });
-      child.vx = asteroid.vx * 0.35 + Math.cos(spreadAngle) * speed * (0.58 + seed * 0.38);
-      child.vy = asteroid.vy * 0.35 + Math.sin(spreadAngle) * speed * (0.58 + seed * 0.38);
+      const offset = Math.max(asteroid.radius * 0.36, child.radius * 0.86);
+      child.x += Math.cos(spreadAngle) * offset;
+      child.y += Math.sin(spreadAngle) * offset;
+      child.vx = asteroid.vx * 0.24 + Math.cos(spreadAngle) * speed * (0.66 + seed * 0.42);
+      child.vy = asteroid.vy * 0.24 + Math.sin(spreadAngle) * speed * (0.66 + seed * 0.42);
       child.scannerRevealed = asteroid.scannerRevealed;
       asteroids.push(child);
     }

@@ -44,17 +44,23 @@ export class DebugPanel {
   }
 
   renderActions() {
+    const godModeButton = new Button('God Mode', () => this.toggleGodMode(), { icon: 'G', variant: 'forge' }).element;
+    const invincibleButton = new Button('Invincible', () => this.toggleInvincible(), { icon: 'I', variant: 'metal' }).element;
+    this.godModeButton = godModeButton;
+    this.invincibleButton = invincibleButton;
     this.actions.replaceChildren(
+      godModeButton,
       new Button('+100 Credits', () => this.addCredits(), { icon: '$', variant: 'forge' }).element,
       new Button('+Materials', () => this.addMaterials(), { icon: '#', variant: 'forge' }).element,
       new Button('+3 Research', () => this.addResearch(), { icon: 'R', variant: 'forge' }).element,
-      new Button('Invincible', () => this.toggleInvincible(), { icon: 'I', variant: 'metal' }).element,
+      invincibleButton,
       new Button('Refill Fuel', () => this.refillShip(), { icon: 'F', variant: 'metal' }).element,
       new Button('Spawn Rare', () => this.spawnRareAsteroid(), { icon: '*', variant: 'metal' }).element,
       new Button('Jump Home', () => this.jumpToStation(), { icon: '<', variant: 'metal' }).element,
       new Button('Unlock Upgrades', () => this.unlockAllUpgrades(), { icon: '+', variant: 'metal' }).element,
       new Button('Clear Save', () => this.game.resetSave(), { icon: '!', variant: 'danger' }).element,
     );
+    this.updateToggleButtons();
   }
 
   addCredits() {
@@ -79,7 +85,32 @@ export class DebugPanel {
     this.game.state.debug ||= {};
     this.game.state.debug.invincible = !this.game.state.debug.invincible;
     this.game.saveGame();
+    this.updateToggleButtons();
     this.note(`Invincible ${this.game.state.debug.invincible ? 'on' : 'off'}.`);
+  }
+
+  toggleGodMode() {
+    this.game.state.debug ||= {};
+    this.game.state.debug.godMode = !this.game.state.debug.godMode;
+    const scene = this.game.sceneManager.current;
+    if (this.game.state.debug.godMode) {
+      this.game.state.ship.fuel = this.game.state.ship.maxFuel;
+      if (scene?.stats) {
+        scene.stats.fuel = scene.stats.maxFuel;
+        scene.stats.hull = scene.stats.maxHull;
+      }
+    }
+    scene?.updateHud?.(true);
+    this.game.saveGame();
+    this.updateToggleButtons();
+    this.note(`God mode ${this.game.state.debug.godMode ? 'on: infinite fuel, invincible, Space boost.' : 'off'}.`);
+  }
+
+  updateToggleButtons() {
+    const debug = this.game.state.debug || {};
+    this.godModeButton?.classList.toggle('is-active', Boolean(debug.godMode));
+    this.invincibleButton?.classList.toggle('is-active', Boolean(debug.invincible));
+    this.element?.classList.toggle('is-god-mode', Boolean(debug.godMode));
   }
 
   refillShip() {
@@ -141,8 +172,10 @@ export class DebugPanel {
 
   refreshStatus(message = '') {
     if (!this.status) return;
+    this.updateToggleButtons();
     const stored = Object.values(this.game.state.inventory || {}).reduce((total, amount) => total + amount, 0);
     const knownMaterials = materials.length;
-    this.status.textContent = message || `Credits ${this.game.state.credits} | RP ${this.game.state.researchPoints} | Storage ${stored} | Materials ${knownMaterials}`;
+    const godMode = this.game.state.debug?.godMode ? ' | God ON' : '';
+    this.status.textContent = message || `Credits ${this.game.state.credits} | RP ${this.game.state.researchPoints} | Storage ${stored} | Materials ${knownMaterials}${godMode}`;
   }
 }

@@ -88,7 +88,7 @@ export class TutorialSystem {
     this.mark('miningIntro', { save: false });
     this.queueSparks([
       { key: 'miningMove', highlight: '.joystick', label: 'Move', placement: 'above' },
-      { key: 'miningLaser', highlight: '.mine-hold-button', label: 'Hold Mine', placement: 'above' },
+      { key: 'miningLaser', highlight: '.tool-hotbar', label: 'Pick Tool', placement: 'above' },
       { key: 'miningCollect', highlight: null },
       { key: 'miningHud', highlight: '.mining-hud', label: 'Ship Status' },
       { key: 'miningReturn', highlight: '.station-radar', label: 'Station Beacon' },

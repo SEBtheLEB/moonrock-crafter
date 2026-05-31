@@ -1,28 +1,28 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js';
+import { InputManager } from './InputManager.js?v=93';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=44';
+import { AudioManager } from './AudioManager.js?v=93';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=44';
+import { DebugPanel } from '../ui/DebugPanel.js?v=93';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=44';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=44';
-import { EconomySystem } from '../systems/EconomySystem.js?v=44';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=44';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=44';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=44';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=44';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=44';
-import { IslandSystem } from '../systems/IslandSystem.js?v=44';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=93';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=93';
+import { EconomySystem } from '../systems/EconomySystem.js?v=93';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=93';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=93';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=93';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=93';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=93';
+import { IslandSystem } from '../systems/IslandSystem.js?v=93';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=44';
-import { MiningScene } from '../scenes/MiningScene.js?v=44';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=44';
-import { StorageScene } from '../scenes/StorageScene.js?v=44';
-import { IslandScene } from '../scenes/IslandScene.js?v=44';
-import { gameBalance } from '../data/gameBalance.js?v=44';
+import { StationScene } from '../scenes/StationScene.js?v=93';
+import { MiningScene } from '../scenes/MiningScene.js?v=93';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=93';
+import { StorageScene } from '../scenes/StorageScene.js?v=93';
+import { IslandScene } from '../scenes/IslandScene.js?v=93';
+import { gameBalance } from '../data/gameBalance.js?v=93';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -42,6 +42,8 @@ export class Game {
     this.lastTime = 0;
     this.running = false;
     this.paused = false;
+    this.controllerUiFocusIndex = 0;
+    this.controllerUiFocusScope = '';
 
     this.state = this.createInitialState();
     this.systems = this.createSystems();
@@ -73,6 +75,19 @@ export class Game {
       upgrades: {},
       research: {},
       unlockedZones: { originBlue: true },
+      story: {
+        crashIntroSeen: false,
+        starterPlanetId: 'crashPlanet',
+        thrustersRepaired: false,
+        furnaceBuilt: false,
+        furnacePlaced: false,
+        furnace: null,
+        furnaceInventory: [],
+        furnaces: [],
+        craftingStationPlaced: false,
+        craftingStation: null,
+        stationRouteUnlocked: false,
+      },
       settings: {
         audioMuted: this.audio ? !this.audio.enabled : false,
       },
@@ -83,6 +98,7 @@ export class Game {
       },
       debug: {
         invincible: false,
+        godMode: false,
       },
       tutorial: {},
       progression: {},
@@ -96,13 +112,17 @@ export class Game {
       },
       islands: {
         visited: {},
+        terrain: {},
+        layout: null,
+        layoutVersion: 0,
+        seed: null,
       },
     };
   }
 
   mergeState(defaultState, savedState) {
     if (!savedState) return defaultState;
-    return {
+    const merged = {
       ...defaultState,
       ...savedState,
       ship: { ...defaultState.ship, ...savedState.ship },
@@ -116,6 +136,22 @@ export class Game {
       settings: { ...defaultState.settings, ...savedState.settings },
       stats: { ...defaultState.stats, ...savedState.stats },
       debug: { ...defaultState.debug, ...savedState.debug },
+      story: {
+        ...defaultState.story,
+        ...savedState.story,
+        furnace: savedState.story?.furnace
+          ? { ...defaultState.story.furnace, ...savedState.story.furnace }
+          : defaultState.story.furnace,
+        furnaceInventory: Array.isArray(savedState.story?.furnaceInventory)
+          ? savedState.story.furnaceInventory
+          : defaultState.story.furnaceInventory,
+        furnaces: Array.isArray(savedState.story?.furnaces)
+          ? savedState.story.furnaces
+          : defaultState.story.furnaces,
+        craftingStation: savedState.story?.craftingStation
+          ? { ...defaultState.story.craftingStation, ...savedState.story.craftingStation }
+          : defaultState.story.craftingStation,
+      },
       tutorial: { ...defaultState.tutorial, ...savedState.tutorial },
       progression: {
         ...defaultState.progression,
@@ -153,8 +189,20 @@ export class Game {
           ...(defaultState.islands?.visited || {}),
           ...(savedState.islands?.visited || {}),
         },
+        terrain: {
+          ...(defaultState.islands?.terrain || {}),
+          ...(savedState.islands?.terrain || {}),
+        },
+        layout: Array.isArray(savedState.islands?.layout)
+          ? savedState.islands.layout
+          : defaultState.islands?.layout,
+        layoutVersion: savedState.islands?.layoutVersion ?? defaultState.islands?.layoutVersion,
+        seed: savedState.islands?.seed ?? defaultState.islands?.seed,
       },
     };
+    if (merged.story?.furnaceBuilt) delete merged.inventory.fireCore;
+    if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
+    return merged;
   }
 
   migrateInventory(inventory) {
@@ -194,6 +242,7 @@ export class Game {
     const saved = this.save.load();
     if (saved) {
       this.state = this.mergeState(this.createInitialState(), saved);
+      this.systems = this.createSystems();
     }
     this.audio.setMuted(Boolean(this.state.settings?.audioMuted));
     this.systems.upgrades.applyUpgrades();
@@ -206,6 +255,7 @@ export class Game {
     window.addEventListener('resize', this.resize);
     window.addEventListener('orientationchange', this.resize);
     this.preventBrowserGestures();
+    this.requestFullscreen();
 
     this.running = true;
     this.sceneManager.switchTo('boot');
@@ -246,6 +296,14 @@ export class Game {
 
   preventBrowserGestures() {
     document.addEventListener('contextmenu', (event) => event.preventDefault());
+    document.addEventListener('selectstart', (event) => {
+      if (event.target.closest?.('#game-shell')) event.preventDefault();
+    });
+    document.addEventListener('dragstart', (event) => {
+      if (event.target.closest?.('#game-shell')) event.preventDefault();
+    });
+    window.addEventListener('pointerdown', () => this.requestFullscreen(), { once: true, capture: true });
+    window.addEventListener('keydown', () => this.requestFullscreen(), { once: true, capture: true });
     document.addEventListener(
       'touchmove',
       (event) => {
@@ -253,6 +311,13 @@ export class Game {
       },
       { passive: false },
     );
+  }
+
+  requestFullscreen() {
+    if (document.fullscreenElement) return;
+    const target = this.canvas?.parentElement || document.documentElement;
+    if (!target?.requestFullscreen) return;
+    target.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   }
 
   resetSave() {
@@ -264,7 +329,7 @@ export class Game {
     this.paused = false;
     this.ui.hidePauseMenu();
     this.audio.playReset();
-    this.sceneManager.switchTo('station');
+    this.sceneManager.switchTo('boot');
   }
 
   togglePause(forceState) {
@@ -276,6 +341,10 @@ export class Game {
   returnToStation() {
     this.paused = false;
     this.ui.hidePauseMenu();
+    if (!this.state.story?.thrustersRepaired && this.sceneManager.currentName !== 'station') {
+      this.ui.showToast('Repair the ship before returning to the station.', 'danger', 1800);
+      return;
+    }
     this.sceneManager.switchTo('station');
   }
 
@@ -369,13 +438,69 @@ export class Game {
     this.systems.dialogue.update(delta);
     this.ui.updateDialogue(this.systems.dialogue.active);
     if (this.input.actions.justPressed.pause) {
-      if (this.sceneManager.currentName === 'station') this.togglePause();
+      if (this.sceneManager.currentName === 'station' || !this.state.story?.thrustersRepaired) this.togglePause();
       else this.returnToStation();
     }
     if (this.input.actions.justPressed.debugToggle) this.debugPanel.toggle();
+    this.handleControllerUiNavigation();
     if (!this.paused) this.sceneManager.update(delta);
     this.sceneManager.render(this.ctx);
     this.input.endFrame();
     requestAnimationFrame(this.loop);
+  }
+
+  handleControllerUiNavigation() {
+    if (!this.input.isControllerActive?.()) return;
+    const scope = this.getControllerUiScope();
+    if (!scope) {
+      this.controllerUiFocusScope = '';
+      return;
+    }
+    const controls = this.getControllerUiControls(scope);
+    if (!controls.length) return;
+    if (scope !== this.controllerUiFocusScope) {
+      this.controllerUiFocusScope = scope;
+      this.controllerUiFocusIndex = 0;
+      controls[0].focus({ preventScroll: true });
+    }
+
+    const actions = this.input.actions;
+    if (actions.justPressed.cancel) {
+      if (this.paused) this.togglePause(false);
+      else if (scope === 'upgrades' || scope === 'storage') this.sceneManager.switchTo('station');
+      return;
+    }
+
+    const direction = Number(actions.justPressed.right || actions.justPressed.down)
+      - Number(actions.justPressed.left || actions.justPressed.up);
+    if (direction !== 0) {
+      this.controllerUiFocusIndex = (this.controllerUiFocusIndex + direction + controls.length) % controls.length;
+      controls[this.controllerUiFocusIndex].focus({ preventScroll: true });
+      this.audio.playButtonHover();
+    }
+
+    const activeIndex = controls.indexOf(document.activeElement);
+    if (activeIndex >= 0) this.controllerUiFocusIndex = activeIndex;
+    if ((actions.justPressed.confirm || actions.justPressed.interact) && controls[this.controllerUiFocusIndex]) {
+      controls[this.controllerUiFocusIndex].click();
+    }
+  }
+
+  getControllerUiScope() {
+    if (this.paused || this.ui.hasBlockingOverlay()) return 'overlay';
+    if (this.sceneManager.currentName === 'upgrades') return 'upgrades';
+    if (this.sceneManager.currentName === 'storage') return 'storage';
+    return '';
+  }
+
+  getControllerUiControls(scope) {
+    const roots = scope === 'overlay' ? [this.ui.modalLayer, this.ui.dialogueOverlay] : [this.ui.root];
+    return roots.flatMap((root) => [...(root?.querySelectorAll('button:not([disabled])') || [])])
+      .filter((element) => !element.classList.contains('pause-button'))
+      .filter((element) => !element.closest('.debug-panel'))
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden';
+      });
   }
 }

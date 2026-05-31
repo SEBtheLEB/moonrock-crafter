@@ -654,3 +654,237 @@ html[data-layout-profile="pc"] .recall-button {
   min-width: 110px;
   min-height: 44px;
 }
+
+/* Compact PC-forward HUD: map cluster owns vitals and inventory, leaving playfield open. */
+.mining-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  padding: 0;
+  pointer-events: none;
+}
+
+.mining-map-stack {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  top: calc(var(--safe-top) + 108px);
+  z-index: 7;
+  width: 164px;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.mining-map-stack .mining-minimap {
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.mining-vitals {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mining-vitals .mining-bar {
+  min-height: 104px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 5px;
+  padding: 6px 5px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.mining-vitals .mining-bar span,
+.mining-vitals .mining-bar strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(236, 231, 216, 0.82);
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mining-vitals .mining-bar strong {
+  color: rgba(255, 242, 207, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-vitals .mining-bar div {
+  position: relative;
+  width: 100%;
+  height: 72px;
+  grid-column: auto;
+  border: 1px solid rgba(236, 231, 216, 0.14);
+  border-radius: 9px;
+  background: rgba(1, 6, 12, 0.58);
+  overflow: hidden;
+}
+
+.mining-vitals .mining-bar i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 7px;
+  transition: height 140ms ease;
+}
+
+.mining-vitals .hull-bar i {
+  background: linear-gradient(180deg, #b8ffd0, #58d889);
+}
+
+.mining-vitals .fuel-bar i {
+  background: linear-gradient(180deg, #8ef5ff, #357cff);
+}
+
+.mining-vitals .cargo-bar i {
+  background: linear-gradient(180deg, #ffe28a, #dc8741);
+}
+
+.quick-inventory {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 0;
+  transform: scale(0.72) translate(-8px, -8px);
+  transform-origin: top left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 140ms ease, visibility 0ms linear 140ms;
+}
+
+.quick-inventory.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: scale(1);
+  transition-delay: 0ms;
+}
+
+.quick-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 34px);
+  gap: 5px;
+}
+
+.quick-inventory-slot {
+  position: relative;
+  width: 34px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(236, 231, 216, 0.13);
+  border-radius: 7px;
+  background: rgba(6, 14, 24, 0.28);
+  color: var(--item-color, #fff2cf);
+  cursor: pointer;
+  backdrop-filter: blur(5px);
+}
+
+.quick-inventory-slot.has-item {
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--item-color, #fff2cf) 24%, transparent), transparent 68%),
+    rgba(6, 14, 24, 0.34);
+}
+
+.quick-inventory-slot.is-empty {
+  opacity: 0.26;
+  cursor: default;
+}
+
+.quick-inventory-slot .slot-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--item-color, #fff2cf) 48%, transparent);
+}
+
+.quick-inventory-slot strong {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  padding: 1px 3px;
+  border-radius: 999px;
+  background: rgba(1, 6, 12, 0.64);
+  color: rgba(255, 242, 207, 0.92);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.station-radar {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  top: calc(var(--safe-top) + 16px);
+}
+
+.zone-chip {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 16px);
+  transform: translateX(-50%);
+}
+
+.mining-warning {
+  position: absolute;
+  right: calc(var(--safe-right) + 16px);
+  top: calc(var(--safe-top) + 18px);
+  max-width: min(260px, 38vw);
+  text-align: right;
+}
+
+@media (max-width: 760px), (max-height: 460px) {
+  .mining-map-stack {
+    top: calc(var(--safe-top) + 72px);
+    width: 142px;
+    gap: 6px;
+  }
+
+  .mining-map-stack .mining-minimap {
+    width: 126px;
+    height: 126px;
+    padding: 7px;
+  }
+
+  .mining-vitals .mining-bar {
+    min-height: 82px;
+    padding: 5px 4px;
+  }
+
+  .mining-vitals .mining-bar div {
+    height: 54px;
+  }
+
+  .quick-inventory-grid {
+    grid-template-columns: repeat(7, 30px);
+    gap: 4px;
+  }
+
+  .quick-inventory-slot {
+    width: 30px;
+    border-radius: 6px;
+  }
+
+  .station-radar,
+  .zone-chip {
+    min-height: 28px;
+    font-size: 11px;
+  }
+}

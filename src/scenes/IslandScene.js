@@ -1,8 +1,15 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { IslandPlayer } from '../entities/IslandPlayer.js';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=44';
-import { gameBalance } from '../data/gameBalance.js?v=44';
+import { Hotbar } from '../ui/Hotbar.js?v=93';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=93';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=93';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=93';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=93';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=93';
+import { gameBalance } from '../data/gameBalance.js?v=93';
+
+const TERRAIN_LASER_RANGE = 390;
+const TERRAIN_MINING_BRUSH_RADIUS = 18;
 
 export class IslandScene {
   constructor(game, payload = {}) {
@@ -15,25 +22,40 @@ export class IslandScene {
       cargoCapacity: payload.miningStats?.cargoCapacity || this.game.state.ship.cargoMax || 20,
     };
     this.world = null;
+    this.terrain = null;
     this.player = null;
     this.combatDrone = new CompanionDrone({ cooldown: 0.46, damage: 1, targetRange: 560 });
+    this.laserRenderer = new ElectricLaserRenderer();
     this.nodes = [];
     this.animals = [];
     this.time = 0;
-    this.camera = { x: 0, targetX: 0 };
+    this.camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
     this.viewScale = gameBalance.ui?.worldViewScale || 1;
     this.promptTarget = null;
     this.hudCache = {};
     this.floatingText = [];
+    this.terrainParticles = [];
+    this.miningBeam = null;
+    this.terrainMiningHitFeedback = null;
+    this.laserSoundActive = false;
+    this.terrainDirty = false;
+    this.placedFlags = [];
+    this.flagPlacementPreview = null;
     this.toolCooldown = 0;
+    this.mineBlockedCooldown = 0;
     this.exiting = false;
   }
 
   enter() {
     this.game.ui.setScreen('island-screen');
     this.resize(this.game.viewport);
-    this.player = new IslandPlayer({ x: 190, y: this.world.floorY - 58 });
-    const runtime = this.game.systems.islands.createRuntime(this.island, this.world);
+    this.terrain = this.game.systems.islands.createTerrain(this.island, this.world);
+    this.placedFlags = this.game.systems.islands.getSavedFlags(this.island.id).map((flag) => PlacedFlag.deserialize(flag));
+    this.world.floorY = this.terrain.getSurfaceY(this.terrain.landingX);
+    this.world.landingX = this.terrain.landingX;
+    this.world.height = this.terrain.height;
+    this.player = new IslandPlayer({ x: this.terrain.landingX + 58, y: this.world.floorY - 58 });
+    const runtime = this.game.systems.islands.createRuntime(this.island, this.world, this.terrain);
     this.nodes = runtime.nodes;
     this.animals = runtime.animals;
     this.mountHud();
@@ -47,11 +69,12 @@ export class IslandScene {
 
   resize(viewport = this.game.viewport) {
     if (!viewport) return;
-    const floorOffset = Math.max(54, Math.min(86, viewport.height * 0.19));
+    const worldHeight = Math.max(viewport.height * 1.18, (this.island.size?.height || 620) + 160);
     this.world = {
       width: Math.max(this.island.size?.width || 1280, this.getVisibleWorldWidth(viewport) + 360),
-      height: viewport.height,
-      floorY: Math.max(210, viewport.height - floorOffset),
+      height: worldHeight,
+      floorY: Math.max(210, worldHeight * 0.62),
+      landingX: 150,
     };
   }
 
@@ -73,6 +96,7 @@ export class IslandScene {
         <strong data-cargo-text></strong>
         <div><i data-cargo-fill></i></div>
       </div>
+      <div class="island-cargo-preview" data-cargo-preview></div>
       <div class="island-prompt" data-island-prompt></div>
     `;
     this.game.ui.addSceneElement(hud);
@@ -81,6 +105,7 @@ export class IslandScene {
       healthFill: hud.querySelector('[data-health-fill]'),
       cargoText: hud.querySelector('[data-cargo-text]'),
       cargoFill: hud.querySelector('[data-cargo-fill]'),
+      cargoPreview: hud.querySelector('[data-cargo-preview]'),
       prompt: hud.querySelector('[data-island-prompt]'),
     };
     this.updateHud(true);
@@ -89,6 +114,8 @@ export class IslandScene {
   mountControls() {
     const moveStick = new Joystick({ label: 'Walk', className: 'island-joystick' }).element;
     this.moveStick = moveStick;
+    this.hotbar = new Hotbar(this.game, { className: 'island-tool-hotbar' });
+    this.game.ui.addSceneElement(this.hotbar.element);
     const jumpButton = new Button('Jump', () => {}, {
       icon: '^',
       className: 'island-jump-button',
@@ -101,67 +128,75 @@ export class IslandScene {
       variant: 'success',
       holdAction: 'interact',
     }).element;
-    const mineButton = new Button('Mine', () => {}, {
-      icon: 'M',
+    const useButton = new Button('Use', () => {}, {
+      icon: 'U',
       className: 'island-mine-button',
       variant: 'metal',
-      holdAction: 'mine',
-    }).element;
-    const attackButton = new Button('Shoot', () => {}, {
-      icon: 'S',
-      className: 'island-attack-button attack-button',
-      variant: 'metal',
-      holdAction: 'attack',
+      holdAction: 'primaryUse',
     }).element;
     const actions = document.createElement('div');
     actions.className = 'island-action-controls';
-    actions.append(jumpButton, interactButton, mineButton, attackButton);
+    actions.append(jumpButton, interactButton, useButton);
     this.controls = this.game.ui.addControls([moveStick, actions]);
     this.controls.classList.add('island-mobile-controls');
     this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(jumpButton, 'jump');
     this.game.input.bindHoldButton(interactButton, 'interact');
-    this.game.input.bindHoldButton(mineButton, 'mine');
-    this.game.input.bindHoldButton(attackButton, 'attack');
+    this.game.input.bindHoldButton(useButton, 'primaryUse');
   }
 
   update(delta) {
     if (this.exiting) return;
     this.time += delta;
+    this.hotbar?.update();
     this.toolCooldown = Math.max(0, this.toolCooldown - delta);
+    this.mineBlockedCooldown = Math.max(0, this.mineBlockedCooldown - delta);
     const actions = this.game.input.actions;
-    const spaceJump = actions.justPressed.mine && this.game.input.keys.has(' ');
+    const spaceJump = actions.justPressed.jump && this.game.input.keys.has(' ');
     const keyboardJump = actions.justPressed.up
       && (this.game.input.keys.has('w') || this.game.input.keys.has('W') || this.game.input.keys.has('ArrowUp'));
     this.player.update(delta, {
       moveX: this.game.input.moveVector.x,
       jumpPressed: actions.justPressed.jump || keyboardJump || spaceJump,
-    }, this.world);
+    }, this.world, this.terrain);
     this.updateCamera(delta);
     this.nodes.forEach((node) => node.update(delta));
     this.animals.forEach((animal) => animal.update(delta, this.player, this.world));
     this.updateDroneCombat(delta);
     this.handleAnimalContact();
     this.updateFloatingText(delta);
+    this.updateTerrainParticles(delta);
     this.promptTarget = this.findPromptTarget();
     if (actions.justPressed.interact || actions.justPressed.confirm) this.useInteract();
-    const miningInput = actions.mine && !this.game.input.keys.has(' ');
-    const miningStarted = actions.justPressed.mine && !this.game.input.keys.has(' ');
-    if (actions.justPressed.tool || miningInput) {
+    const miningInput = actions.mine;
+    const miningStarted = actions.justPressed.mine;
+    if (miningInput) this.updateTerrainMining(delta);
+    else this.stopTerrainLaser();
+    this.flagPlacementPreview = this.isFlagToolSelected() ? this.getFlagPlacementPreview() : null;
+    if (actions.justPressed.placeFlag) this.placeFlag(this.flagPlacementPreview);
+    if (actions.justPressed.tool) {
       this.useTool(this.getAimPoint(), { playError: actions.justPressed.tool || miningStarted });
     }
     if (actions.justPressed.attack) this.fireDroneAttack();
+    this.updatePlacedFlags(delta);
     this.updateHud();
   }
 
   updateCamera(delta) {
     const viewportWidth = this.getVisibleWorldWidth();
+    const viewportHeight = this.getVisibleWorldHeight();
     this.camera.targetX = Math.max(0, Math.min(this.world.width - viewportWidth, this.player.centerX - viewportWidth * 0.42));
+    this.camera.targetY = Math.max(0, Math.min(this.world.height - viewportHeight, this.player.centerY - viewportHeight * 0.54));
     this.camera.x += (this.camera.targetX - this.camera.x) * Math.min(1, delta * 8);
+    this.camera.y += (this.camera.targetY - this.camera.y) * Math.min(1, delta * 7);
   }
 
   getVisibleWorldWidth(viewport = this.game.viewport) {
     return (viewport?.width || 0) / Math.max(0.1, this.viewScale);
+  }
+
+  getVisibleWorldHeight(viewport = this.game.viewport) {
+    return (viewport?.height || 0) / Math.max(0.1, this.viewScale);
   }
 
   handleAnimalContact() {
@@ -177,8 +212,10 @@ export class IslandScene {
   }
 
   findPromptTarget() {
-    if (Math.abs(this.player.centerX - 150) < 92) {
-      return { type: 'ship', label: 'Board Ship', detail: 'Return to space' };
+    const shipX = this.terrain?.landingX || 150;
+    const shipY = this.terrain?.getSurfaceY(shipX) || this.world.floorY;
+    if (Math.abs(this.player.centerX - shipX) < 98 && Math.abs(this.player.centerY - (shipY - 42)) < 120) {
+      return { type: 'ship', label: 'Press E/A to Board Ship', detail: 'Return to space' };
     }
     const plant = this.nodes.find((node) => node.active && node.data.type === 'plant' && node.isNear(this.player, 82));
     if (plant) return { type: 'node', node: plant, label: `Gather ${plant.data.name}`, detail: 'Press Interact' };
@@ -239,7 +276,193 @@ export class IslandScene {
     }
   }
 
+  updateTerrainMining(delta) {
+    if (!this.terrain || this.game.ui.modalLayer?.children.length) return;
+    const laser = this.getTerrainLaserState(this.getAimPoint(), { updateFacing: true });
+    const hit = laser.length > 8
+      ? this.terrain.raycast(laser.start.x, laser.start.y, laser.end.x, laser.end.y)
+      : null;
+    this.miningBeam = {
+      ...laser,
+      end: hit ? { x: hit.x, y: hit.y } : laser.end,
+      hit,
+      age: 0,
+    };
+
+    if (!hit) {
+      this.terrainMiningHitFeedback = null;
+      this.startTerrainLaser();
+      return;
+    }
+
+    if (!this.canMineTerrainMaterial(hit.material)) {
+      this.terrainMiningHitFeedback = { ...hit, ratio: 0.04, blocked: true };
+      this.showTerrainMineBlocked(hit);
+      this.laserSoundActive = false;
+      this.game.audio.stopLaserLoop?.();
+      return;
+    }
+
+    this.startTerrainLaser();
+    const beforeRatio = this.terrain.getDamageRatio(hit.col, hit.row, hit.material);
+    const power = this.getTerrainMiningPower();
+    const broken = this.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta);
+    const brokeTarget = broken.some((cell) => cell.col === hit.col && cell.row === hit.row);
+    const afterRatio = brokeTarget ? 1 : this.terrain.getDamageRatio(hit.col, hit.row, hit.material);
+    this.terrainMiningHitFeedback = {
+      ...hit,
+      ratio: Math.max(beforeRatio, afterRatio),
+      blocked: false,
+    };
+    this.spawnTerrainParticles(hit.x, hit.y, TERRAIN_MATERIALS[hit.material]?.edge || '#ffd36b', broken.length ? 9 : 2);
+    if (broken.length) {
+      this.terrainDirty = true;
+      this.collectTerrainCells(broken);
+      this.game.audio.playMineNode?.();
+    }
+  }
+
+  getTerrainMiningPower() {
+    const base = gameBalance.mining.terrainMiningPowerBase ?? 0.42;
+    const scale = gameBalance.mining.terrainMiningPowerScale ?? 0.78;
+    return base + Math.max(0, this.miningStats.miningPower || 0) * scale;
+  }
+
+  canMineTerrainMaterial(material) {
+    const data = TERRAIN_MATERIALS[material];
+    const requiredPower = data?.miningPowerRequired ?? 0;
+    return (this.miningStats.miningPower ?? 0) + 0.001 >= requiredPower;
+  }
+
+  showTerrainMineBlocked(hit) {
+    if (this.mineBlockedCooldown > 0) return;
+    this.mineBlockedCooldown = 0.85;
+    const data = TERRAIN_MATERIALS[hit.material] || TERRAIN_MATERIALS[1];
+    this.game.ui.showToast(`${data.name} needs a stronger miner`, 'danger', 1600);
+    this.addFloatingText('Upgrade miner', '#ff756f');
+    this.game.audio.playError();
+  }
+
+  isFlagToolSelected() {
+    return this.game.input.getSelectedHotbarSlot?.()?.id === 'flag';
+  }
+
+  isWeaponToolSelected() {
+    return this.game.input.getSelectedHotbarSlot?.()?.id === 'weapon';
+  }
+
+  getFlagPlacementPreview() {
+    if (!this.terrain || !this.player) return null;
+    const laser = this.getTerrainLaserState(this.getAimPoint(), { updateFacing: false });
+    const hit = laser.length > 8
+      ? this.terrain.raycast(laser.start.x, laser.start.y, laser.end.x, laser.end.y)
+      : null;
+    return {
+      ...laser,
+      hit,
+      end: hit ? { x: hit.x, y: hit.y } : laser.end,
+      canPlace: Boolean(hit),
+    };
+  }
+
+  placeFlag(preview = null) {
+    if (!this.terrain || !this.player || this.game.ui.modalLayer?.children.length) return;
+    const target = preview || this.getFlagPlacementPreview();
+    if (!target?.hit) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Aim the flag at solid ground', 'danger', 1100);
+      return;
+    }
+    if (Math.abs(target.rawAimPoint.x - this.player.centerX) > 4) {
+      this.player.facing = target.rawAimPoint.x >= this.player.centerX ? 1 : -1;
+    }
+    const material = TERRAIN_MATERIALS[target.hit.material] || TERRAIN_MATERIALS[1];
+    const pad = this.terrain.createPlacementPad(target.hit.x, target.hit.y, {
+      viewRotation: 0,
+      width: 90,
+      clearance: 72,
+      depth: 42,
+      material: target.hit.material,
+    });
+    if (this.placedFlags.length >= 24) this.placedFlags.shift();
+    this.placedFlags.push(new PlacedFlag({
+      x: pad.x,
+      y: pad.y,
+      color: '#ffd36b',
+      accent: material.edge || '#66d8e8',
+    }));
+    this.terrainDirty = this.terrainDirty || pad.changed;
+    if (this.terrainDirty) {
+      this.game.systems.islands.saveTerrain(this.island.id, this.terrain);
+      this.terrainDirty = false;
+    }
+    this.game.systems.islands.saveFlags(this.island.id, this.placedFlags);
+    this.spawnTerrainParticles(pad.x, pad.y, '#ffd36b', 14);
+    this.addFloatingText('Flag placed', '#ffd36b', pad.x, pad.y - 26);
+    this.game.audio.playSuccess?.();
+  }
+
+  updatePlacedFlags(delta) {
+    this.placedFlags.forEach((flag) => {
+      flag.update(delta);
+      flag.bumpFromPlayer(this.player);
+    });
+  }
+
+  startTerrainLaser() {
+    if (this.laserSoundActive) return;
+    this.laserSoundActive = true;
+    this.game.audio.playLaserStart?.();
+    this.game.audio.startLaserLoop?.();
+  }
+
+  stopTerrainLaser() {
+    if (!this.laserSoundActive && !this.miningBeam) return;
+    this.laserSoundActive = false;
+    this.miningBeam = null;
+    this.terrainMiningHitFeedback = null;
+    this.game.audio.stopLaserLoop?.();
+  }
+
+  collectTerrainCells(cells) {
+    const grouped = new Map();
+    const positions = new Map();
+    for (const cell of cells) {
+      if (!cell.data?.materialId || !cell.data.yield) continue;
+      const existing = grouped.get(cell.data.materialId) || 0;
+      grouped.set(cell.data.materialId, existing + cell.data.yield);
+      positions.set(cell.data.materialId, cell);
+    }
+
+    for (const [materialId, amount] of grouped.entries()) {
+      const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
+        capacity: this.miningStats.cargoCapacity,
+      });
+      const material = this.game.systems.materials.getMaterial(materialId);
+      const position = positions.get(materialId);
+      if (!result.ok) {
+        this.game.ui.showToast('Cargo Full', 'danger');
+        this.game.audio.playCargoFull();
+        this.addFloatingText('Cargo Full', '#ff756f', position?.x, position?.y);
+        continue;
+      }
+      this.game.systems.objectives.record('materialCollected', { materialId, amount });
+      this.addFloatingText(
+        `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`,
+        material?.color || '#fff2cf',
+        position?.x,
+        position?.y,
+      );
+      this.game.audio.playIslandPickup?.();
+    }
+
+    const weight = this.game.systems.inventory.getRunCargoWeight();
+    this.miningStats.cargo = Math.ceil(weight);
+  }
+
   updateDroneCombat(delta) {
+    const weaponSelected = this.isWeaponToolSelected();
+    if (!weaponSelected && !this.combatDrone.projectiles.length) return;
     this.combatDrone.update(delta, this.getDroneAnchor(), {
       threats: this.animals,
       onHit: (target) => this.handleDroneHit(target),
@@ -247,6 +470,7 @@ export class IslandScene {
   }
 
   fireDroneAttack() {
+    if (!this.isWeaponToolSelected()) return;
     if (this.game.ui.modalLayer?.children.length) return;
     this.combatDrone.tryShoot({
       anchor: this.getDroneAnchor(),
@@ -277,13 +501,61 @@ export class IslandScene {
   }
 
   getAimPoint() {
+    const controllerAim = this.getControllerAimPoint();
+    if (controllerAim) return controllerAim;
+    const pointerAim = this.getPointerAimPoint();
+    if (pointerAim) return pointerAim;
+    return {
+      x: this.player.centerX + this.player.facing * TERRAIN_LASER_RANGE,
+      y: this.player.centerY - 8,
+    };
+  }
+
+  getPointerAimPoint() {
     const pointer = this.game.input.mousePointer;
     if (pointer?.inside && pointer.source === 'canvas' && document.documentElement.dataset.inputMode !== 'touch') {
       return this.screenToWorld(pointer.canvasX, pointer.canvasY);
     }
+    return null;
+  }
+
+  getControllerAimPoint() {
+    if (!this.game.input.isControllerActive?.()) return null;
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    const magnitude = Math.hypot(aim.x, aim.y);
+    if (magnitude < 0.12) return null;
+    const distance = Math.max(48, TERRAIN_LASER_RANGE * Math.min(1, magnitude));
     return {
-      x: this.player.centerX + this.player.facing * 420,
-      y: this.player.centerY - 8,
+      x: this.player.centerX + (aim.x / magnitude) * distance,
+      y: this.player.centerY - 7 + (aim.y / magnitude) * distance,
+    };
+  }
+
+  getTerrainLaserState(aimPoint, { updateFacing = false } = {}) {
+    const start = {
+      x: this.player.centerX,
+      y: this.player.centerY - 7,
+    };
+    const dx = aimPoint.x - start.x;
+    const dy = aimPoint.y - start.y;
+    const distance = Math.hypot(dx, dy);
+    const directionX = distance > 0.001 ? dx / distance : this.player.facing;
+    const directionY = distance > 0.001 ? dy / distance : 0;
+    if (updateFacing && Math.abs(dx) > 4) this.player.facing = dx >= 0 ? 1 : -1;
+    const length = Math.min(distance, TERRAIN_LASER_RANGE);
+    const end = {
+      x: start.x + directionX * length,
+      y: start.y + directionY * length,
+    };
+    return {
+      start,
+      end,
+      aimPoint: end,
+      rawAimPoint: aimPoint,
+      origin: start,
+      range: TERRAIN_LASER_RANGE,
+      rangeRatio: TERRAIN_LASER_RANGE > 0 ? length / TERRAIN_LASER_RANGE : 0,
+      length,
     };
   }
 
@@ -291,10 +563,10 @@ export class IslandScene {
     const viewport = this.game.viewport || { width: 0, height: 0 };
     const scale = Math.max(0.1, this.viewScale);
     const unscaledX = viewport.width * 0.5 + (screenX - viewport.width * 0.5) / scale;
-    const unscaledY = viewport.height + (screenY - viewport.height) / scale;
+    const unscaledY = viewport.height * 0.5 + (screenY - viewport.height * 0.5) / scale;
     return {
       x: unscaledX + this.camera.x,
-      y: unscaledY,
+      y: unscaledY + this.camera.y,
     };
   }
 
@@ -318,6 +590,12 @@ export class IslandScene {
   boardShip() {
     if (this.exiting) return;
     this.exiting = true;
+    this.stopTerrainLaser();
+    if (this.terrainDirty) {
+      this.game.systems.islands.saveTerrain(this.island.id, this.terrain);
+      this.terrainDirty = false;
+    }
+    this.game.systems.islands.saveFlags(this.island.id, this.placedFlags);
     this.game.audio.playBoardShip?.();
     this.game.ui.root.classList.add('launch-wipe');
     window.setTimeout(() => {
@@ -338,8 +616,21 @@ export class IslandScene {
     this.setHudWidth('healthFill', this.hud.healthFill, Math.round((this.player.health / this.player.maxHealth) * 100), force);
     this.setHudText('cargoText', this.hud.cargoText, `${cargoWeight}/${cargoCapacity}`, force);
     this.setHudWidth('cargoFill', this.hud.cargoFill, Math.round((cargoWeight / cargoCapacity) * 100), force);
-    const promptText = this.promptTarget ? `${this.promptTarget.label} - ${this.promptTarget.detail}` : 'Explore, gather, then board the ship';
+    const promptText = this.promptTarget
+      ? `${this.promptTarget.label} - ${this.promptTarget.detail}`
+      : (this.isFlagToolSelected() ? 'Aim at solid ground and click Use to place a flag' : 'Mine the terrain, then board the ship');
     this.setHudText('prompt', this.hud.prompt, promptText, force);
+    this.setHudText('cargoPreview', this.hud.cargoPreview, this.getCargoPreviewText(), force);
+  }
+
+  getCargoPreviewText() {
+    const cargo = this.game.systems.inventory.getRunCargo();
+    const entries = Object.entries(cargo)
+      .filter(([, amount]) => amount > 0)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([materialId, amount]) => `${this.game.systems.materials.getDisplayName(materialId)} ${amount}`);
+    return entries.length ? entries.join('  ') : 'Cargo empty';
   }
 
   setHudText(key, element, value, force = false) {
@@ -355,12 +646,12 @@ export class IslandScene {
     element.style.width = value;
   }
 
-  addFloatingText(text, color = '#fff2cf') {
+  addFloatingText(text, color = '#fff2cf', x = this.player.centerX, y = this.player.y - 14) {
     this.floatingText.push({
       text,
       color,
-      x: this.player.centerX,
-      y: this.player.y - 14,
+      x,
+      y,
       age: 0,
     });
     if (this.floatingText.length > 18) this.floatingText.shift();
@@ -386,14 +677,22 @@ export class IslandScene {
     this.drawBackdrop(ctx, width, height);
     ctx.save();
     this.applyWorldScale(ctx, width, height);
+    ctx.translate(0, -this.camera.y);
     this.drawTerrain(ctx, width);
+    this.drawPlacedFlags(ctx);
     this.drawShip(ctx);
     this.nodes.forEach((node) => node.draw(ctx, this.camera, this.time));
     this.animals.forEach((animal) => animal.draw(ctx, this.camera, this.time));
+    this.drawLaserRangeField(ctx);
+    this.drawFlagPlacementPreview(ctx);
+    this.drawMiningBeam(ctx);
     this.player.draw(ctx, this.camera, this.time);
-    this.combatDrone.draw(ctx, {
-      worldToScreen: (x, y) => ({ x: x - this.camera.x, y }),
-    });
+    if (this.isWeaponToolSelected()) {
+      this.combatDrone.draw(ctx, {
+        worldToScreen: (x, y) => ({ x: x - this.camera.x, y }),
+      });
+    }
+    this.drawTerrainParticles(ctx);
     this.drawFloatingText(ctx);
     ctx.restore();
   }
@@ -431,27 +730,47 @@ export class IslandScene {
   }
 
   drawTerrain(ctx, width) {
-    const y = this.world.floorY;
-    const sx = -this.camera.x;
-    ctx.fillStyle = '#102033';
-    ctx.fillRect(0, y, width, this.world.height - y);
-    ctx.fillStyle = this.island.biome === 'ember' ? '#7d3028' : this.island.biome === 'forest' ? '#48664d' : '#55606d';
+    this.terrain?.draw(ctx, this.camera, this.getVisibleWorldWidth(), this.getVisibleWorldHeight());
+  }
+
+  drawPlacedFlags(ctx) {
+    if (!this.placedFlags.length) return;
+    ctx.save();
+    ctx.translate(-this.camera.x, 0);
+    this.placedFlags.forEach((flag) => flag.draw(ctx, { time: this.time }));
+    ctx.restore();
+  }
+
+  drawFlagPlacementPreview(ctx) {
+    if (!this.flagPlacementPreview?.hit) return;
+    const hit = this.flagPlacementPreview.hit;
+    const material = TERRAIN_MATERIALS[hit.material] || TERRAIN_MATERIALS[1];
+    ctx.save();
+    ctx.translate(-this.camera.x, 0);
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = 'rgba(255, 211, 107, 0.95)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -this.time * 28;
     ctx.beginPath();
-    ctx.moveTo(sx, y + 8);
-    for (let x = 0; x <= this.world.width; x += 80) {
-      ctx.lineTo(sx + x, y + Math.sin(x * 0.01) * 10);
-    }
-    ctx.lineTo(sx + this.world.width, this.world.height + 80);
-    ctx.lineTo(sx, this.world.height + 80);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255, 211, 107, 0.12)';
-    ctx.fillRect(0, y - 3, width, 5);
+    ctx.moveTo(hit.x - 45, hit.y);
+    ctx.lineTo(hit.x + 45, hit.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    PlacedFlag.drawGhost(ctx, {
+      x: hit.x,
+      y: hit.y - 3,
+      time: this.time,
+      accent: material.edge || '#66d8e8',
+    });
+    ctx.restore();
   }
 
   drawShip(ctx) {
-    const x = 150 - this.camera.x;
-    const y = this.world.floorY - 68 + Math.sin(this.time * 2.5) * 2;
+    const shipX = this.terrain?.landingX || 150;
+    const floorY = this.terrain?.getSurfaceY(shipX) || this.world.floorY;
+    const x = shipX - this.camera.x;
+    const y = floorY - 68 + Math.sin(this.time * 2.5) * 2;
     ctx.save();
     ctx.translate(x, y);
     ctx.fillStyle = '#fff2cf';
@@ -472,6 +791,90 @@ export class IslandScene {
     ctx.ellipse(4, 4, 20, 12, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  drawMiningBeam(ctx) {
+    if (!this.miningBeam) return;
+    const { start, end, hit } = this.miningBeam;
+    const hitColor = hit ? (TERRAIN_MATERIALS[hit.material]?.edge || '#ffcf5a') : '#65d6ff';
+    if (this.terrainMiningHitFeedback) {
+      ctx.save();
+      ctx.translate(-this.camera.x, 0);
+      this.terrain.drawDamageFeedback(ctx, this.terrainMiningHitFeedback, this.time);
+      ctx.restore();
+    }
+    this.laserRenderer.drawBeam(ctx, {
+      worldToScreen: (x, y) => ({ x: x - this.camera.x, y }),
+      start,
+      end,
+      hit,
+      time: this.time,
+      outerColor: hit ? 'rgba(255, 207, 90, 0.9)' : 'rgba(101, 214, 255, 0.54)',
+      innerColor: hit ? 'rgba(255, 255, 255, 0.86)' : 'rgba(255, 255, 255, 0.68)',
+      hitColor,
+      alpha: hit ? 1 : 0.72,
+    });
+  }
+
+  drawLaserRangeField(ctx) {
+    const pointerAim = this.getPointerAimPoint();
+    const state = this.miningBeam || (pointerAim ? this.getTerrainLaserState(pointerAim) : null);
+    if (!state) return;
+    this.laserRenderer.drawRangeField(ctx, {
+      worldToScreen: (x, y) => ({ x: x - this.camera.x, y }),
+      origin: state.origin,
+      radius: state.range,
+      aimPoint: state.aimPoint,
+      active: Boolean(this.miningBeam),
+      time: this.time,
+    });
+  }
+
+  spawnTerrainParticles(x, y, color, count = 5) {
+    for (let i = 0; i < count; i += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 50 + Math.random() * 140;
+      this.terrainParticles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 30,
+        color,
+        age: 0,
+        life: 0.34 + Math.random() * 0.34,
+        size: 2 + Math.random() * 3,
+      });
+    }
+    if (this.terrainParticles.length > 140) this.terrainParticles.splice(0, this.terrainParticles.length - 140);
+  }
+
+  updateTerrainParticles(delta) {
+    let write = 0;
+    for (let i = 0; i < this.terrainParticles.length; i += 1) {
+      const particle = this.terrainParticles[i];
+      particle.age += delta;
+      particle.vy += 520 * delta;
+      particle.x += particle.vx * delta;
+      particle.y += particle.vy * delta;
+      if (particle.age < particle.life) {
+        this.terrainParticles[write] = particle;
+        write += 1;
+      }
+    }
+    this.terrainParticles.length = write;
+  }
+
+  drawTerrainParticles(ctx) {
+    ctx.save();
+    this.terrainParticles.forEach((particle) => {
+      ctx.globalAlpha = Math.max(0, 1 - particle.age / particle.life);
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x - this.camera.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   drawFloatingText(ctx) {
@@ -497,11 +900,17 @@ export class IslandScene {
 
   exit() {
     this.moveStick?.__inputCleanup?.();
+    this.stopTerrainLaser();
+    if (this.terrainDirty) {
+      this.game.systems.islands.saveTerrain(this.island.id, this.terrain);
+      this.terrainDirty = false;
+    }
     this.game.input.virtualButtons.set('jump', false);
     this.game.input.virtualButtons.set('interact', false);
     this.game.input.virtualButtons.set('tool', false);
     this.game.input.virtualButtons.set('mine', false);
     this.game.input.virtualButtons.set('attack', false);
+    this.game.input.virtualButtons.set('primaryUse', false);
     this.combatDrone?.clear();
   }
 }

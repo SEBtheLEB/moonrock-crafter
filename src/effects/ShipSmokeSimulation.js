@@ -207,10 +207,10 @@ export class ShipSmokeSimulation {
     };
   }
 
-  emitFromShip({ ship, camera, input, viewport, fuelRatio = 1, delta, viewScale = 1 }) {
+  emitFromShip({ ship, camera, input, viewport, fuelRatio = 1, delta, viewScale = 1, boosting = false }) {
     this.ensure(viewport?.width || 1, viewport?.height || 1);
     const move = input?.moveVector || { x: 0, y: 0 };
-    const thrust = Math.hypot(move.x, move.y);
+    const thrust = boosting ? Math.max(1, Math.hypot(move.x, move.y)) : Math.hypot(move.x, move.y);
     if (thrust <= 0.05 || fuelRatio <= 0.02) return false;
 
     const exhaustAngle = ship.angle + Math.PI;
@@ -218,7 +218,11 @@ export class ShipSmokeSimulation {
     const exhaustDistance = 40 * shipScale;
     const sideAngle = ship.angle + Math.PI * 0.5;
     const speed = Math.hypot(ship.vx, ship.vy);
-    const power = clamp(thrust * (0.72 + fuelRatio * 0.24) + speed / Math.max(1, ship.maxSpeed) * 0.14, 0.16, 0.98);
+    const power = clamp(
+      thrust * (0.72 + fuelRatio * 0.24) + speed / Math.max(1, ship.maxSpeed) * (boosting ? 0.24 : 0.14),
+      0.16,
+      boosting ? 1.18 : 0.98,
+    );
     const jitter = Math.sin(this.time * 16.7) * 1.35;
     const screenFlowScale = Math.max(0.72, viewScale);
     const baseFlow = (20 + speed * 0.065 + power * 15) * screenFlowScale;
@@ -387,12 +391,12 @@ export class ShipSmokeSimulation {
     if (this.dyeTotal <= SMOKE_SETTINGS.clearThreshold) this.clear();
   }
 
-  update({ delta, viewport, ship, camera, cameraFrame, input, fuelRatio = 1, viewScale = 1 }) {
+  update({ delta, viewport, ship, camera, cameraFrame, input, fuelRatio = 1, viewScale = 1, boosting = false }) {
     this.ensure(viewport?.width || 1, viewport?.height || 1);
     const safeDt = clamp(delta, 0.001, 0.033);
     this.time += safeDt;
     this.applyCameraShift(cameraFrame, viewScale);
-    const emitted = this.emitFromShip({ ship, camera, input, viewport, fuelRatio, delta: safeDt, viewScale });
+    const emitted = this.emitFromShip({ ship, camera, input, viewport, fuelRatio, delta: safeDt, viewScale, boosting });
     if (!emitted && this.dyeTotal <= SMOKE_SETTINGS.clearThreshold) {
       this.clear();
       return;

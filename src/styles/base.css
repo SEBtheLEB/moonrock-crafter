@@ -49,6 +49,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-user-drag: none;
 }
 
 html,
@@ -64,6 +65,81 @@ body {
 button,
 canvas {
   -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: transparent;
+}
+
+html[data-input-mode="mouse"] #game-shell,
+html[data-input-mode="mouse"] #game-shell *,
+html[data-input-mode="keyboard-mouse"] #game-shell,
+html[data-input-mode="keyboard-mouse"] #game-shell * {
+  cursor: none !important;
+}
+
+.game-custom-cursor {
+  --cursor-x: -100px;
+  --cursor-y: -100px;
+  --cursor-speed: 0;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 99999;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(calc(var(--cursor-x) - 7px), calc(var(--cursor-y) - 7px), 0) scale(calc(1 + var(--cursor-speed) * 0.12));
+  transition: opacity 120ms ease, filter 120ms ease;
+  filter: drop-shadow(0 0 8px rgba(90, 218, 255, 0.78));
+  mix-blend-mode: screen;
+}
+
+.game-custom-cursor::before,
+.game-custom-cursor::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.game-custom-cursor::before {
+  width: 6px;
+  height: 6px;
+  background: #8ee8ff;
+  box-shadow:
+    0 0 10px rgba(101, 214, 255, 0.95),
+    0 0 22px rgba(101, 214, 255, 0.42);
+}
+
+.game-custom-cursor::after {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(142, 232, 255, 0.34);
+  background: radial-gradient(circle, rgba(102, 216, 232, 0.16), rgba(102, 216, 232, 0.02) 58%, transparent 70%);
+  transform: translate(-50%, -50%) scale(calc(0.82 + var(--cursor-speed) * 0.28));
+}
+
+.game-custom-cursor.is-visible {
+  opacity: 1;
+}
+
+.game-custom-cursor.is-pressed {
+  filter: drop-shadow(0 0 11px rgba(255, 211, 107, 0.82));
+}
+
+.game-custom-cursor.is-pressed::before {
+  background: #ffd36b;
+  box-shadow:
+    0 0 10px rgba(255, 211, 107, 0.95),
+    0 0 24px rgba(255, 117, 111, 0.36);
+}
+
+html[data-input-mode="touch"] .game-custom-cursor {
+  display: none;
 }
 
 .game-shell {

@@ -1,4 +1,4 @@
-import { gameBalance } from './gameBalance.js?v=44';
+import { gameBalance } from './gameBalance.js?v=93';
 
 const earlyUpgrades = gameBalance.earlyGame.upgrades;
 
@@ -83,7 +83,7 @@ export const upgrades = [
     ],
     effects: [
       { target: 'ship.sizeScale', mode: 'add', value: 0.16, label: 'Ship Size', unit: 'x', precision: 2 },
-      { target: 'ship.cargoMax', mode: 'add', value: 6, label: 'Cargo' },
+      { target: 'ship.cargoMax', mode: 'add', value: 22, label: 'Cargo' },
       { target: 'ship.maxHull', mode: 'add', value: 14, label: 'Max Hull' },
     ],
   },
@@ -215,7 +215,7 @@ export const upgrades = [
       { credits: 260, materials: { denseNickel: 2, glassCrystal: 1 } },
       { credits: 440, materials: { ancientAlloy: 1, starsteel: 1 }, researchPoints: 3 },
     ],
-    effects: [{ target: 'station.storageMax', mode: 'add', value: 20, label: 'Storage' }],
+    effects: [{ target: 'station.storageMax', mode: 'add', value: 180, label: 'Storage' }],
   },
   {
     id: 'sorterDrone',

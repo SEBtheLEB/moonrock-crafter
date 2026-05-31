@@ -1,34 +1,36 @@
+import { ElectricLaserRenderer } from './ElectricLaserRenderer.js?v=93';
+
 export class MiningLaserRenderer {
+  constructor() {
+    this.electric = new ElectricLaserRenderer();
+  }
+
+  drawRangeField(ctx, { camera, ship, radius, aimPoint, active, time }) {
+    this.electric.drawRangeField(ctx, {
+      worldToScreen: (x, y) => camera.worldToScreen(x, y),
+      origin: ship,
+      radius,
+      aimPoint,
+      active,
+      time,
+    });
+  }
+
   drawBeam(ctx, { camera, ship, target, aimPoint, time }) {
     if (!target && !aimPoint) return;
     const endWorld = target || aimPoint;
     const hasTarget = Boolean(target);
-    const start = camera.worldToScreen(ship.x, ship.y);
-    const end = camera.worldToScreen(endWorld.x, endWorld.y);
-    ctx.save();
-    ctx.globalAlpha = hasTarget ? 1 : 0.62;
-    ctx.strokeStyle = hasTarget ? 'rgba(255, 211, 107, 0.95)' : 'rgba(118, 243, 255, 0.62)';
-    ctx.lineWidth = hasTarget ? 5 : 3;
-    ctx.shadowColor = hasTarget ? '#ff8f3d' : '#76f3ff';
-    ctx.shadowBlur = hasTarget ? 18 : 10;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    ctx.globalAlpha = hasTarget ? 0.9 : 0.46;
-    ctx.strokeStyle = hasTarget ? 'rgba(118, 243, 255, 0.9)' : 'rgba(255, 242, 207, 0.72)';
-    ctx.lineWidth = hasTarget ? 2 : 1.4;
-    ctx.stroke();
-    if (hasTarget) {
-      ctx.globalAlpha = 0.82;
-      ctx.fillStyle = '#fff2cf';
-      ctx.shadowColor = target.data?.accent || '#ffd36b';
-      ctx.shadowBlur = 16;
-      ctx.beginPath();
-      ctx.arc(end.x, end.y, 4.5 + Math.sin(time * 36) * 1.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
+    this.electric.drawBeam(ctx, {
+      worldToScreen: (x, y) => camera.worldToScreen(x, y),
+      start: ship,
+      end: endWorld,
+      hit: hasTarget ? target : null,
+      time,
+      outerColor: hasTarget ? 'rgba(255, 211, 107, 0.92)' : 'rgba(118, 243, 255, 0.6)',
+      innerColor: hasTarget ? 'rgba(118, 243, 255, 0.88)' : 'rgba(255, 255, 255, 0.72)',
+      hitColor: target?.data?.accent || '#ffd36b',
+      alpha: hasTarget ? 1 : 0.68,
+    });
   }
 
   drawAimReticle(ctx, { camera, mouseAimWorld, mouseAimTarget, snapRadius, time, inputMode }) {

@@ -15,17 +15,20 @@ export class Ship {
     this.hitCooldown = 0;
   }
 
-  update(delta, input, fuelRatio = 1) {
+  update(delta, input, fuelRatio = 1, { boost = false } = {}) {
     const move = input.moveVector;
-    const thrust = Math.hypot(move.x, move.y);
+    let thrust = Math.hypot(move.x, move.y);
     const fuelFactor = fuelRatio > 0 ? 1 : 0.28;
 
+    if (boost && thrust <= 0.05) thrust = 1;
+
     if (thrust > 0.05) {
-      const moveLength = Math.hypot(move.x, move.y) || 1;
-      const nx = move.x / moveLength;
-      const ny = move.y / moveLength;
-      this.vx += nx * this.acceleration * fuelFactor * delta;
-      this.vy += ny * this.acceleration * fuelFactor * delta;
+      const moveLength = Math.hypot(move.x, move.y);
+      const nx = moveLength > 0.05 ? move.x / moveLength : Math.cos(this.angle);
+      const ny = moveLength > 0.05 ? move.y / moveLength : Math.sin(this.angle);
+      const boostAcceleration = boost ? 4.2 : 1;
+      this.vx += nx * this.acceleration * boostAcceleration * fuelFactor * delta;
+      this.vy += ny * this.acceleration * boostAcceleration * fuelFactor * delta;
       const along = this.vx * nx + this.vy * ny;
       const lateralX = this.vx - nx * along;
       const lateralY = this.vy - ny * along;
@@ -43,7 +46,7 @@ export class Ship {
     this.vy *= Math.max(0, 1 - this.drag * delta);
 
     const speed = Math.hypot(this.vx, this.vy);
-    const maxSpeed = this.maxSpeed * fuelFactor;
+    const maxSpeed = this.maxSpeed * fuelFactor * (boost ? 5.4 : 1);
     if (speed > maxSpeed) {
       this.vx = (this.vx / speed) * maxSpeed;
       this.vy = (this.vy / speed) * maxSpeed;
@@ -63,8 +66,8 @@ export class Ship {
     this.hitCooldown = 0.85;
   }
 
-  isThrusting(input) {
-    return Math.hypot(input.moveVector.x, input.moveVector.y) > 0.08;
+  isThrusting(input, { boost = false } = {}) {
+    return boost || Math.hypot(input.moveVector.x, input.moveVector.y) > 0.08;
   }
 
   rotateToward(current, target, maxStep) {
@@ -75,25 +78,29 @@ export class Ship {
     return current + step;
   }
 
-  draw(ctx, camera, input) {
+  draw(ctx, camera, input, { boost = false } = {}) {
     const screen = camera.worldToScreen(this.x, this.y);
+    this.drawAt(ctx, screen.x, screen.y, this.angle, input, { boost });
+  }
+
+  drawAt(ctx, x, y, angle = this.angle, input = { moveVector: { x: 0, y: 0 } }, { boost = false } = {}) {
     const flashing = this.hitCooldown > 0 && Math.floor(this.hitCooldown * 16) % 2 === 0;
     ctx.save();
-    ctx.translate(screen.x, screen.y);
-    ctx.rotate(this.angle);
+    ctx.translate(x, y);
+    ctx.rotate(angle);
     ctx.scale(this.sizeScale, this.sizeScale);
 
-    if (this.isThrusting(input)) {
+    if (this.isThrusting(input, { boost })) {
       ctx.save();
-      ctx.globalAlpha = 0.72;
+      ctx.globalAlpha = boost ? 0.9 : 0.72;
       ctx.fillStyle = '#d98642';
       ctx.shadowColor = '#d98642';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = boost ? 18 : 10;
       ctx.beginPath();
       ctx.moveTo(-25, 0);
-      ctx.lineTo(-45 - Math.random() * 5, -7);
+      ctx.lineTo(-45 - Math.random() * (boost ? 18 : 5), boost ? -10 : -7);
       ctx.lineTo(-37, 0);
-      ctx.lineTo(-45 - Math.random() * 5, 7);
+      ctx.lineTo(-45 - Math.random() * (boost ? 18 : 5), boost ? 10 : 7);
       ctx.closePath();
       ctx.fill();
       ctx.restore();

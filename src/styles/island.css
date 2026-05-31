@@ -16,7 +16,8 @@
 
 .island-meter,
 .island-title-chip,
-.island-prompt {
+.island-prompt,
+.island-cargo-preview {
   border: 4px solid var(--outline);
   border-radius: 16px;
   background:
@@ -101,6 +102,24 @@
   font-weight: 950;
 }
 
+.island-cargo-preview {
+  grid-column: 1 / -1;
+  justify-self: center;
+  min-width: min(560px, 82vw);
+  max-width: min(720px, 88vw);
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 4px 12px;
+  color: rgba(236, 231, 216, 0.84);
+  font-size: 12px;
+  font-weight: 760;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .island-mobile-controls {
   align-items: end;
 }
@@ -152,7 +171,8 @@
     font-size: 14px;
   }
 
-  .island-prompt {
+  .island-prompt,
+  .island-cargo-preview {
     min-height: 32px;
     font-size: 12px;
   }
@@ -160,7 +180,8 @@
 
 .island-meter,
 .island-title-chip,
-.island-prompt {
+.island-prompt,
+.island-cargo-preview {
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   background: rgba(9, 17, 28, 0.58);
@@ -178,7 +199,8 @@
 .island-meter strong,
 .island-title-chip span,
 .island-title-chip strong,
-.island-prompt {
+.island-prompt,
+.island-cargo-preview {
   font-weight: 720;
 }
 

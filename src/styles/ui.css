@@ -267,11 +267,11 @@
 
 .debug-panel {
   position: absolute;
-  left: calc(var(--safe-left) + 8px);
+  right: calc(var(--safe-right) + 62px);
   top: calc(var(--safe-top) + 8px);
   z-index: 28;
   display: grid;
-  justify-items: start;
+  justify-items: end;
   gap: 8px;
   pointer-events: auto;
 }
@@ -334,6 +334,16 @@
   font-size: 12px;
 }
 
+.debug-action-grid .game-button.is-active,
+.debug-panel.is-god-mode .debug-toggle-button {
+  border-color: rgba(255, 211, 107, 0.85);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04)),
+    linear-gradient(135deg, rgba(255, 211, 107, 0.95), rgba(102, 216, 232, 0.6));
+  box-shadow: 0 12px 30px rgba(255, 143, 61, 0.22), 0 0 0 1px rgba(255, 211, 107, 0.18);
+  color: #08111a;
+}
+
 .debug-status {
   min-height: 18px;
 }
@@ -341,8 +351,9 @@
 .global-dialogue-box {
   position: absolute;
   left: calc(var(--safe-left) + 18px);
-  right: calc(var(--safe-right) + 60px);
-  bottom: calc(var(--safe-bottom) + 60px);
+  right: auto;
+  bottom: calc(var(--safe-bottom) + 18px);
+  width: min(540px, calc(100vw - var(--safe-left) - var(--safe-right) - 36px));
   z-index: 24;
   min-height: clamp(72px, 14vh, 104px);
   display: grid;
@@ -922,6 +933,249 @@
   pointer-events: none;
 }
 
+.tool-hotbar {
+  --selected-tool-color: #d98642;
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 18px);
+  z-index: 9;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(38px, 52px));
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.tool-hotbar-slot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  padding: 4px;
+  border: 1px solid rgba(236, 231, 216, 0.15);
+  border-radius: 10px;
+  background: rgba(5, 12, 22, 0.28);
+  color: rgba(255, 242, 207, 0.82);
+  font: 750 10px/1 var(--font-ui);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.tool-hotbar-slot:hover,
+.tool-hotbar-slot:focus-visible {
+  border-color: rgba(236, 231, 216, 0.34);
+  background: rgba(18, 35, 52, 0.46);
+  outline: 0;
+  transform: translateY(-2px);
+}
+
+.tool-hotbar-slot.is-selected {
+  border-color: color-mix(in srgb, var(--selected-tool-color), white 18%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--selected-tool-color), transparent 72%), transparent),
+    rgba(14, 28, 44, 0.5);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--selected-tool-color), transparent 38%), 0 0 18px color-mix(in srgb, var(--selected-tool-color), transparent 58%);
+  color: #fff2cf;
+  transform: translateY(-3px);
+}
+
+.tool-hotbar-slot.tone-empty {
+  opacity: 0.58;
+}
+
+.tool-hotbar-slot kbd {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  min-width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: rgba(255, 242, 207, 0.1);
+  color: rgba(255, 242, 207, 0.72);
+  font: 800 9px/1 var(--font-ui);
+}
+
+.tool-hotbar-icon {
+  display: grid;
+  place-items: center;
+  color: var(--selected-tool-color);
+  font: 900 17px/1 var(--font-display);
+}
+
+.tool-hotbar-slot strong {
+  display: none;
+}
+
+.tool-icon-shape {
+  position: relative;
+  width: 25px;
+  height: 25px;
+  display: block;
+  color: var(--selected-tool-color);
+}
+
+.tool-icon-shape::before,
+.tool-icon-shape::after,
+.tool-icon-shape i {
+  position: absolute;
+  display: block;
+  content: "";
+}
+
+.icon-miner::before {
+  left: 4px;
+  top: 10px;
+  width: 16px;
+  height: 7px;
+  border: 2px solid currentColor;
+  border-radius: 5px 7px 7px 5px;
+}
+
+.icon-miner::after {
+  right: 0;
+  top: 7px;
+  width: 7px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.icon-miner i {
+  left: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 9px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-18deg);
+}
+
+.icon-drone::before {
+  left: 6px;
+  top: 6px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 12px color-mix(in srgb, currentColor 46%, transparent);
+}
+
+.icon-drone::after {
+  left: 10px;
+  top: 10px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.icon-drone i {
+  left: 1px;
+  top: 11px;
+  width: 23px;
+  border-top: 2px solid currentColor;
+}
+
+.icon-gravity::before {
+  inset: 4px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.icon-gravity::after {
+  left: 11px;
+  top: 2px;
+  width: 3px;
+  height: 21px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(42deg);
+}
+
+.icon-flag::before {
+  left: 6px;
+  top: 4px;
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.icon-flag::after {
+  left: 9px;
+  top: 5px;
+  width: 12px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-left: 0;
+  border-radius: 2px 6px 6px 2px;
+}
+
+.icon-craft::before {
+  left: 5px;
+  bottom: 5px;
+  width: 15px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  transform: perspective(30px) rotateX(22deg);
+}
+
+.icon-craft::after {
+  left: 8px;
+  top: 5px;
+  width: 10px;
+  height: 10px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.icon-furnace::before {
+  left: 5px;
+  top: 6px;
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.icon-furnace::after {
+  left: 10px;
+  top: 10px;
+  width: 6px;
+  height: 8px;
+  border-radius: 999px 999px 2px 2px;
+  background: currentColor;
+}
+
+.icon-empty::before,
+.icon-empty::after {
+  left: 11px;
+  top: 5px;
+  width: 2px;
+  height: 16px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.icon-empty::after {
+  transform: rotate(90deg);
+}
+
 .joystick {
   position: relative;
   width: clamp(128px, 22vw, 174px);
@@ -1073,8 +1327,9 @@
 @media (max-width: 760px) {
   .global-dialogue-box {
     left: calc(var(--safe-left) + 8px);
-    right: calc(var(--safe-right) + 54px);
-    bottom: calc(var(--safe-bottom) + 58px);
+    right: auto;
+    bottom: calc(var(--safe-bottom) + 10px);
+    width: min(500px, calc(100vw - var(--safe-left) - var(--safe-right) - 16px));
     grid-template-columns: 48px minmax(0, 1fr) auto;
     min-height: 72px;
     padding: 7px;
@@ -1350,9 +1605,601 @@ html[data-layout-profile="pc"] .pause-button {
 }
 
 html[data-layout-profile="pc"] .global-dialogue-box {
-  left: 50%;
+  left: calc(var(--safe-left) + 22px);
   right: auto;
-  bottom: calc(var(--safe-bottom) + 20px);
-  width: min(720px, calc(100vw - 180px));
-  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 22px);
+  width: min(520px, calc(100vw - var(--safe-left) - var(--safe-right) - 44px));
+  transform: none;
+}
+
+.survival-modal {
+  display: grid;
+  place-items: center;
+  padding: max(18px, var(--safe-top)) max(18px, var(--safe-right)) max(18px, var(--safe-bottom)) max(18px, var(--safe-left));
+}
+
+.survival-panel {
+  width: min(920px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 40px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    rgba(9, 16, 26, 0.94);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(102, 216, 232, 0.08);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.survival-panel-header,
+.survival-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.survival-panel-header span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.survival-panel-header h1 {
+  margin: 2px 0 0;
+  font-size: clamp(1.25rem, 2.2vw, 2rem);
+  letter-spacing: 0;
+}
+
+.survival-panel-header p {
+  max-width: 680px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.survival-close-button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(236, 231, 216, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.survival-panel-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.survival-panel-actions {
+  justify-content: flex-end;
+}
+
+.survival-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(54px, 1fr));
+  gap: 10px;
+}
+
+.survival-inventory-slot {
+  aspect-ratio: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(236, 231, 216, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.survival-inventory-slot.has-item {
+  background:
+    radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--item-color, #fff2cf) 28%, transparent), transparent 62%),
+    rgba(255, 255, 255, 0.065);
+}
+
+.survival-inventory-slot.is-empty {
+  opacity: 0.38;
+}
+
+.survival-inventory-slot .slot-icon,
+.survival-item-detail-icon,
+.furnace-smelt-slot span,
+.furnace-queue-button span {
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--item-color, #fff2cf) 18%, rgba(255, 255, 255, 0.04));
+  color: var(--item-color, #fff2cf);
+  font-weight: 860;
+}
+
+.survival-inventory-slot .slot-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.survival-inventory-slot strong {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  font-size: 0.82rem;
+}
+
+.survival-inventory-summary,
+.survival-item-detail dl {
+  display: grid;
+  grid-template-columns: repeat(3, auto 1fr);
+  gap: 8px 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(236, 231, 216, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.survival-inventory-summary strong {
+  color: var(--forge-yellow);
+}
+
+.survival-inventory-summary span {
+  color: var(--muted);
+}
+
+.survival-item-detail {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 16px;
+}
+
+.survival-item-detail-icon {
+  width: 86px;
+  height: 86px;
+  font-size: 1.3rem;
+}
+
+.survival-item-detail h2,
+.survival-recipe-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+
+.survival-item-detail p,
+.survival-recipe-card p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.survival-item-detail dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0;
+}
+
+.survival-item-detail dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.survival-item-detail dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.survival-item-detail dd {
+  margin: 0;
+  font-weight: 780;
+}
+
+.survival-crafting {
+  display: grid;
+  gap: 12px;
+}
+
+.voxel-crafting {
+  overflow: hidden;
+}
+
+.voxel-craft-layout {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.36fr) minmax(420px, 1fr) minmax(260px, 0.58fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.voxel-craft-tabs,
+.voxel-craft-side,
+.voxel-material-palette,
+.voxel-craft-rules,
+.voxel-craft-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.voxel-craft-tabs button,
+.voxel-material-palette button {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 54px;
+  padding: 9px;
+  border: 1px solid rgba(236, 231, 216, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  text-align: left;
+}
+
+.voxel-craft-tabs button.is-active,
+.voxel-material-palette button.is-selected {
+  border-color: rgba(118, 243, 255, 0.56);
+  background: rgba(118, 243, 255, 0.12);
+  box-shadow: 0 0 18px rgba(118, 243, 255, 0.12);
+}
+
+.voxel-craft-tabs span,
+.voxel-material-palette span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--item-color, #76f3ff) 18%, rgba(255, 255, 255, 0.05));
+  color: var(--item-color, #76f3ff);
+  font-weight: 860;
+}
+
+.voxel-craft-tabs strong,
+.voxel-material-palette strong {
+  min-width: 0;
+  font-size: 0.92rem;
+}
+
+.voxel-craft-tabs em,
+.voxel-material-palette em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: normal;
+}
+
+.voxel-craft-grid {
+  --voxel-grid-size: 16;
+  width: min(58vh, 100%);
+  min-width: 400px;
+  aspect-ratio: 1;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--voxel-grid-size), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--voxel-grid-size), minmax(0, 1fr));
+  gap: 0;
+  padding: 8px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(118, 243, 255, 0.08), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
+    rgba(3, 9, 16, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(118, 243, 255, 0.08);
+}
+
+.voxel-craft-preview {
+  position: absolute;
+  inset: 8px;
+  z-index: 1;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  pointer-events: none;
+}
+
+.voxel-craft-cell {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  position: relative;
+  z-index: 2;
+  cursor: crosshair;
+}
+
+.voxel-craft-cell:hover,
+.voxel-craft-cell:focus-visible {
+  background: rgba(118, 243, 255, 0.08);
+  outline: 1px solid rgba(118, 243, 255, 0.58);
+  outline-offset: -1px;
+}
+
+.voxel-craft-cell.has-voxel {
+  background: transparent;
+  box-shadow: none;
+}
+
+.voxel-craft-cell.has-voxel.join-n {
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+
+.voxel-craft-cell.has-voxel.join-e {
+  border-top-right-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+
+.voxel-craft-cell.has-voxel.join-s {
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+
+.voxel-craft-cell.has-voxel.join-w {
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.voxel-craft-cell.shape-1 {
+  clip-path: none;
+}
+
+.voxel-craft-cell.shape-2 {
+  clip-path: none;
+}
+
+.voxel-craft-cell.shape-3 {
+  clip-path: none;
+}
+
+.voxel-craft-cell.shape-4 {
+  clip-path: none;
+}
+
+.voxel-craft-cell.has-layers::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28%;
+  height: 10%;
+  border-radius: 999px;
+  background: rgba(255, 242, 207, 0.24);
+  box-shadow: 0 0 10px rgba(255, 242, 207, 0.18);
+  transform: translate(-50%, -50%) rotate(-24deg);
+  pointer-events: none;
+}
+
+.voxel-craft-cell span {
+  display: none;
+}
+
+.voxel-craft-cell i {
+  display: none;
+}
+
+.voxel-craft-rules {
+  padding: 12px;
+  border: 1px solid rgba(236, 231, 216, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.voxel-craft-rules h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.voxel-craft-rules p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.voxel-craft-rules ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voxel-craft-rules li {
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.voxel-craft-rules li.is-met {
+  color: #9ff0b9;
+}
+
+.voxel-craft-rules li.is-missing {
+  color: #ffb4a8;
+}
+
+.survival-recipe-card {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(236, 231, 216, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.survival-recipe-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 159, 67, 0.16);
+  color: #ffb86d;
+  font-weight: 880;
+}
+
+.survival-recipe-card ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.survival-recipe-card li {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(236, 231, 216, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.survival-recipe-card li span {
+  color: var(--item-color, #fff2cf);
+  font-weight: 850;
+}
+
+.survival-recipe-card li.is-missing em {
+  color: #ff756f;
+}
+
+.survival-recipe-button,
+.furnace-queue-button {
+  min-height: 42px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 159, 67, 0.86);
+  color: #08111a;
+  font-weight: 830;
+}
+
+.survival-recipe-button:disabled,
+.furnace-queue-button:disabled {
+  opacity: 0.42;
+}
+
+.survival-furnace {
+  display: grid;
+  gap: 14px;
+}
+
+.furnace-smelt-slots,
+.furnace-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.furnace-smelt-slot,
+.furnace-fuel-slot,
+.furnace-queue-button {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(236, 231, 216, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.furnace-smelt-slot {
+  position: relative;
+  min-height: 78px;
+  overflow: hidden;
+}
+
+.furnace-smelt-slot span,
+.furnace-queue-button span,
+.furnace-fuel-slot span {
+  width: 38px;
+  height: 38px;
+}
+
+.furnace-smelt-slot i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #ff9f43, #ffd36b);
+}
+
+.furnace-queue-button {
+  grid-template-columns: 42px 1fr;
+  text-align: left;
+}
+
+.furnace-queue-button em,
+.furnace-fuel-slot em {
+  display: block;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.furnace-fuel-slot {
+  grid-template-columns: 42px 1fr;
+  background: rgba(255, 159, 67, 0.08);
+}
+
+@media (max-width: 760px), (max-height: 460px) {
+  .survival-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+
+  .survival-inventory-grid {
+    grid-template-columns: repeat(7, minmax(38px, 1fr));
+    gap: 7px;
+  }
+
+  .survival-inventory-slot .slot-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 0.78rem;
+  }
+
+  .survival-recipe-card,
+  .survival-item-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .survival-recipe-card ul,
+  .furnace-smelt-slots,
+  .furnace-controls,
+  .voxel-craft-layout,
+  .survival-inventory-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .voxel-craft-grid {
+    width: min(72vh, 100%);
+    min-width: 0;
+    justify-self: center;
+  }
+
+  .voxel-craft-side {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .voxel-craft-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }

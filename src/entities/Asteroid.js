@@ -1,13 +1,21 @@
-import { asteroids as asteroidData } from '../data/asteroids.js?v=44';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=93';
+import { VoxelAsteroidBody } from './VoxelAsteroidBody.js?v=93';
+import { gameBalance } from '../data/gameBalance.js?v=93';
 
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 
 const FRAGMENT_VISUALS = {
-  0: { radius: 0.62, health: 0.46, drop: 0.48 },
-  1: { radius: 0.86, health: 0.76, drop: 0.72 },
-  2: { radius: 1.18, health: 1.18, drop: 1.02 },
-  3: { radius: 1.52, health: 1.72, drop: 1.32 },
+  0: { radius: 1.65, health: 0.46, drop: 0.62 },
+  1: { radius: 2.28, health: 0.76, drop: 0.82 },
+  2: { radius: 3, health: 1.18, drop: 1 },
+  3: { radius: 3.9, health: 1.72, drop: 1.18 },
 };
+
+export function estimateAsteroidRadius({ type = 'stone', seed = 0.5, fragmentTier = 1 } = {}) {
+  const data = ASTEROID_TYPES[type] || ASTEROID_TYPES.stone;
+  const visual = FRAGMENT_VISUALS[Math.max(0, Math.min(3, Math.round(fragmentTier)))] || FRAGMENT_VISUALS[1];
+  return data.radius * (0.9 + seed * 0.22) * visual.radius;
+}
 
 export class Asteroid {
   constructor({ x, y, type = 'stone', seed = Math.random(), fragmentTier = 1, dropScale = null }) {
@@ -24,8 +32,6 @@ export class Asteroid {
     this.dropScale = dropScale ?? this.fragmentVisual.drop;
     this.data = ASTEROID_TYPES[type] || ASTEROID_TYPES.stone;
     this.radius = this.data.radius * (0.9 + seed * 0.22) * this.fragmentVisual.radius;
-    this.maxHealth = this.data.health * (0.92 + seed * 0.22) * this.fragmentVisual.health;
-    this.health = this.maxHealth;
     this.rotation = seed * Math.PI * 2;
     this.rotationSpeed = this.getRotationSpeed();
     this.vx = Math.cos(seed * 18.1) * this.getDriftSpeed();
@@ -34,10 +40,14 @@ export class Asteroid {
     this.scannerPulse = 0;
     this.scannerRevealed = false;
     this.active = true;
-    this.cracks = Array.from({ length: 8 }, (_, index) => ({
-      angle: (Math.PI * 2 * index) / 8 + seed,
-      length: 0.24 + ((index + seed) % 3) * 0.11,
-    }));
+    this.chippedCells = 0;
+    this.splitChipTarget = 0;
+    this.body = this.body
+      ? this.body.reset({ data: this.data, radius: this.radius, seed, dropScale: this.dropScale })
+      : new VoxelAsteroidBody({ data: this.data, radius: this.radius, seed, dropScale: this.dropScale });
+    this.maxHealth = this.body.initialSolidCount;
+    this.health = this.body.remainingSolidCount;
+    this.splitChipTarget = this.getSplitChipTarget();
     return this;
   }
 
@@ -79,6 +89,54 @@ export class Asteroid {
     return this.health <= 0;
   }
 
+  raycast(startX, startY, endX, endY) {
+    return this.body.raycast(startX, startY, endX, endY, this);
+  }
+
+  containsWorldPoint(worldX, worldY, padding = 0) {
+    return this.body.containsWorldPoint(worldX, worldY, this, padding);
+  }
+
+  mineCircle(worldX, worldY, radius, power, delta) {
+    const broken = this.body.mineCircleWorld(worldX, worldY, radius, power, delta, this);
+    if (broken.length) {
+      this.chippedCells += broken.length;
+      this.health = this.body.remainingSolidCount;
+      this.flash = 0.08;
+    }
+    return broken;
+  }
+
+  getSplitChipTarget() {
+    if (!this.canSplitFromChipping()) return Infinity;
+    const rarityWeight = this.data.rarity === 'common' ? 0 : this.data.rarity === 'uncommon' ? 1 : 2;
+    return Math.max(5, Math.min(12, Math.round(this.body.initialSolidCount * 0.18) + rarityWeight));
+  }
+
+  canSplitFromChipping() {
+    const minTier = gameBalance.mining?.asteroidMinSplitTier ?? 3;
+    const minRadius = gameBalance.mining?.asteroidMinSplitRadius ?? 140;
+    return this.fragmentTier >= minTier && this.radius >= minRadius;
+  }
+
+  shouldSplitFromChipping() {
+    return this.canSplitFromChipping()
+      && this.chippedCells >= this.splitChipTarget
+      && this.body.remainingSolidCount > Math.max(4, this.body.initialSolidCount * 0.34);
+  }
+
+  getSplitChildCount() {
+    return 2;
+  }
+
+  getMassRatio() {
+    return this.body.getMassRatio();
+  }
+
+  isDepleted() {
+    return this.body.isDepleted();
+  }
+
   getDropPayload(scale = this.dropScale) {
     const drops = [];
     this.data.drops.forEach((drop) => {
@@ -96,12 +154,12 @@ export class Asteroid {
   }
 
   collidesWith(entity) {
-    return Math.hypot(this.x - entity.x, this.y - entity.y) < this.radius + entity.radius;
+    return this.body.collidesWorldCircle(entity.x, entity.y, entity.radius || 0, this);
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, { highlightHit = null, time = 0 } = {}) {
     const screen = camera.worldToScreen(this.x, this.y);
-    const healthRatio = this.health / this.maxHealth;
+    const healthRatio = this.getMassRatio();
     ctx.save();
     ctx.translate(screen.x, screen.y);
     ctx.rotate(this.rotation);
@@ -130,24 +188,17 @@ export class Asteroid {
       ctx.restore();
     }
 
-    ctx.fillStyle = this.flash > 0 ? '#ece7d8' : this.data.color;
-    ctx.strokeStyle = this.data.accent;
-    ctx.lineWidth = this.data.rarity === 'epic' ? 2.2 : 1.6;
-    this.drawSilhouette(ctx);
-    ctx.fill();
-    ctx.stroke();
-    this.drawFacetHighlights(ctx);
-    this.drawFragmentSeams(ctx);
+    this.body.draw(ctx);
+    if (highlightHit) this.body.drawCellHighlight(ctx, highlightHit, time);
 
-    ctx.strokeStyle = 'rgba(8, 22, 38, 0.68)';
-    ctx.lineWidth = 1.2;
-    this.cracks.forEach((crack, index) => {
-      if (healthRatio > 0.78 - index * 0.09) return;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(crack.angle) * this.radius * 0.16, Math.sin(crack.angle) * this.radius * 0.16);
-      ctx.lineTo(Math.cos(crack.angle) * this.radius * crack.length, Math.sin(crack.angle) * this.radius * crack.length);
-      ctx.stroke();
-    });
+    if (this.flash > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = '#ece7d8';
+      this.drawSilhouette(ctx, 0.98);
+      ctx.fill();
+      ctx.restore();
+    }
 
     if (this.scannerRevealed && this.data.scannerPing) this.drawScannerPing(ctx);
     if (healthRatio < 1) this.drawHealthBar(ctx, healthRatio);

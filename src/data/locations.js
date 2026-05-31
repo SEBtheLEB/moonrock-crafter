@@ -1,5 +1,20 @@
 export const locations = [
   {
+    id: 'station',
+    name: 'Moonrock Station',
+    type: 'station',
+    worldPosition: { x: 0, y: 0 },
+    discovered: false,
+    dangerLevel: 0,
+    recommendedFuel: 0,
+    description: 'Your floating workshop and upgrade hub. Sparks says the rent is "technically survivable."',
+    resources: [],
+    icon: 'ST',
+    requiredScannerLevel: 1,
+    biome: 'station',
+    canSetDestination: true,
+  },
+  {
     id: 'ironCluster',
     name: 'Iron Cluster',
     type: 'resource',

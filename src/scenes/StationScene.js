@@ -1,4 +1,4 @@
-import { StationPlayer } from '../entities/StationPlayer.js?v=44';
+import { StationPlayer } from '../entities/StationPlayer.js?v=93';
 import { StationInteractable } from '../entities/StationInteractable.js';
 import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
 import { Button } from '../ui/Button.js';
@@ -8,8 +8,8 @@ import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
 import { createObjectiveModal } from '../ui/ObjectiveModal.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=44';
-import { gameBalance } from '../data/gameBalance.js?v=44';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=93';
+import { gameBalance } from '../data/gameBalance.js?v=93';
 
 const WORLD_WIDTH = 2920;
 
@@ -192,7 +192,7 @@ export class StationScene {
     }
 
     const actions = this.game.input.actions;
-    const spaceJump = actions.justPressed.mine && this.game.input.keys.has(' ');
+    const spaceJump = actions.justPressed.jump && this.game.input.keys.has(' ');
     const keyboardJump = actions.justPressed.up
       && (this.game.input.keys.has('w') || this.game.input.keys.has('W') || this.game.input.keys.has('ArrowUp'));
     this.player.update(delta, {

@@ -1,7 +1,9 @@
 export const gameBalance = {
   startingCredits: 0,
   startingResearchPoints: 0,
-  startingInventory: {},
+  startingInventory: {
+    craftingStationKit: 1,
+  },
   miningFuelCost: 12,
   sellMultiplier: 1,
   shipBaseStats: {
@@ -10,7 +12,7 @@ export const gameBalance = {
     hull: 90,
     maxHull: 90,
     cargo: 0,
-    cargoMax: 12,
+    cargoMax: 64,
     speed: 0.88,
     acceleration: 0.9,
     handling: 1,
@@ -26,22 +28,22 @@ export const gameBalance = {
     shieldCooldown: 0,
   },
   stationBaseStats: {
-    storageMax: 35,
+    storageMax: 520,
     refuelRate: 1,
     repairDiscount: 0,
     sorterDrone: false,
   },
   mining: {
-    targetAsteroidCount: 34,
-    maxAsteroidCount: 64,
+    targetAsteroidCount: 18,
+    maxAsteroidCount: 34,
     maxActiveParticles: 150,
     maxFloatingText: 24,
-    maxPickupPool: 80,
-    maxAsteroidPool: 24,
-    asteroidSpawnMinDistance: 620,
-    asteroidSpawnMaxDistance: 2100,
-    asteroidCullDistance: 3200,
-    pickupCullDistance: 1800,
+    maxPickupPool: 120,
+    maxAsteroidPool: 16,
+    asteroidSpawnMinDistance: 1280,
+    asteroidSpawnMaxDistance: 3600,
+    asteroidCullDistance: 6200,
+    pickupCullDistance: 3200,
     stationDockRadius: 155,
     baseFuelDrain: 0.24,
     movingFuelDrain: 0.68,
@@ -51,6 +53,18 @@ export const gameBalance = {
     ringSize: 10000,
     miniMapMaxDistance: 50000,
     fragmentPartialDropScale: 0.2,
+    asteroidMiningBrushRadius: 42,
+    asteroidMiningPowerBase: 0.85,
+    asteroidMiningPowerScale: 0.78,
+    terrainMiningPowerBase: 0.42,
+    terrainMiningPowerScale: 0.78,
+    asteroidCellHardnessBase: 3.15,
+    asteroidCellHardnessRequirementScale: 1.25,
+    asteroidOreHardnessBonus: 0.72,
+    asteroidMinSplitTier: 3,
+    asteroidMinSplitRadius: 160,
+    asteroidSpawnGap: 180,
+    asteroidSeparationPadding: 120,
     asteroidFragmentation: {
       childSpreadSpeed: 92,
       distanceTierWeights: [
@@ -143,10 +157,38 @@ export const gameBalance = {
   ui: {
     worldViewScale: 0.88,
     miningViewScale: 0.42,
+    islandViewScale: 0.88,
     hudUpdateInterval: 0.08,
     distanceObjectiveInterval: 0.45,
   },
   earlyGame: {
+    crashStart: {
+      furnaceRecipe: {
+        id: 'starterFurnace',
+        name: 'Starter Furnace',
+        requirements: { stoneOre: 20, copperShards: 10, fireCore: 1 },
+        gridSize: 16,
+        shapeRules: {
+          connected: true,
+          mustBeConnected: true,
+          requiresInternalChamber: true,
+          coreMustBeEmbedded: true,
+          copperShouldTouchChamber: true,
+          minChamberCells: 2,
+          materialBounds: {
+            copperShards: { maxWidth: 5, maxHeight: 5, label: 'Copper heat channel must fit inside a 5x5 chamber.' },
+          },
+        },
+      },
+      smelting: {
+        ironDust: { output: 'ironIngot', time: 4.8 },
+        copperShards: { output: 'copperIngot', time: 4.2 },
+      },
+      shipRepair: {
+        requirements: { ironIngot: 2, copperIngot: 2 },
+      },
+      startingPlanetMaterials: ['stoneOre', 'ironDust', 'copperShards'],
+    },
     asteroids: {
       stone: { health: 28, scrapBeltWeight: 66 },
       copperVein: { health: 42, scrapBeltWeight: 28 },
@@ -154,7 +196,7 @@ export const gameBalance = {
     },
     upgrades: {
       fuelTank: { levelOneCost: { credits: 45, materials: { ironDust: 1 } }, effect: 28 },
-      cargoHold: { levelOneCost: { credits: 50, materials: { stoneOre: 2 } }, effect: 10 },
+      cargoHold: { levelOneCost: { credits: 50, materials: { stoneOre: 2 } }, effect: 48 },
       laserPower: { levelOneCost: { credits: 70, materials: { ironDust: 1, copperShards: 1 } }, effect: 0.45 },
       engineSpeed: {
         levelOneCost: { credits: 75, materials: { copperShards: 2 } },
@@ -262,8 +304,8 @@ export const gameBalance = {
       minDistance: 0,
       maxDistance: 10000,
       difficulty: 1,
-      background: { inner: '#2b6c9f', middle: '#123a66', outer: '#071629' },
-      particleColor: '#8bc8ff',
+      background: { inner: '#163458', middle: '#0a1d38', outer: '#030813' },
+      particleColor: '#6f9fca',
       ambience: 'dust',
     },
     {
