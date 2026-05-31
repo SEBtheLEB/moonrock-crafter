@@ -1,6 +1,6 @@
-import { animals as animalData } from '../data/animals.js?v=32';
-import { islands } from '../data/islands.js?v=32';
-import { islandResourceNodes } from '../data/islandResources.js?v=32';
+import { animals as animalData } from '../data/animals.js?v=44';
+import { islands } from '../data/islands.js?v=44';
+import { islandResourceNodes } from '../data/islandResources.js?v=44';
 import { IslandAnimal } from '../entities/IslandAnimal.js';
 import { IslandResourceNode } from '../entities/IslandResourceNode.js';
 

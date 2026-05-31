@@ -35,6 +35,8 @@
   --safe-right: max(env(safe-area-inset-right), 7px);
   --safe-bottom: max(env(safe-area-inset-bottom), 7px);
   --safe-left: max(env(safe-area-inset-left), 7px);
+  --desktop-edge-pad: clamp(12px, 1.5vw, 22px);
+  --mobile-landscape-edge-pad: max(env(safe-area-inset-left), 8px);
   color-scheme: dark;
   font-family: var(--font-body);
   background: var(--space-void);
@@ -174,7 +176,7 @@ canvas {
   display: none;
 }
 
-@media (orientation: portrait) {
+@media (orientation: portrait) and (pointer: coarse) {
   .rotate-device-overlay {
     position: absolute;
     inset: 0;
@@ -219,6 +221,12 @@ canvas {
     margin: 10px 0 0;
     color: var(--muted);
     font-size: 15px;
+  }
+}
+
+@media (orientation: portrait) and (pointer: fine) {
+  .rotate-device-overlay {
+    display: none;
   }
 }
 

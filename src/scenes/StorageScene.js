@@ -235,11 +235,16 @@ export class StorageScene {
 
   formatZone(zoneId) {
     const names = {
-      scrapBelt: 'Scrap Belt',
-      emberDrift: 'Ember Drift',
-      frostRing: 'Frost Ring',
+      originBlue: 'Origin Blue Ring',
+      cobaltRim: 'Cobalt Rim',
+      emberShelf: 'Ember Shelf',
+      violetReef: 'Violet Reef',
+      starlessDeep: 'Starless Deep',
+      scrapBelt: 'Origin Blue Ring',
+      emberDrift: 'Cobalt Rim',
+      frostRing: 'Ember Shelf',
       voidReef: 'Void Reef',
-      starGraveyard: 'Star Graveyard',
+      starGraveyard: 'Starless Deep',
       tinyScrapIsland: 'Tiny Scrap Island',
       forestRockIsland: 'Forest Rock Island',
       crystalIsland: 'Crystal Island',

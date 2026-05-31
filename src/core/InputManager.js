@@ -15,6 +15,10 @@ const KEY_BINDINGS = {
   E: 'interact',
   j: 'tool',
   J: 'tool',
+  f: 'attack',
+  F: 'attack',
+  k: 'attack',
+  K: 'attack',
   ' ': 'mine',
   Enter: 'confirm',
   Escape: 'pause',
@@ -29,6 +33,7 @@ export class InputManager {
     this.keys = new Set();
     this.pointers = new Map();
     this.primaryPointer = { x: 0, y: 0, down: false, source: 'none' };
+    this.mousePointer = { x: 0, y: 0, canvasX: 0, canvasY: 0, down: false, button: -1, buttons: 0, inside: false, source: 'none' };
     this.virtualMove = { x: 0, y: 0 };
     this.virtualAim = { x: 0, y: 0 };
     this.virtualButtons = new Map();
@@ -51,6 +56,9 @@ export class InputManager {
     window.addEventListener('pointermove', this.onPointerMove, { passive: false, capture: true });
     window.addEventListener('pointerup', this.onPointerUp, { passive: false, capture: true });
     window.addEventListener('pointercancel', this.onPointerUp, { passive: false, capture: true });
+    window.addEventListener('contextmenu', (event) => {
+      if (event.target.closest?.('#game-shell')) event.preventDefault();
+    }, { capture: true });
     window.addEventListener('blur', () => this.resetTransientState());
   }
 
@@ -68,6 +76,7 @@ export class InputManager {
       jump: false,
       tool: false,
       mine: false,
+      attack: false,
       debug1: false,
       debug2: false,
       debug3: false,
@@ -88,14 +97,17 @@ export class InputManager {
     this.capturePointer(event);
     const pointer = this.pointerFromEvent(event, true);
     this.pointers.set(event.pointerId, pointer);
+    if (event.pointerType === 'mouse') this.updateMousePointer(pointer, true);
     this.pointerDownEvents.push(pointer);
     this.updatePrimaryPointer(event.pointerId);
   }
 
   onPointerMove(event) {
-    if (!this.pointers.has(event.pointerId)) return;
+    const isTrackedPointer = this.pointers.has(event.pointerId);
     this.capturePointer(event);
-    const pointer = this.pointerFromEvent(event, true);
+    const pointer = this.pointerFromEvent(event, isTrackedPointer);
+    if (event.pointerType === 'mouse') this.updateMousePointer(pointer, isTrackedPointer);
+    if (!isTrackedPointer) return;
     this.pointers.set(event.pointerId, pointer);
     this.pointerMoveEvents.push(pointer);
     this.updatePrimaryPointer(event.pointerId);
@@ -105,6 +117,7 @@ export class InputManager {
     this.capturePointer(event);
     const pointer = this.pointerFromEvent(event, false);
     this.pointers.set(event.pointerId, pointer);
+    if (event.pointerType === 'mouse') this.updateMousePointer(pointer, false);
     this.pointerUpEvents.push(pointer);
     this.pointers.delete(event.pointerId);
     this.updatePrimaryPointer();
@@ -123,9 +136,25 @@ export class InputManager {
       canvasX: event.clientX - canvasRect.left,
       canvasY: event.clientY - canvasRect.top,
       down,
+      button: event.button,
+      buttons: event.buttons,
       type: event.pointerType,
       source: event.target.closest?.('#ui-root') ? 'ui' : 'canvas',
       target: event.target,
+    };
+  }
+
+  updateMousePointer(pointer, down) {
+    this.mousePointer = {
+      x: pointer.x,
+      y: pointer.y,
+      canvasX: pointer.canvasX,
+      canvasY: pointer.canvasY,
+      down,
+      button: pointer.button,
+      buttons: pointer.buttons,
+      inside: Boolean(pointer.target?.closest?.('#game-shell')),
+      source: pointer.source,
     };
   }
 
@@ -310,7 +339,8 @@ export class InputManager {
 
     this.pointers.forEach((pointer) => {
       if (pointer.down && pointer.source === 'canvas' && pointer.type === 'mouse') {
-        next.mine = true;
+        if ((pointer.buttons & 1) === 1 || pointer.button === 0) next.attack = true;
+        if ((pointer.buttons & 2) === 2 || pointer.button === 2) next.mine = true;
       }
     });
 
@@ -359,6 +389,12 @@ export class InputManager {
     return source ? events.filter((event) => event.source === source) : events;
   }
 
+  endFrame() {
+    this.pointerDownEvents = [];
+    this.pointerMoveEvents = [];
+    this.pointerUpEvents = [];
+  }
+
   normalizeVector(vector) {
     const length = Math.hypot(vector.x, vector.y);
     if (length <= 1) return vector;
@@ -374,6 +410,7 @@ export class InputManager {
     this.pointerUpEvents = [];
     this.virtualMove = { x: 0, y: 0 };
     this.virtualAim = { x: 0, y: 0 };
+    this.mousePointer = { ...this.mousePointer, down: false, button: -1, buttons: 0 };
     this.actions = this.createActionState();
     this.previousActions = this.createActionState();
   }

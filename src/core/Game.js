@@ -2,27 +2,27 @@ import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
 import { InputManager } from './InputManager.js';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=32';
+import { AudioManager } from './AudioManager.js?v=44';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=32';
+import { DebugPanel } from '../ui/DebugPanel.js?v=44';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=32';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=32';
-import { EconomySystem } from '../systems/EconomySystem.js?v=32';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=32';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=32';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=32';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=32';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=32';
-import { IslandSystem } from '../systems/IslandSystem.js?v=32';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=44';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=44';
+import { EconomySystem } from '../systems/EconomySystem.js?v=44';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=44';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=44';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=44';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=44';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=44';
+import { IslandSystem } from '../systems/IslandSystem.js?v=44';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=32';
-import { MiningScene } from '../scenes/MiningScene.js?v=32';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=32';
-import { StorageScene } from '../scenes/StorageScene.js?v=32';
-import { IslandScene } from '../scenes/IslandScene.js?v=32';
-import { gameBalance } from '../data/gameBalance.js?v=32';
+import { StationScene } from '../scenes/StationScene.js?v=44';
+import { MiningScene } from '../scenes/MiningScene.js?v=44';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=44';
+import { StorageScene } from '../scenes/StorageScene.js?v=44';
+import { IslandScene } from '../scenes/IslandScene.js?v=44';
+import { gameBalance } from '../data/gameBalance.js?v=44';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -48,8 +48,10 @@ export class Game {
 
     this.resize = this.resize.bind(this);
     this.loop = this.loop.bind(this);
+    this.updatePlatformProfile = this.updatePlatformProfile.bind(this);
 
     this.canvas.addEventListener('pointerdown', () => this.audio.unlock());
+    window.addEventListener('pointerdown', this.updatePlatformProfile, { passive: true, capture: true });
     window.addEventListener('keydown', () => this.audio.unlock(), { once: true });
   }
 
@@ -70,7 +72,7 @@ export class Game {
       runCargo: {},
       upgrades: {},
       research: {},
-      unlockedZones: { scrapBelt: true },
+      unlockedZones: { originBlue: true },
       settings: {
         audioMuted: this.audio ? !this.audio.enabled : false,
       },
@@ -199,6 +201,7 @@ export class Game {
     this.registerScenes();
     this.ui.setupGlobalControls(this);
     this.debugPanel.mount(this.ui.globalLayer);
+    this.updatePlatformProfile();
     this.resize();
     window.addEventListener('resize', this.resize);
     window.addEventListener('orientationchange', this.resize);
@@ -225,7 +228,20 @@ export class Game {
     this.canvas.height = Math.floor(rect.height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.viewport = { width: rect.width, height: rect.height, dpr };
+    this.updatePlatformProfile();
     this.sceneManager.current?.resize?.(this.viewport);
+  }
+
+  updatePlatformProfile(event = null) {
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const landscape = window.innerWidth >= window.innerHeight;
+    const mobileLandscape = coarsePointer && landscape && window.innerWidth <= 1180;
+    const inputMode = event?.pointerType === 'touch' || mobileLandscape ? 'touch' : 'keyboard-mouse';
+
+    document.documentElement.dataset.platformTarget = 'pc';
+    document.documentElement.dataset.mobilePort = 'ready';
+    document.documentElement.dataset.inputMode = inputMode;
+    document.documentElement.dataset.layoutProfile = mobileLandscape ? 'mobile-landscape' : 'pc';
   }
 
   preventBrowserGestures() {
@@ -359,6 +375,7 @@ export class Game {
     if (this.input.actions.justPressed.debugToggle) this.debugPanel.toggle();
     if (!this.paused) this.sceneManager.update(delta);
     this.sceneManager.render(this.ctx);
+    this.input.endFrame();
     requestAnimationFrame(this.loop);
   }
 }

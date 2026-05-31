@@ -1,0 +1,55 @@
+export class AsteroidFragmentationSystem {
+  constructor({ config, maxAsteroidCount = 64 } = {}) {
+    this.config = config || {};
+    this.maxAsteroidCount = maxAsteroidCount;
+  }
+
+  chooseTier(distanceFromStation) {
+    const bands = this.config.distanceTierWeights || [];
+    const band = bands.find((entry) => distanceFromStation >= entry.minDistance && distanceFromStation < entry.maxDistance);
+    const weights = band?.weights || { 0: 52, 1: 38, 2: 10 };
+    const entries = Object.entries(weights)
+      .map(([tier, weight]) => ({ tier: Number(tier), weight }))
+      .filter((entry) => entry.weight > 0);
+    const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * total;
+    for (const entry of entries) {
+      roll -= entry.weight;
+      if (roll <= 0) return entry.tier;
+    }
+    return entries[0]?.tier || 1;
+  }
+
+  spawn({ asteroid, asteroids, acquireAsteroid }) {
+    if (asteroid.fragmentTier <= 0) return { didFragment: false, childCount: 0 };
+    const tierConfig = this.config.tiers?.[asteroid.fragmentTier];
+    if (!tierConfig) return { didFragment: false, childCount: 0 };
+    const maxAvailable = Math.max(0, this.maxAsteroidCount - (asteroids.length - 1));
+    if (maxAvailable <= 0) return { didFragment: false, childCount: 0 };
+    const requestedCount = tierConfig.childMin + Math.floor(Math.random() * (tierConfig.childMax - tierConfig.childMin + 1));
+    const childCount = Math.min(maxAvailable, requestedCount);
+    if (childCount <= 0) return { didFragment: false, childCount: 0 };
+
+    const childTier = Math.max(0, asteroid.fragmentTier - 1);
+    const speed = this.config.childSpreadSpeed || 90;
+    const baseAngle = Math.atan2(asteroid.vy || Math.sin(asteroid.seed), asteroid.vx || Math.cos(asteroid.seed)) + Math.PI * 0.5;
+    for (let i = 0; i < childCount; i += 1) {
+      const spreadAngle = baseAngle + (Math.PI * 2 * i) / childCount + (Math.random() - 0.5) * 0.45;
+      const offset = asteroid.radius * (0.35 + Math.random() * 0.2);
+      const seed = Math.random();
+      const child = acquireAsteroid({
+        x: asteroid.x + Math.cos(spreadAngle) * offset,
+        y: asteroid.y + Math.sin(spreadAngle) * offset,
+        type: asteroid.type,
+        seed,
+        fragmentTier: childTier,
+        dropScale: Math.max(0.24, asteroid.dropScale * (0.64 + Math.random() * 0.12) / childCount),
+      });
+      child.vx = asteroid.vx * 0.35 + Math.cos(spreadAngle) * speed * (0.58 + seed * 0.38);
+      child.vy = asteroid.vy * 0.35 + Math.sin(spreadAngle) * speed * (0.58 + seed * 0.38);
+      child.scannerRevealed = asteroid.scannerRevealed;
+      asteroids.push(child);
+    }
+    return { didFragment: true, childCount };
+  }
+}

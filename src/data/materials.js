@@ -15,7 +15,7 @@ export const materials = [
     baseValue: 2,
     weight: 1,
     description: 'Chunky raw rock useful for basic station repairs.',
-    zoneAvailability: ['scrapBelt'],
+    zoneAvailability: ['originBlue'],
   },
   {
     id: 'ironDust',
@@ -26,7 +26,7 @@ export const materials = [
     baseValue: 4,
     weight: 1,
     description: 'Powdered iron grit that melts quickly in the forge.',
-    zoneAvailability: ['scrapBelt', 'emberDrift'],
+    zoneAvailability: ['originBlue', 'cobaltRim'],
   },
   {
     id: 'copperShards',
@@ -37,7 +37,7 @@ export const materials = [
     baseValue: 5,
     weight: 1,
     description: 'Warm metallic splinters prized for wiring and trim.',
-    zoneAvailability: ['scrapBelt', 'emberDrift'],
+    zoneAvailability: ['originBlue', 'cobaltRim'],
   },
   {
     id: 'emberstone',
@@ -48,7 +48,7 @@ export const materials = [
     baseValue: 12,
     weight: 2,
     description: 'A heat-rich stone that glows even after cooling.',
-    zoneAvailability: ['emberDrift', 'starGraveyard'],
+    zoneAvailability: ['emberShelf', 'starlessDeep'],
   },
   {
     id: 'silverIce',
@@ -59,7 +59,7 @@ export const materials = [
     baseValue: 14,
     weight: 2,
     description: 'Reflective ice-metal that slides around inside cargo bins.',
-    zoneAvailability: ['frostRing'],
+    zoneAvailability: ['violetReef'],
   },
   {
     id: 'denseNickel',
@@ -70,7 +70,7 @@ export const materials = [
     baseValue: 16,
     weight: 3,
     description: 'Heavy nickel-rich chunks used for sturdy tools.',
-    zoneAvailability: ['emberDrift', 'frostRing'],
+    zoneAvailability: ['emberShelf', 'violetReef'],
   },
   {
     id: 'glassCrystal',
@@ -81,7 +81,7 @@ export const materials = [
     baseValue: 15,
     weight: 1,
     description: 'Clear brittle crystal that sings when struck.',
-    zoneAvailability: ['scrapBelt', 'frostRing'],
+    zoneAvailability: ['originBlue', 'cobaltRim'],
   },
   {
     id: 'moonsteel',
@@ -92,7 +92,7 @@ export const materials = [
     baseValue: 38,
     weight: 3,
     description: 'Pale metal with a gentle lunar sheen.',
-    zoneAvailability: ['frostRing', 'voidReef'],
+    zoneAvailability: ['emberShelf', 'violetReef'],
   },
   {
     id: 'cryoCrystal',
@@ -103,7 +103,7 @@ export const materials = [
     baseValue: 42,
     weight: 2,
     description: 'A freezing crystal that leaves frost on the cargo hatch.',
-    zoneAvailability: ['frostRing'],
+    zoneAvailability: ['cobaltRim', 'violetReef'],
   },
   {
     id: 'solarAmber',
@@ -114,7 +114,7 @@ export const materials = [
     baseValue: 45,
     weight: 2,
     description: 'Golden resinized sunlight trapped in asteroid seams.',
-    zoneAvailability: ['emberDrift', 'starGraveyard'],
+    zoneAvailability: ['emberShelf', 'starlessDeep'],
   },
   {
     id: 'voidQuartz',
@@ -125,7 +125,7 @@ export const materials = [
     baseValue: 52,
     weight: 2,
     description: 'Purple quartz that seems slightly offset from reality.',
-    zoneAvailability: ['voidReef'],
+    zoneAvailability: ['violetReef'],
   },
   {
     id: 'starsteel',
@@ -136,7 +136,7 @@ export const materials = [
     baseValue: 95,
     weight: 4,
     description: 'A legendary forge metal with tiny stars in its grain.',
-    zoneAvailability: ['starGraveyard'],
+    zoneAvailability: ['starlessDeep'],
   },
   {
     id: 'livingMetal',
@@ -147,7 +147,7 @@ export const materials = [
     baseValue: 110,
     weight: 3,
     description: 'A strange metal that slowly reshapes itself.',
-    zoneAvailability: ['voidReef', 'starGraveyard'],
+    zoneAvailability: ['violetReef', 'starlessDeep'],
   },
   {
     id: 'ancientAlloy',
@@ -158,7 +158,7 @@ export const materials = [
     baseValue: 125,
     weight: 3,
     description: 'Pre-collapse alloy with impossible temper lines.',
-    zoneAvailability: ['starGraveyard'],
+    zoneAvailability: ['starlessDeep'],
   },
   {
     id: 'cometCore',
@@ -169,7 +169,7 @@ export const materials = [
     baseValue: 140,
     weight: 5,
     description: 'A dense frozen heart from a dead comet.',
-    zoneAvailability: ['starGraveyard'],
+    zoneAvailability: ['starlessDeep'],
   },
   {
     id: 'researchFragment',
@@ -180,7 +180,7 @@ export const materials = [
     baseValue: 0,
     weight: 0,
     description: 'Broken alien notes that can be decoded at the scanner.',
-    zoneAvailability: ['voidReef', 'starGraveyard'],
+    zoneAvailability: ['violetReef', 'starlessDeep'],
   },
   {
     id: 'spaceWood',

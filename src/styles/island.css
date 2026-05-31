@@ -114,7 +114,9 @@
 
 .island-jump-button,
 .island-interact-button,
-.island-tool-button {
+.island-tool-button,
+.island-mine-button,
+.island-attack-button {
   pointer-events: auto;
   min-width: clamp(76px, 12vw, 112px);
   min-height: clamp(58px, 10vw, 84px);
@@ -123,7 +125,9 @@
 
 .island-jump-button .button-icon,
 .island-interact-button .button-icon,
-.island-tool-button .button-icon {
+.island-tool-button .button-icon,
+.island-mine-button .button-icon,
+.island-attack-button .button-icon {
   width: 30px;
   height: 30px;
 }
@@ -180,6 +184,8 @@
 
 .island-jump-button,
 .island-interact-button,
-.island-tool-button {
+.island-tool-button,
+.island-mine-button,
+.island-attack-button {
   border-radius: 14px;
 }

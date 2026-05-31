@@ -33,6 +33,8 @@ const SFX = {
   cargoFull: { category: 'sfx', frequency: 180, slideTo: 135, duration: 0.12, type: 'square', gain: 0.022, cooldown: 0.7 },
   dockSuccess: { category: 'sfx', notes: [360, 540, 720], duration: 0.06, gap: 0.06, type: 'triangle', gain: 0.026, cooldown: 0.25 },
   rareFind: { category: 'sfx', notes: [650, 960, 1280], duration: 0.065, gap: 0.055, type: 'triangle', gain: 0.024, cooldown: 0.5 },
+  droneShot: { category: 'sfx', frequency: 760, slideTo: 1180, duration: 0.055, type: 'triangle', gain: 0.018, cooldown: 0.08 },
+  droneHit: { category: 'sfx', frequency: 360, slideTo: 210, duration: 0.055, type: 'square', gain: 0.018, cooldown: 0.08 },
 
   sparkPop: { category: 'ambience', frequency: 880, slideTo: 1300, duration: 0.035, type: 'triangle', gain: 0.012, cooldown: 0.18 },
   shipDock: { category: 'sfx', frequency: 210, slideTo: 145, duration: 0.12, type: 'triangle', gain: 0.024, cooldown: 0.25 },
@@ -404,6 +406,8 @@ export class AudioManager {
   playCargoFull() { this.playSfx('cargoFull'); }
   playDockSuccess() { this.playSfx('dockSuccess'); }
   playRareFind() { this.playSfx('rareFind'); }
+  playDroneShot() { this.playSfx('droneShot'); }
+  playDroneHit() { this.playSfx('droneHit'); }
 
   playEngineHum() { this.startEngineHum(); }
   playEngineBoost() { this.startEngineBoost(); }

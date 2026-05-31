@@ -1,7 +1,8 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
 import { IslandPlayer } from '../entities/IslandPlayer.js';
-import { gameBalance } from '../data/gameBalance.js?v=32';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=44';
+import { gameBalance } from '../data/gameBalance.js?v=44';
 
 export class IslandScene {
   constructor(game, payload = {}) {
@@ -15,6 +16,7 @@ export class IslandScene {
     };
     this.world = null;
     this.player = null;
+    this.combatDrone = new CompanionDrone({ cooldown: 0.46, damage: 1, targetRange: 560 });
     this.nodes = [];
     this.animals = [];
     this.time = 0;
@@ -30,7 +32,7 @@ export class IslandScene {
   enter() {
     this.game.ui.setScreen('island-screen');
     this.resize(this.game.viewport);
-    this.player = new IslandPlayer({ x: 190, y: this.world.floorY - 66 });
+    this.player = new IslandPlayer({ x: 190, y: this.world.floorY - 58 });
     const runtime = this.game.systems.islands.createRuntime(this.island, this.world);
     this.nodes = runtime.nodes;
     this.animals = runtime.animals;
@@ -99,21 +101,28 @@ export class IslandScene {
       variant: 'success',
       holdAction: 'interact',
     }).element;
-    const toolButton = new Button('Tool', () => this.useTool(), {
-      icon: 'J',
-      className: 'island-tool-button',
+    const mineButton = new Button('Mine', () => {}, {
+      icon: 'M',
+      className: 'island-mine-button',
       variant: 'metal',
-      holdAction: 'tool',
+      holdAction: 'mine',
+    }).element;
+    const attackButton = new Button('Shoot', () => {}, {
+      icon: 'S',
+      className: 'island-attack-button attack-button',
+      variant: 'metal',
+      holdAction: 'attack',
     }).element;
     const actions = document.createElement('div');
     actions.className = 'island-action-controls';
-    actions.append(jumpButton, interactButton, toolButton);
+    actions.append(jumpButton, interactButton, mineButton, attackButton);
     this.controls = this.game.ui.addControls([moveStick, actions]);
     this.controls.classList.add('island-mobile-controls');
     this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(jumpButton, 'jump');
     this.game.input.bindHoldButton(interactButton, 'interact');
-    this.game.input.bindHoldButton(toolButton, 'tool');
+    this.game.input.bindHoldButton(mineButton, 'mine');
+    this.game.input.bindHoldButton(attackButton, 'attack');
   }
 
   update(delta) {
@@ -131,12 +140,17 @@ export class IslandScene {
     this.updateCamera(delta);
     this.nodes.forEach((node) => node.update(delta));
     this.animals.forEach((animal) => animal.update(delta, this.player, this.world));
+    this.updateDroneCombat(delta);
     this.handleAnimalContact();
     this.updateFloatingText(delta);
     this.promptTarget = this.findPromptTarget();
     if (actions.justPressed.interact || actions.justPressed.confirm) this.useInteract();
-    const pointerTool = this.game.input.consumePointerDowns({ source: 'canvas' }).length > 0;
-    if (actions.justPressed.tool || pointerTool) this.useTool();
+    const miningInput = actions.mine && !this.game.input.keys.has(' ');
+    const miningStarted = actions.justPressed.mine && !this.game.input.keys.has(' ');
+    if (actions.justPressed.tool || miningInput) {
+      this.useTool(this.getAimPoint(), { playError: actions.justPressed.tool || miningStarted });
+    }
+    if (actions.justPressed.attack) this.fireDroneAttack();
     this.updateHud();
   }
 
@@ -168,16 +182,27 @@ export class IslandScene {
     }
     const plant = this.nodes.find((node) => node.active && node.data.type === 'plant' && node.isNear(this.player, 82));
     if (plant) return { type: 'node', node: plant, label: `Gather ${plant.data.name}`, detail: 'Press Interact' };
+    const animal = this.animals.find((candidate) => candidate.active && this.distanceSq(candidate.centerX, candidate.centerY, this.player.centerX, this.player.centerY) < 120 * 120);
+    if (animal) return { type: 'animal', animal, label: animal.data.name, detail: 'Shoot Drone' };
     const target = this.findToolTarget();
-    if (target?.animal) return { type: 'animal', animal: target.animal, label: target.animal.data.name, detail: 'Use Tool' };
     if (target?.node) return { type: 'nodeTool', node: target.node, label: target.node.data.name, detail: 'Use Tool' };
     return null;
   }
 
-  findToolTarget() {
-    const animal = this.animals.find((candidate) => candidate.active && this.distanceSq(candidate.centerX, candidate.centerY, this.player.centerX, this.player.centerY) < 95 * 95);
-    if (animal) return { animal };
-    const node = this.nodes.find((candidate) => candidate.active && candidate.data.type !== 'plant' && candidate.isNear(this.player, 96));
+  findToolTarget(aimPoint = null) {
+    const miningNodes = this.nodes.filter((candidate) => candidate.active && candidate.data.type !== 'plant' && candidate.isNear(this.player, 150));
+    if (aimPoint) {
+      let best = null;
+      let bestDistanceSq = Infinity;
+      for (const node of miningNodes) {
+        const distanceSq = this.distanceSq(aimPoint.x, aimPoint.y, node.centerX, node.centerY);
+        if (distanceSq > 105 * 105 || distanceSq >= bestDistanceSq) continue;
+        best = node;
+        bestDistanceSq = distanceSq;
+      }
+      if (best) return { node: best };
+    }
+    const node = miningNodes.find((candidate) => candidate.isNear(this.player, 96));
     return node ? { node } : null;
   }
 
@@ -198,22 +223,12 @@ export class IslandScene {
     }
   }
 
-  useTool() {
+  useTool(aimPoint = null, { playError = true } = {}) {
     if (this.toolCooldown > 0 || this.game.ui.modalLayer?.children.length) return;
     this.toolCooldown = 0.22;
-    const target = this.findToolTarget();
+    const target = this.findToolTarget(aimPoint);
     if (!target) {
-      this.game.audio.playError();
-      return;
-    }
-    if (target.animal) {
-      const result = target.animal.hit();
-      this.game.audio.playAnimalHit?.();
-      this.addFloatingText('Bonk!', target.animal.data.color);
-      if (result) {
-        this.game.audio.playAnimalDefeated?.();
-        this.collectDrops(result.drops, 'islandPickup');
-      }
+      if (playError) this.game.audio.playError();
       return;
     }
     if (target.node) {
@@ -222,6 +237,65 @@ export class IslandScene {
       this.addFloatingText('Hit!', target.node.data.visualStyle?.accent || '#ffd36b');
       if (result) this.collectDrops(result.drops, target.node.data.gatherSound);
     }
+  }
+
+  updateDroneCombat(delta) {
+    this.combatDrone.update(delta, this.getDroneAnchor(), {
+      threats: this.animals,
+      onHit: (target) => this.handleDroneHit(target),
+    });
+  }
+
+  fireDroneAttack() {
+    if (this.game.ui.modalLayer?.children.length) return;
+    this.combatDrone.tryShoot({
+      anchor: this.getDroneAnchor(),
+      aimPoint: this.getAimPoint(),
+      threats: this.animals,
+      onShoot: () => this.game.audio.playDroneShot?.(),
+    });
+  }
+
+  handleDroneHit(animal) {
+    if (!animal?.active) return;
+    const result = animal.hit();
+    this.game.audio.playDroneHit?.();
+    this.addFloatingText('Hit!', animal.data.color);
+    if (result) {
+      this.game.audio.playAnimalDefeated?.();
+      this.collectDrops(result.drops, 'islandPickup');
+    }
+  }
+
+  getDroneAnchor() {
+    return {
+      x: this.player.centerX,
+      y: this.player.centerY,
+      facing: this.player.facing,
+      droneSide: -1,
+    };
+  }
+
+  getAimPoint() {
+    const pointer = this.game.input.mousePointer;
+    if (pointer?.inside && pointer.source === 'canvas' && document.documentElement.dataset.inputMode !== 'touch') {
+      return this.screenToWorld(pointer.canvasX, pointer.canvasY);
+    }
+    return {
+      x: this.player.centerX + this.player.facing * 420,
+      y: this.player.centerY - 8,
+    };
+  }
+
+  screenToWorld(screenX, screenY) {
+    const viewport = this.game.viewport || { width: 0, height: 0 };
+    const scale = Math.max(0.1, this.viewScale);
+    const unscaledX = viewport.width * 0.5 + (screenX - viewport.width * 0.5) / scale;
+    const unscaledY = viewport.height + (screenY - viewport.height) / scale;
+    return {
+      x: unscaledX + this.camera.x,
+      y: unscaledY,
+    };
   }
 
   collectDrops(drops, soundName = 'islandPickup') {
@@ -317,6 +391,9 @@ export class IslandScene {
     this.nodes.forEach((node) => node.draw(ctx, this.camera, this.time));
     this.animals.forEach((animal) => animal.draw(ctx, this.camera, this.time));
     this.player.draw(ctx, this.camera, this.time);
+    this.combatDrone.draw(ctx, {
+      worldToScreen: (x, y) => ({ x: x - this.camera.x, y }),
+    });
     this.drawFloatingText(ctx);
     ctx.restore();
   }
@@ -423,5 +500,8 @@ export class IslandScene {
     this.game.input.virtualButtons.set('jump', false);
     this.game.input.virtualButtons.set('interact', false);
     this.game.input.virtualButtons.set('tool', false);
+    this.game.input.virtualButtons.set('mine', false);
+    this.game.input.virtualButtons.set('attack', false);
+    this.combatDrone?.clear();
   }
 }

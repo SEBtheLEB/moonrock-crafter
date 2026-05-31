@@ -154,6 +154,85 @@
   transform: translateX(-50%) translateY(0) scale(1);
 }
 
+.mining-minimap {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  top: calc(var(--safe-top) + 108px);
+  width: 148px;
+  height: 148px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 16px;
+  background: rgba(5, 12, 22, 0.5);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+  transition: width 180ms ease, height 180ms ease, background 180ms ease, transform 180ms ease;
+  z-index: 4;
+}
+
+.mining-minimap.is-expanded {
+  width: min(360px, calc(100vw - var(--safe-left) - var(--safe-right) - 32px));
+  height: min(360px, calc(100vh - var(--safe-top) - var(--safe-bottom) - 42px));
+  background: rgba(5, 12, 22, 0.72);
+}
+
+.mining-minimap-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.mining-minimap-info {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--cream);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.mining-minimap-info strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #dfe7ff;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mining-minimap-info span {
+  color: #66d8e8;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-minimap-toggle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  min-width: 48px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(236, 231, 216, 0.2);
+  border-radius: 999px;
+  background: rgba(236, 231, 216, 0.1);
+  color: #fff2cf;
+  font: 730 11px/1 var(--font-ui);
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.mining-minimap-toggle:hover {
+  background: rgba(102, 216, 232, 0.16);
+}
+
 .gps-destination-hud {
   position: absolute;
   right: calc(var(--safe-right) + 76px);
@@ -554,4 +633,24 @@
 .recall-button {
   border-radius: 14px;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24), 0 0 18px rgba(102, 216, 232, 0.18);
+}
+
+html[data-layout-profile="pc"] .mining-screen .ui-scene-layer {
+  padding-bottom: calc(var(--safe-bottom) + 12px);
+}
+
+html[data-layout-profile="pc"] .mining-hud {
+  padding-left: calc(var(--safe-left) + 72px);
+  padding-right: calc(var(--safe-right) + 58px);
+}
+
+html[data-layout-profile="pc"] .dock-button {
+  bottom: calc(var(--safe-bottom) + 18px);
+  min-width: 124px;
+  min-height: 46px;
+}
+
+html[data-layout-profile="pc"] .recall-button {
+  min-width: 110px;
+  min-height: 44px;
 }

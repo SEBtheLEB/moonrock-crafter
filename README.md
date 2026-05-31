@@ -1,10 +1,26 @@
 # Moonrock Crafter
 
-Moonrock Crafter is a mobile-first landscape HTML/CSS/JavaScript game about mining asteroid fields, unloading ore at a station, upgrading a ship, and pushing toward a very distant planet. Active gameplay uses canvas, while menus, HUD, dialogue, and debug tools use HTML/CSS overlays.
+Moonrock Crafter is now a PC-first HTML/CSS/JavaScript game about mining asteroid fields, unloading ore at a station, upgrading a ship, and pushing toward a very distant planet. Active gameplay uses canvas, while menus, HUD, dialogue, and debug tools use HTML/CSS overlays.
+
+The project still keeps a mobile-landscape compatibility layer active while PC development continues, so future UI should be built once and checked against both desktop keyboard/mouse and mobile landscape touch layouts.
 
 ## Run Locally
 
-Use any static web server from the project root:
+From the project root:
+
+```bash
+npm start
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5177/
+```
+
+If port `5177` is already in use, the local server will try the next available port and print the URL.
+
+You can also use any static web server from the project root:
 
 ```bash
 python -m http.server 5177
@@ -18,6 +34,23 @@ http://127.0.0.1:5177/
 
 The game uses ES modules, so opening `index.html` directly from the filesystem is not recommended.
 
+## Platform Direction
+
+- Primary target: PC browser, keyboard/mouse first.
+- Secondary maintained target: mobile landscape, touch controls and safe-area support preserved.
+- Desktop should keep the playfield clean: virtual joysticks and big touch buttons are hidden by default.
+- Mobile landscape should remain functional: touch controls appear on coarse-pointer landscape devices or after touch input.
+- Portrait rotate messaging is limited to coarse-pointer devices so desktop windows are not blocked.
+
+Runtime platform attributes are set in `src/core/Game.js` on `document.documentElement`:
+
+- `data-platform-target="pc"`
+- `data-layout-profile="pc"` or `"mobile-landscape"`
+- `data-input-mode="keyboard-mouse"` or `"touch"`
+- `data-mobile-port="ready"`
+
+When adding UI, default to PC sizing first, then add mobile-landscape overrides using these attributes or landscape/coarse-pointer media queries.
+
 ## File Structure
 
 - `index.html` boots the canvas, UI root, and CSS.
@@ -25,6 +58,7 @@ The game uses ES modules, so opening `index.html` directly from the filesystem i
 - `src/core/` owns engine-level services: game loop, scenes, input, save, audio, and events.
 - `src/scenes/` owns scene-specific orchestration and rendering.
 - `src/entities/` owns canvas gameplay objects such as the ship, asteroids, pickups, rock islands, and station/island players.
+- `src/effects/` owns visual effects and effect renderers, including ship smoke, burst particles, floating text, cargo-transfer icons, and mining laser reticles.
 - `src/systems/` owns saveable game logic: inventory, materials, economy, dialogue, upgrades, research, navigation, islands, objectives, and achievements.
 - `src/ui/` owns reusable DOM UI components and overlays.
 - `src/data/` owns balance and content.
@@ -42,6 +76,19 @@ The game uses ES modules, so opening `index.html` directly from the filesystem i
 - Progression, zones, starter stats, and tuning: edit `src/data/gameBalance.js`.
 
 Keep tuning in data files when possible. Systems should read data and apply rules; scenes should avoid hardcoded balance values.
+
+## Visual Effects
+
+Effects are split so visual tuning stays targeted:
+
+- Ship smoke: `src/effects/ShipSmokeSimulation.js`.
+- Generic burst particles: `src/effects/ParticleBurstSystem.js`.
+- Floating reward/damage text: `src/effects/FloatingTextSystem.js`.
+- Cargo dump icon arcs: `src/effects/CargoTransferEffectSystem.js`.
+- Mining laser beam and PC aim reticle: `src/effects/MiningLaserRenderer.js`.
+- Asteroid splitting rules: `src/systems/AsteroidFragmentationSystem.js`.
+
+When changing VFX, prefer editing the matching effect module first. Scenes should call effect modules and avoid owning low-level particle, smoke, or reticle behavior.
 
 ## Progression Loop
 

@@ -14,14 +14,14 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./assets/img/moonrock-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/img/apple-touch-icon.png" />
-    <link rel="stylesheet" href="./src/styles/base.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/ui.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/station.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/navigation.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/mining.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/upgrades.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/storage.css?v=32" />
-    <link rel="stylesheet" href="./src/styles/island.css?v=32" />
+    <link rel="stylesheet" href="./src/styles/base.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/ui.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/station.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/navigation.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/mining.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/upgrades.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/storage.css?v=44" />
+    <link rel="stylesheet" href="./src/styles/island.css?v=44" />
   </head>
   <body>
     <div id="game-shell" class="game-shell">
@@ -31,7 +31,7 @@
         <div class="rotate-card">
           <div class="rotate-icon"></div>
           <h1>Turn the station sideways</h1>
-          <p>Moonrock Crafter is tuned for landscape play with big touch controls.</p>
+          <p>Moonrock Crafter is PC-first now, with mobile landscape support kept ready for later.</p>
         </div>
       </div>
     </div>
@@ -53,7 +53,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          const localCleanupKey = 'moonrock-local-sw-clean-v32';
+          const localCleanupKey = 'moonrock-local-sw-clean-v44';
           if (location.hostname === 'localhost') {
             if (!sessionStorage.getItem(localCleanupKey)) {
               sessionStorage.setItem(localCleanupKey, '1');
@@ -67,10 +67,10 @@
             }
             return;
           }
-          navigator.serviceWorker.register('./service-worker.js?v=32').catch(() => {});
+          navigator.serviceWorker.register('./service-worker.js?v=44').catch(() => {});
         });
       }
     </script>
-    <script type="module" src="./src/main.js?v=32"></script>
+    <script type="module" src="./src/main.js?v=44"></script>
   </body>
 </html>

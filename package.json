@@ -1,0 +1,10 @@
+{
+  "name": "moonrock-crafter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/dev-server.mjs",
+    "check": "node scripts/dev-server.mjs --smoke"
+  }
+}

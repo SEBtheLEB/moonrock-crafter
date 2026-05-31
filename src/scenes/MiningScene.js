@@ -1,13 +1,20 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Ship } from '../entities/Ship.js?v=32';
-import { Asteroid } from '../entities/Asteroid.js?v=32';
+import { Ship } from '../entities/Ship.js?v=44';
+import { Asteroid } from '../entities/Asteroid.js?v=44';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=44';
 import { MineralPickup } from '../entities/MineralPickup.js';
 import { RockIsland } from '../entities/RockIsland.js';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=32';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=32';
-import { islands as islandData } from '../data/islands.js?v=32';
-import { gameBalance } from '../data/gameBalance.js?v=32';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=44';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=44';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=44';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=44';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=44';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=44';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=44';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=44';
+import { islands as islandData } from '../data/islands.js?v=44';
+import { gameBalance } from '../data/gameBalance.js?v=44';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -15,6 +22,33 @@ const STATION_SAFE_RADIUS_SQ = (DOCK_RADIUS * 0.7) ** 2;
 const ASTEROID_META_BY_ID = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 const MAX_PARTICLES = gameBalance.mining.maxActiveParticles || 150;
 const MAX_FLOATING_TEXT = gameBalance.mining.maxFloatingText || 24;
+const RING_SIZE = gameBalance.mining.ringSize || 10000;
+const RING_COLORS = ['#66d8e8', '#284d82', '#c7602c', '#8d66e8', '#dfe7ff'];
+
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
+
+function hexToRgb(hex) {
+  const normalized = hex.replace('#', '').trim();
+  const value = normalized.length === 3
+    ? normalized.split('').map((part) => part + part).join('')
+    : normalized;
+  const number = Number.parseInt(value, 16);
+  return {
+    r: (number >> 16) & 255,
+    g: (number >> 8) & 255,
+    b: number & 255,
+  };
+}
+
+function lerpColor(from, to, amount) {
+  const a = hexToRgb(from);
+  const b = hexToRgb(to);
+  const mix = clamp01(amount);
+  const r = Math.round(a.r + (b.r - a.r) * mix);
+  const g = Math.round(a.g + (b.g - a.g) * mix);
+  const bl = Math.round(a.b + (b.b - a.b) * mix);
+  return `rgb(${r}, ${g}, ${bl})`;
+}
 
 export class MiningScene {
   constructor(game, payload = {}) {
@@ -22,16 +56,21 @@ export class MiningScene {
     this.payload = payload;
     this.game.systems.upgrades.applyUpgrades();
     this.ship = new Ship(game.state.ship);
+    this.combatDrone = new CompanionDrone({ cooldown: 0.48, damage: 18, targetRange: 920 });
     this.asteroids = [];
+    this.spaceEnemies = [];
     this.pickups = [];
-    this.particles = [];
-    this.particlePool = [];
     this.pickupPool = [];
     this.asteroidPool = [];
     this.shipSmoke = new ShipSmokeSimulation();
-    this.floatingText = [];
-    this.floatingTextPool = [];
-    this.cargoTransferEffects = [];
+    this.particleFx = new ParticleBurstSystem({ maxParticles: MAX_PARTICLES });
+    this.floatingTextFx = new FloatingTextSystem({ maxItems: MAX_FLOATING_TEXT });
+    this.cargoTransferFx = new CargoTransferEffectSystem();
+    this.laserRenderer = new MiningLaserRenderer();
+    this.fragmentation = new AsteroidFragmentationSystem({
+      config: gameBalance.mining.asteroidFragmentation,
+      maxAsteroidCount: gameBalance.mining.maxAsteroidCount || 64,
+    });
     this.time = 0;
     this.viewScale = gameBalance.ui?.miningViewScale || gameBalance.ui?.worldViewScale || 1;
     this.camera = { x: 0, y: 0, shake: 0, shakeX: 0, shakeY: 0 };
@@ -59,13 +98,18 @@ export class MiningScene {
     }
     this.mineTick = 0;
     this.laserTarget = null;
+    this.laserAimPoint = null;
+    this.mouseAimWorld = null;
+    this.mouseAimTarget = null;
     this.lowFuelToastReady = true;
     this.cargoFullToastReady = true;
     this.scannerPingCooldown = 0;
     this.currentZone = this.getZoneForDistance(0);
     this.previousZoneId = this.currentZone.id;
     this.zoneBannerTimer = 2.4;
+    this.ringCrossingPulse = 0;
     this.lockedZoneToastId = '';
+    this.mineBlockedCooldown = 0;
     this.ambientParticles = [];
     this.shieldTimer = 0;
     this.recallUsed = false;
@@ -181,6 +225,12 @@ export class MiningScene {
       fuelBar: hud.querySelector('.fuel-bar'),
       hullBar: hud.querySelector('.hull-bar'),
     };
+    this.miniMap = new MiningMiniMap({
+      zones: gameBalance.zones,
+      ringSize: RING_SIZE,
+      maxDistance: gameBalance.mining.miniMapMaxDistance || RING_SIZE * 5,
+    });
+    hud.append(this.miniMap.element);
 
     this.dockButton = new Button('Dock', () => this.dock(), {
       icon: 'D',
@@ -205,13 +255,24 @@ export class MiningScene {
       variant: 'forge',
       holdAction: 'mine',
     }).element;
+    const attackButton = new Button('Shoot', () => {}, {
+      icon: 'S',
+      className: 'attack-button',
+      variant: 'metal',
+      holdAction: 'attack',
+    }).element;
+    const actionCluster = document.createElement('div');
+    actionCluster.className = 'mining-action-controls';
+    actionCluster.append(mineButton, attackButton);
     this.moveStick = moveStick;
     this.mineButton = mineButton;
+    this.attackButton = attackButton;
     this.mineButtonLabel = mineButton.querySelector('span:last-child');
     this.mineButtonIcon = mineButton.querySelector('.button-icon');
-    this.game.ui.addControls([moveStick, mineButton]);
+    this.game.ui.addControls([moveStick, actionCluster]);
     this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
     this.game.input.bindHoldButton(mineButton, 'mine');
+    this.game.input.bindHoldButton(attackButton, 'attack');
   }
 
   exit() {
@@ -220,6 +281,9 @@ export class MiningScene {
     this.game.audio.stopEngineBoost();
     this.game.audio.setDangerMode(false);
     this.shipSmoke?.clear();
+    this.combatDrone?.clear();
+    this.game.input.virtualButtons.set('mine', false);
+    this.game.input.virtualButtons.set('attack', false);
   }
 
   seedAsteroidField() {
@@ -248,6 +312,7 @@ export class MiningScene {
       y,
       type,
       seed: Math.random(),
+      fragmentTier: this.chooseAsteroidFragmentTier(spawnDistanceFromStation),
     });
     asteroid.scannerRevealed = this.stats.rareScanner > 0;
     if (this.stats.rareScanner > 0 && (asteroidMeta?.rarity === 'rare' || asteroidMeta?.rarity === 'epic') && this.scannerPingCooldown <= 0) {
@@ -261,6 +326,10 @@ export class MiningScene {
   acquireAsteroid(options) {
     const asteroid = this.asteroidPool.pop();
     return asteroid ? asteroid.reset(options) : new Asteroid(options);
+  }
+
+  chooseAsteroidFragmentTier(distanceFromStation) {
+    return this.fragmentation.chooseTier(distanceFromStation);
   }
 
   releaseAsteroid(asteroid) {
@@ -317,6 +386,8 @@ export class MiningScene {
     if (this.ending) return;
     this.time += delta;
     this.cargoDumpCooldown = Math.max(0, this.cargoDumpCooldown - delta);
+    this.mineBlockedCooldown = Math.max(0, this.mineBlockedCooldown - delta);
+    this.ringCrossingPulse = Math.max(0, this.ringCrossingPulse - delta);
     if (this.cargoDumping) {
       this.updateCargoDump(delta);
       this.updateCamera(delta);
@@ -350,6 +421,7 @@ export class MiningScene {
     this.updateShipSmoke(delta);
     this.updateAsteroids(delta);
     this.updateMining(delta);
+    this.updateDroneCombat(delta);
     this.updatePickups(delta);
     this.updateParticles(delta);
     this.handleCollisions();
@@ -398,10 +470,7 @@ export class MiningScene {
       this.distanceFromStation = this.getDistanceFromStation();
       this.updateEngineAudio();
     }
-    for (let index = 0; index < this.cargoTransferEffects.length; index += 1) {
-      const effect = this.cargoTransferEffects[index];
-      effect.age += delta;
-    }
+    this.cargoTransferFx.update(delta);
     if (this.cargoDumpTimer > 0) return;
     if (this.cargoDumpReturnToStation) {
       this.ending = true;
@@ -429,7 +498,7 @@ export class MiningScene {
     this.cargoDumpTimer = 0;
     this.cargoDumpSummary = null;
     this.cargoDumpCooldown = 1.25;
-    this.cargoTransferEffects = [];
+    this.cargoTransferFx.clear();
     this.game.audio.playDockSuccess();
     this.game.ui.showToast(`Cargo stored: ${totalItems} items (+${creditsEarned}c assay)`, 'success', 1800);
     this.addFloatingText(this.ship.x, this.ship.y - 34, `+${creditsEarned}c Assay`, { color: '#ffd36b', rarity: 'uncommon' });
@@ -437,30 +506,12 @@ export class MiningScene {
   }
 
   spawnCargoTransferEffects() {
-    this.cargoTransferEffects = [];
-    let effectIndex = 0;
-    Object.entries(this.runCargo).forEach(([materialId, amount]) => {
-      const material = this.game.systems.materials.getMaterial(materialId);
-      const visibleCount = Math.max(1, Math.min(6, amount));
-      for (let i = 0; i < visibleCount; i += 1) {
-        const spread = (effectIndex % 7) - 3;
-        this.cargoTransferEffects.push({
-          materialId,
-          icon: material?.icon || '*',
-          color: material?.color || '#ffd36b',
-          age: -effectIndex * 0.045,
-          life: 0.78 + (i % 3) * 0.08,
-          startX: this.ship.x + Math.cos(effectIndex * 1.8) * 18,
-          startY: this.ship.y + Math.sin(effectIndex * 2.1) * 14,
-          endX: spread * 10,
-          endY: -18 - (effectIndex % 3) * 7,
-          arc: 80 + (effectIndex % 4) * 18,
-          size: 15 + (effectIndex % 3) * 2,
-        });
-        effectIndex += 1;
-      }
+    const effectCount = this.cargoTransferFx.spawnFromCargo({
+      cargo: this.runCargo,
+      ship: this.ship,
+      getMaterial: (materialId) => this.game.systems.materials.getMaterial(materialId),
     });
-    this.spawnBurst(this.ship.x, this.ship.y, '#ffd36b', Math.min(22, 8 + effectIndex), 120);
+    this.spawnBurst(this.ship.x, this.ship.y, '#ffd36b', Math.min(22, 8 + effectCount), 120);
   }
 
   updateDistanceProgress(delta) {
@@ -498,7 +549,7 @@ export class MiningScene {
     const lockedZone = this.game.systems.research.getLockedZoneForDistance(distance);
     if (lockedZone && lockedZone.id !== this.lockedZoneToastId) {
       this.lockedZoneToastId = lockedZone.id;
-      this.game.ui.showToast(`${lockedZone.name} needs research`, 'danger');
+      this.game.ui.showToast(`Uncharted ring: ${lockedZone.name}`, 'danger');
       this.game.audio.playError();
     }
     const zone = this.getZoneForDistance(distance);
@@ -509,13 +560,35 @@ export class MiningScene {
     if (zone.id !== this.previousZoneId) {
       this.previousZoneId = zone.id;
       this.zoneBannerTimer = 2.4;
+      this.ringCrossingPulse = 1.8;
       this.game.ui.showToast(`Entering ${zone.name}`, 'success');
       this.game.audio.playSceneTransition();
     }
   }
 
   getZoneForDistance(distance) {
-    return this.game.systems.research.getZoneForDistance(distance);
+    return gameBalance.zones.find((zone) => distance >= zone.minDistance && distance < zone.maxDistance)
+      || gameBalance.zones.at(-1)
+      || gameBalance.zones[0];
+  }
+
+  getZoneBlend(distance) {
+    const zones = gameBalance.zones;
+    const zone = this.getZoneForDistance(distance);
+    const index = Math.max(0, zones.findIndex((entry) => entry.id === zone.id));
+    const next = zones[index + 1] || zone;
+    const span = Number.isFinite(zone.maxDistance) ? zone.maxDistance - zone.minDistance : RING_SIZE;
+    const progress = clamp01((distance - zone.minDistance) / Math.max(1, span));
+    return { zone, next, progress };
+  }
+
+  getBlendedBackground(distance) {
+    const { zone, next, progress } = this.getZoneBlend(distance);
+    return {
+      inner: lerpColor(zone.background.inner, next.background.inner, progress),
+      middle: lerpColor(zone.background.middle, next.background.middle, progress),
+      outer: lerpColor(zone.background.outer, next.background.outer, progress),
+    };
   }
 
   updateCamera(delta) {
@@ -533,6 +606,12 @@ export class MiningScene {
       viewport: this.game.viewport,
       ship: this.ship,
       camera: this.cameraView,
+      cameraFrame: {
+        x: this.camera.x,
+        y: this.camera.y,
+        shakeX: this.camera.shakeX,
+        shakeY: this.camera.shakeY,
+      },
       input: this.game.input,
       fuelRatio: this.stats.fuel / Math.max(1, this.stats.maxFuel),
       viewScale: this.viewScale,
@@ -567,6 +646,8 @@ export class MiningScene {
 
   updateMining(delta) {
     this.laserTarget = null;
+    this.laserAimPoint = null;
+    this.updateMouseAimState();
     if (this.landingIsland) {
       this.stopLaserAudio();
       return;
@@ -577,11 +658,24 @@ export class MiningScene {
     }
     const target = this.findMiningTarget();
     if (!target) {
-      this.stopLaserAudio();
+      if (this.mouseAimWorld) {
+        this.laserAimPoint = this.getClampedLaserAimPoint(this.mouseAimWorld);
+        this.startLaserAudio();
+      } else {
+        this.stopLaserAudio();
+      }
       return;
     }
 
     this.laserTarget = target;
+    if (!this.canMineAsteroid(target)) {
+      this.laserTarget = null;
+      this.laserAimPoint = this.getClampedLaserAimPoint({ x: target.x, y: target.y });
+      this.stopLaserAudio();
+      this.showMineBlocked(target);
+      return;
+    }
+
     this.startLaserAudio();
     this.mineTick -= delta;
     if (this.mineTick <= 0) {
@@ -597,6 +691,67 @@ export class MiningScene {
       this.removeAsteroid(target);
       this.stopLaserAudio();
     }
+  }
+
+  canMineAsteroid(asteroid) {
+    const requiredPower = asteroid?.data?.miningPowerRequired ?? 0;
+    return this.stats.miningPower + 0.001 >= requiredPower;
+  }
+
+  showMineBlocked(asteroid) {
+    if (!asteroid || this.mineBlockedCooldown > 0) return;
+    this.mineBlockedCooldown = 0.85;
+    const requiredPower = asteroid.data?.miningPowerRequired ?? 0;
+    const currentPower = this.stats.miningPower ?? 0;
+    this.game.ui.showToast(
+      `${asteroid.data?.name || 'Asteroid'} needs Laser Power ${requiredPower.toFixed(1)} (${currentPower.toFixed(1)} now)`,
+      'danger',
+      1800,
+    );
+    this.addFloatingText(asteroid.x, asteroid.y - asteroid.radius, 'Upgrade miner', {
+      color: '#ff756f',
+      rarity: 'rare',
+    });
+    this.game.audio.playError();
+  }
+
+  updateDroneCombat(delta) {
+    const threats = this.spaceEnemies;
+    this.combatDrone.update(delta, this.getDroneAnchor(), {
+      threats,
+      onHit: (target, projectile, damage) => this.handleDroneHit(target, projectile, damage),
+    });
+    if (!this.game.input.actions.justPressed.attack || this.landingIsland) return;
+    this.combatDrone.tryShoot({
+      anchor: this.getDroneAnchor(),
+      aimPoint: this.getDroneAimPoint(),
+      threats,
+      onShoot: () => this.game.audio.playDroneShot?.(),
+    });
+  }
+
+  getDroneAnchor() {
+    return {
+      x: this.ship.x,
+      y: this.ship.y,
+      angle: this.ship.angle,
+      droneSide: -1,
+    };
+  }
+
+  getDroneAimPoint() {
+    if (this.mouseAimWorld) return this.mouseAimWorld;
+    return {
+      x: this.ship.x + Math.cos(this.ship.angle) * 560,
+      y: this.ship.y + Math.sin(this.ship.angle) * 560,
+    };
+  }
+
+  handleDroneHit(target, projectile, damage) {
+    if (!target) return;
+    this.game.audio.playDroneHit?.();
+    this.spawnHitParticles(projectile.x, projectile.y, target.accent || '#66d8e8');
+    target.takeDamage?.(damage);
   }
 
   removeAsteroid(target) {
@@ -632,6 +787,13 @@ export class MiningScene {
   }
 
   findMiningTarget() {
+    if (this.mouseAimWorld && document.documentElement.dataset.inputMode !== 'touch') {
+      return this.mouseAimTarget;
+    }
+    return this.findNearestMiningTarget();
+  }
+
+  findNearestMiningTarget() {
     let closest = null;
     let closestDistanceSq = Infinity;
     const rangeSq = this.stats.miningRange * this.stats.miningRange;
@@ -646,13 +808,69 @@ export class MiningScene {
     return closest;
   }
 
+  updateMouseAimState() {
+    this.mouseAimWorld = null;
+    this.mouseAimTarget = null;
+    const pointer = this.game.input.mousePointer;
+    if (!pointer?.inside || pointer.source !== 'canvas') return;
+    if (document.documentElement.dataset.inputMode === 'touch') return;
+    this.mouseAimWorld = this.screenToWorld(pointer.canvasX, pointer.canvasY);
+    this.mouseAimTarget = this.findMouseAimTarget(this.mouseAimWorld);
+  }
+
+  screenToWorld(screenX, screenY) {
+    const viewport = this.game.viewport || { width: 0, height: 0 };
+    const scale = Math.max(0.1, this.viewScale);
+    const unscaledX = viewport.width * 0.5 + (screenX - viewport.width * 0.5) / scale;
+    const unscaledY = viewport.height * 0.5 + (screenY - viewport.height * 0.5) / scale;
+    return {
+      x: unscaledX + this.camera.x - viewport.width * 0.5 - this.camera.shakeX,
+      y: unscaledY + this.camera.y - viewport.height * 0.5 - this.camera.shakeY,
+    };
+  }
+
+  getClampedLaserAimPoint(worldPoint) {
+    const dx = worldPoint.x - this.ship.x;
+    const dy = worldPoint.y - this.ship.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const clampedDistance = Math.min(distance, this.stats.miningRange);
+    return {
+      x: this.ship.x + (dx / distance) * clampedDistance,
+      y: this.ship.y + (dy / distance) * clampedDistance,
+    };
+  }
+
+  findMouseAimTarget(worldPoint) {
+    let best = null;
+    let bestScore = Infinity;
+    const rangeSq = this.stats.miningRange * this.stats.miningRange;
+    const snapRadius = gameBalance.mining.mouseAimSnapRadius || 18;
+    for (let index = 0; index < this.asteroids.length; index += 1) {
+      const asteroid = this.asteroids[index];
+      if (this.distanceToShipSq(asteroid) > rangeSq) continue;
+      const dx = asteroid.x - worldPoint.x;
+      const dy = asteroid.y - worldPoint.y;
+      const hoverDistance = Math.hypot(dx, dy);
+      const surfaceDistance = hoverDistance - asteroid.radius;
+      if (surfaceDistance > snapRadius) continue;
+      const score = Math.max(0, surfaceDistance) + hoverDistance * 0.02;
+      if (score < bestScore) {
+        best = asteroid;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   breakAsteroid(asteroid) {
     this.stats.asteroidsMined += 1;
     this.game.state.stats ||= {};
     this.game.state.stats.totalAsteroidsMined = (this.game.state.stats.totalAsteroidsMined || 0) + 1;
     this.game.systems.achievements.record('asteroidMined', { asteroidType: asteroid.type });
     if (asteroid.data.rarity === 'rare' || asteroid.data.rarity === 'epic') this.stats.rareFinds += 1;
-    asteroid.getDropPayload().forEach((drop, index) => {
+    const didFragment = this.spawnAsteroidFragments(asteroid);
+    const dropScale = didFragment ? asteroid.dropScale * (gameBalance.mining.fragmentPartialDropScale ?? 0.2) : asteroid.dropScale;
+    asteroid.getDropPayload(dropScale).forEach((drop, index) => {
       const material = this.game.systems.materials.getMaterial(drop.materialId);
       if (
         this.stats.precisionCutter > 0
@@ -675,6 +893,16 @@ export class MiningScene {
     if (asteroid.data.explodesOnBreak) this.explodeAsteroid(asteroid);
     this.addScreenShake(asteroid.data.rarity === 'rare' || asteroid.data.rarity === 'epic' ? 0.48 : 0.35);
     if (asteroid.data.rarity === 'rare' || asteroid.data.rarity === 'epic') this.rareFindBurst(asteroid.x, asteroid.y, asteroid.data.accent);
+  }
+
+  spawnAsteroidFragments(asteroid) {
+    const result = this.fragmentation.spawn({
+      asteroid,
+      asteroids: this.asteroids,
+      acquireAsteroid: (options) => this.acquireAsteroid(options),
+    });
+    if (result.didFragment) this.spawnBurst(asteroid.x, asteroid.y, asteroid.data.accent, 8 + result.childCount * 4, 135);
+    return result.didFragment;
   }
 
   acquirePickup(options) {
@@ -830,7 +1058,7 @@ export class MiningScene {
       if (this.mineButtonIcon) this.mineButtonIcon.textContent = 'L';
       this.mineButton?.classList.add('is-land-mode');
       const actions = this.game.input.actions;
-      const mineTap = actions.justPressed.mine && !this.game.input.keys.has(' ');
+      const mineTap = actions.justPressed.mine && document.documentElement.dataset.inputMode === 'touch';
       if (actions.justPressed.interact || actions.justPressed.confirm || mineTap) this.landOnIsland(nearest);
       return;
     }
@@ -928,63 +1156,16 @@ export class MiningScene {
   }
 
   updateParticles(delta) {
-    let particleWrite = 0;
-    for (let index = 0; index < this.particles.length; index += 1) {
-      const particle = this.particles[index];
-      particle.age += delta;
-      particle.x += particle.vx * delta;
-      particle.y += particle.vy * delta;
-      particle.vx *= Math.max(0, 1 - delta * 1.4);
-      particle.vy *= Math.max(0, 1 - delta * 1.4);
-      if (particle.age < particle.life) {
-        this.particles[particleWrite] = particle;
-        particleWrite += 1;
-      } else {
-        this.releaseParticle(particle);
-      }
-    }
-    this.particles.length = particleWrite;
-
-    let textWrite = 0;
-    for (let index = 0; index < this.floatingText.length; index += 1) {
-      const text = this.floatingText[index];
-      text.age += delta;
-      text.y -= 24 * delta;
-      if (text.age < 1.15) {
-        this.floatingText[textWrite] = text;
-        textWrite += 1;
-      } else {
-        this.releaseFloatingText(text);
-      }
-    }
-    this.floatingText.length = textWrite;
+    this.particleFx.update(delta);
+    this.floatingTextFx.update(delta);
   }
 
   spawnHitParticles(x, y, color) {
-    this.spawnBurst(x, y, color, 3, 55);
+    this.particleFx.spawnHit(x, y, color);
   }
 
   spawnBurst(x, y, color, count, speed = 115) {
-    for (let i = 0; i < count; i += 1) {
-      if (this.particles.length >= MAX_PARTICLES) return;
-      const angle = Math.random() * Math.PI * 2;
-      const velocity = speed * (0.35 + Math.random() * 0.8);
-      const particle = this.particlePool.pop() || {};
-      Object.assign(particle, {
-        x,
-        y,
-        vx: Math.cos(angle) * velocity,
-        vy: Math.sin(angle) * velocity,
-        color,
-        age: 0,
-        life: 0.35 + Math.random() * 0.45,
-      });
-      this.particles.push(particle);
-    }
-  }
-
-  releaseParticle(particle) {
-    if (this.particlePool.length < MAX_PARTICLES) this.particlePool.push(particle);
+    this.particleFx.spawnBurst(x, y, color, count, speed);
   }
 
   addScreenShake(amount = 0.35) {
@@ -992,17 +1173,7 @@ export class MiningScene {
   }
 
   addFloatingText(x, y, text, { color = '#fff2cf', rarity = 'common' } = {}) {
-    if (this.floatingText.length >= MAX_FLOATING_TEXT) {
-      const oldest = this.floatingText.shift();
-      if (oldest) this.releaseFloatingText(oldest);
-    }
-    const item = this.floatingTextPool.pop() || {};
-    Object.assign(item, { x, y, text, color, rarity, age: 0 });
-    this.floatingText.push(item);
-  }
-
-  releaseFloatingText(text) {
-    if (this.floatingTextPool.length < MAX_FLOATING_TEXT) this.floatingTextPool.push(text);
+    this.floatingTextFx.add(x, y, text, { color, rarity });
   }
 
   rareFindBurst(x, y, color) {
@@ -1122,6 +1293,11 @@ export class MiningScene {
     this.setHudClass('fuelLow', this.hud.fuelBar, 'is-low', fuelRatio <= 0.18, force);
     this.setHudClass('hullLow', this.hud.hullBar, 'is-low', hullRatio <= 0.25, force);
     this.game.audio.setDangerMode(fuelRatio <= 0.18 || hullRatio <= 0.25);
+    this.miniMap?.draw({
+      ship: this.ship,
+      distance,
+      zone: this.currentZone,
+    });
   }
 
   setHudText(key, element, value, force = false) {
@@ -1150,6 +1326,7 @@ export class MiningScene {
     this.drawAmbientParticles(ctx);
     ctx.save();
     this.applyWorldScale(ctx, width, height);
+    this.drawDistanceRings(ctx);
     this.drawStation(ctx);
     const camera = this.cameraView;
     this.rockIslands.forEach((island) => {
@@ -1164,51 +1341,21 @@ export class MiningScene {
     this.pickups.forEach((pickup) => pickup.draw(ctx, camera));
     this.asteroids.forEach((asteroid) => asteroid.draw(ctx, camera));
     this.drawLaser(ctx);
+    this.drawMouseAimReticle(ctx);
     this.drawParticles(ctx);
     ctx.restore();
     this.drawShipSmoke(ctx);
     ctx.save();
     this.applyWorldScale(ctx, width, height);
     this.ship.draw(ctx, camera, this.game.input);
+    this.combatDrone.draw(ctx, camera);
     this.drawCargoTransferEffects(ctx);
     this.drawFloatingText(ctx);
     ctx.restore();
   }
 
   drawCargoTransferEffects(ctx) {
-    if (!this.cargoTransferEffects.length) return;
-    const camera = this.cameraView;
-    this.cargoTransferEffects.forEach((effect) => {
-      if (effect.age < 0) return;
-      const t = Math.min(1, effect.age / effect.life);
-      const ease = 1 - (1 - t) ** 3;
-      const lift = Math.sin(t * Math.PI) * effect.arc;
-      const x = effect.startX + (effect.endX - effect.startX) * ease;
-      const y = effect.startY + (effect.endY - effect.startY) * ease - lift;
-      const screen = camera.worldToScreen(x, y);
-      const alpha = t > 0.86 ? Math.max(0, (1 - t) / 0.14) : Math.min(1, t / 0.16);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(screen.x, screen.y);
-      ctx.rotate(effect.age * 7);
-      ctx.fillStyle = effect.color;
-      ctx.strokeStyle = '#081626';
-      ctx.lineWidth = 3;
-      ctx.shadowColor = effect.color;
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(0, 0, effect.size, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#081626';
-      ctx.font = '900 12px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(effect.icon, 0, 1);
-      ctx.restore();
-    });
-    ctx.globalAlpha = 1;
+    this.cargoTransferFx.draw(ctx, this.cameraView);
   }
 
   applyWorldScale(ctx, width, height) {
@@ -1219,8 +1366,9 @@ export class MiningScene {
   }
 
   drawSpace(ctx, width, height) {
-    const colors = this.currentZone.background;
-    const key = `${this.currentZone.id}:${width}:${height}`;
+    const colors = this.getBlendedBackground(this.distanceFromStation);
+    const blendBucket = Math.round(this.distanceFromStation / 300);
+    const key = `${this.currentZone.id}:${blendBucket}:${width}:${height}`;
     if (this.spaceBackdrop?.key !== key) {
       const gradient = ctx.createRadialGradient(width * 0.5, height * 0.45, 20, width * 0.5, height * 0.45, width);
       gradient.addColorStop(0, colors.inner);
@@ -1231,7 +1379,8 @@ export class MiningScene {
     ctx.fillStyle = this.spaceBackdrop.gradient;
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = 'rgba(255, 250, 226, 0.82)';
-    for (let i = 0; i < 120; i += 1) {
+    const starCount = this.distanceFromStation >= RING_SIZE * 4 ? 190 : 120;
+    for (let i = 0; i < starCount; i += 1) {
       const parallax = 0.18 + (i % 4) * 0.09;
       const x = ((i * 97 - this.camera.x * parallax) % (width + 40) + width + 40) % (width + 40) - 20;
       const y = ((i * 53 - this.camera.y * parallax) % (height + 40) + height + 40) % (height + 40) - 20;
@@ -1239,6 +1388,46 @@ export class MiningScene {
       ctx.arc(x, y, 0.8 + (i % 3) * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  drawDistanceRings(ctx) {
+    const maxDistance = gameBalance.mining.miniMapMaxDistance || RING_SIZE * 5;
+    const ringCount = Math.ceil(maxDistance / RING_SIZE);
+    const center = this.cameraView.worldToScreen(0, 0);
+    const distance = this.distanceFromStation;
+    ctx.save();
+    ctx.lineWidth = Math.max(1.4, 2.4 / Math.max(0.1, this.viewScale));
+    ctx.font = `${Math.max(12, 13 / Math.max(0.1, this.viewScale))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let ring = 1; ring <= ringCount; ring += 1) {
+      const radius = ring * RING_SIZE;
+      const distanceToRing = Math.abs(distance - radius);
+      const closeAlpha = clamp01(1 - distanceToRing / 900);
+      const pulse = this.ringCrossingPulse > 0 && closeAlpha > 0.35
+        ? Math.sin(this.ringCrossingPulse * 12) * 0.08 + 0.14
+        : 0;
+      const alpha = 0.11 + closeAlpha * 0.32 + pulse;
+      const color = this.getRingColor(ring);
+      ctx.strokeStyle = `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+      ctx.setLineDash(closeAlpha > 0.02 ? [] : [26 / this.viewScale, 18 / this.viewScale]);
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (closeAlpha > 0.08) {
+        const shipAngle = Math.atan2(this.ship.y, this.ship.x);
+        const label = this.cameraView.worldToScreen(Math.cos(shipAngle) * radius, Math.sin(shipAngle) * radius);
+        ctx.setLineDash([]);
+        ctx.fillStyle = `rgba(236, 231, 216, ${0.35 + closeAlpha * 0.5})`;
+        ctx.fillText(`${ring * 10}k ring`, label.x, label.y - 18 / Math.max(0.1, this.viewScale));
+      }
+    }
+    ctx.restore();
+  }
+
+  getRingColor(ring) {
+    return RING_COLORS[(ring - 1) % RING_COLORS.length];
   }
 
   updateAmbientParticles(delta) {
@@ -1300,37 +1489,28 @@ export class MiningScene {
   }
 
   drawLaser(ctx) {
-    if (!this.laserTarget) return;
-    const camera = this.cameraView;
-    const start = camera.worldToScreen(this.ship.x, this.ship.y);
-    const end = camera.worldToScreen(this.laserTarget.x, this.laserTarget.y);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 211, 107, 0.95)';
-    ctx.lineWidth = 5;
-    ctx.shadowColor = '#ff8f3d';
-    ctx.shadowBlur = 18;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(118, 243, 255, 0.9)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
+    this.laserRenderer.drawBeam(ctx, {
+      camera: this.cameraView,
+      ship: this.ship,
+      target: this.laserTarget,
+      aimPoint: this.laserAimPoint,
+      time: this.time,
+    });
+  }
+
+  drawMouseAimReticle(ctx) {
+    this.laserRenderer.drawAimReticle(ctx, {
+      camera: this.cameraView,
+      mouseAimWorld: this.mouseAimWorld,
+      mouseAimTarget: this.mouseAimTarget,
+      snapRadius: gameBalance.mining.mouseAimSnapRadius || 18,
+      time: this.time,
+      inputMode: document.documentElement.dataset.inputMode,
+    });
   }
 
   drawParticles(ctx) {
-    const camera = this.cameraView;
-    this.particles.forEach((particle) => {
-      const screen = camera.worldToScreen(particle.x, particle.y);
-      const alpha = 1 - particle.age / particle.life;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = particle.color;
-      ctx.beginPath();
-      ctx.arc(screen.x, screen.y, 2 + alpha * 2, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.globalAlpha = 1;
+    this.particleFx.draw(ctx, this.cameraView);
   }
 
   drawShipSmoke(ctx) {
@@ -1338,27 +1518,7 @@ export class MiningScene {
   }
 
   drawFloatingText(ctx) {
-    const camera = this.cameraView;
-    ctx.save();
-    ctx.font = '800 14px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.lineWidth = 4;
-    this.floatingText.forEach((text) => {
-      const screen = camera.worldToScreen(text.x, text.y);
-      ctx.globalAlpha = 1 - text.age / 1.15;
-      ctx.strokeStyle = '#081626';
-      ctx.fillStyle = text.color || '#fff2cf';
-      if (text.rarity === 'rare' || text.rarity === 'epic') {
-        ctx.shadowColor = text.color;
-        ctx.shadowBlur = text.rarity === 'epic' ? 14 : 8;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-      ctx.strokeText(text.text, screen.x, screen.y);
-      ctx.fillText(text.text, screen.x, screen.y);
-    });
-    ctx.restore();
-    ctx.globalAlpha = 1;
+    this.floatingTextFx.draw(ctx, this.cameraView);
   }
 
   getDistanceFromStation() {

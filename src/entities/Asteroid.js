@@ -1,20 +1,30 @@
-import { asteroids as asteroidData } from '../data/asteroids.js?v=32';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=44';
 
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 
+const FRAGMENT_VISUALS = {
+  0: { radius: 0.62, health: 0.46, drop: 0.48 },
+  1: { radius: 0.86, health: 0.76, drop: 0.72 },
+  2: { radius: 1.18, health: 1.18, drop: 1.02 },
+  3: { radius: 1.52, health: 1.72, drop: 1.32 },
+};
+
 export class Asteroid {
-  constructor({ x, y, type = 'stone', seed = Math.random() }) {
-    this.reset({ x, y, type, seed });
+  constructor({ x, y, type = 'stone', seed = Math.random(), fragmentTier = 1, dropScale = null }) {
+    this.reset({ x, y, type, seed, fragmentTier, dropScale });
   }
 
-  reset({ x, y, type = 'stone', seed = Math.random() }) {
+  reset({ x, y, type = 'stone', seed = Math.random(), fragmentTier = 1, dropScale = null }) {
     this.x = x;
     this.y = y;
     this.type = type;
     this.seed = seed;
+    this.fragmentTier = Math.max(0, Math.min(3, Math.round(fragmentTier)));
+    this.fragmentVisual = FRAGMENT_VISUALS[this.fragmentTier] || FRAGMENT_VISUALS[1];
+    this.dropScale = dropScale ?? this.fragmentVisual.drop;
     this.data = ASTEROID_TYPES[type] || ASTEROID_TYPES.stone;
-    this.radius = this.data.radius * (0.9 + seed * 0.22);
-    this.maxHealth = this.data.health * (0.92 + seed * 0.22);
+    this.radius = this.data.radius * (0.9 + seed * 0.22) * this.fragmentVisual.radius;
+    this.maxHealth = this.data.health * (0.92 + seed * 0.22) * this.fragmentVisual.health;
     this.health = this.maxHealth;
     this.rotation = seed * Math.PI * 2;
     this.rotationSpeed = this.getRotationSpeed();
@@ -69,12 +79,18 @@ export class Asteroid {
     return this.health <= 0;
   }
 
-  getDropPayload() {
+  getDropPayload(scale = this.dropScale) {
     const drops = [];
     this.data.drops.forEach((drop) => {
       if (Math.random() > drop.chance) return;
       const amount = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-      drops.push({ materialId: drop.materialId, amount });
+      const scaledAmount = amount * Math.max(0, scale);
+      if (scaledAmount < 1) {
+        if (Math.random() > scaledAmount) return;
+        drops.push({ materialId: drop.materialId, amount: 1 });
+        return;
+      }
+      drops.push({ materialId: drop.materialId, amount: Math.max(1, Math.round(scaledAmount)) });
     });
     return drops;
   }
@@ -121,6 +137,7 @@ export class Asteroid {
     ctx.fill();
     ctx.stroke();
     this.drawFacetHighlights(ctx);
+    this.drawFragmentSeams(ctx);
 
     ctx.strokeStyle = 'rgba(8, 22, 38, 0.68)';
     ctx.lineWidth = 1.2;
@@ -175,6 +192,25 @@ export class Asteroid {
       ctx.beginPath();
       ctx.arc(-this.radius * 0.24, -this.radius * 0.26, Math.max(2, this.radius * 0.055), 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawFragmentSeams(ctx) {
+    if (this.fragmentTier <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + this.fragmentTier * 0.08;
+    ctx.strokeStyle = 'rgba(255, 242, 207, 0.34)';
+    ctx.lineWidth = 0.9 + this.fragmentTier * 0.25;
+    const seams = this.fragmentTier + 1;
+    for (let i = 0; i < seams; i += 1) {
+      const angle = this.seed * 5.7 + (Math.PI * 2 * i) / seams;
+      const cross = angle + Math.PI * 0.5;
+      const bend = Math.sin(this.seed * 12 + i) * this.radius * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * this.radius * -0.52 + Math.cos(cross) * bend, Math.sin(angle) * this.radius * -0.52 + Math.sin(cross) * bend);
+      ctx.quadraticCurveTo(Math.cos(cross) * bend, Math.sin(cross) * bend, Math.cos(angle) * this.radius * 0.56 - Math.cos(cross) * bend, Math.sin(angle) * this.radius * 0.56 - Math.sin(cross) * bend);
+      ctx.stroke();
     }
     ctx.restore();
   }

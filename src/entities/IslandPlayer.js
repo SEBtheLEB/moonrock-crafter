@@ -1,5 +1,5 @@
-const WIDTH = 40;
-const HEIGHT = 66;
+const WIDTH = 34;
+const HEIGHT = 58;
 
 export class IslandPlayer {
   constructor({ x = 170, y = 0 } = {}) {
@@ -86,47 +86,45 @@ export class IslandPlayer {
     if (this.hitCooldown > 0 && Math.sin(time * 32) > 0) ctx.globalAlpha = 0.55;
     ctx.translate(-this.width / 2, -this.height / 2);
 
-    ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath();
-    ctx.ellipse(this.width / 2, this.height + 7, 22, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.width / 2, this.height + 5, 17, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#76f3ff';
-    ctx.strokeStyle = '#102033';
-    ctx.lineWidth = 4;
+    const bodyGradient = ctx.createLinearGradient(0, 6, 0, this.height - 4);
+    bodyGradient.addColorStop(0, '#f1e6c8');
+    bodyGradient.addColorStop(0.52, '#d9c79a');
+    bodyGradient.addColorStop(1, '#b9915e');
+    ctx.fillStyle = bodyGradient;
+    ctx.strokeStyle = 'rgba(8, 17, 26, 0.55)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(7, 22, 28, 36, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#fff2cf';
-    ctx.beginPath();
-    ctx.roundRect(10, 7, 21, 22, 9);
+    ctx.roundRect(5, 8, 24, 45, 12);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#ffd36b';
+    ctx.fillStyle = 'rgba(217, 134, 66, 0.38)';
     ctx.beginPath();
-    ctx.roundRect(8, 18, 25, 12, 7);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#102033';
-    ctx.beginPath();
-    ctx.arc(this.facing > 0 ? 24 : 15, 17, 2.3, 0, Math.PI * 2);
+    ctx.roundRect(8, 36, 18, 9, 5);
     ctx.fill();
 
-    ctx.strokeStyle = '#102033';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
+    ctx.fillStyle = '#101923';
     ctx.beginPath();
-    ctx.moveTo(this.facing > 0 ? 33 : 8, 38);
-    ctx.lineTo(this.facing > 0 ? 43 : -1, 45);
-    ctx.moveTo(15, 57);
-    ctx.lineTo(11, 68);
-    ctx.moveTo(27, 57);
-    ctx.lineTo(31, 68);
-    ctx.stroke();
+    ctx.roundRect(8, 14, 18, 13, 7);
+    ctx.fill();
+
+    const visorGradient = ctx.createLinearGradient(8, 14, 26, 27);
+    visorGradient.addColorStop(0, 'rgba(102, 216, 232, 0.9)');
+    visorGradient.addColorStop(1, 'rgba(102, 216, 232, 0.28)');
+    ctx.fillStyle = visorGradient;
+    ctx.beginPath();
+    ctx.roundRect(this.facing > 0 ? 15 : 8, 17, 9, 5, 3);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(102, 216, 232, 0.5)';
+    ctx.beginPath();
+    ctx.arc(this.facing > 0 ? 7 : 27, 10, 2.6 + Math.sin(time * 2.8) * 0.4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 }

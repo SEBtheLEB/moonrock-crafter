@@ -2,15 +2,20 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (a, b, t) => a + (b - a) * t;
 
 const SMOKE_SETTINGS = {
-  resolution: 92,
-  dissipation: 0.989,
-  velocityDissipation: 0.981,
+  resolution: 640,
+  viewportResolutionScale: 0.64,
+  dissipation: 0.958,
+  velocityDissipation: 0.948,
   pressure: 0.34,
-  pressureIterations: 6,
+  pressureIterations: 1,
   curl: 0.62,
   force: 0.48,
-  intensity: 0.92,
-  splatRadius: 12,
+  intensity: 1.28,
+  splatRadius: 10.5,
+  fadeSubtract: 0.0048,
+  densityCutoff: 0.01,
+  clearThreshold: 0.12,
+  renderCutoff: 0.014,
 };
 
 // Adapted from the FX Lab smoke-flow grid simulation. This version is scoped to
@@ -38,13 +43,15 @@ export class ShipSmokeSimulation {
     this.dyeTotal = 0;
     this.flowX = 0;
     this.flowY = 0;
+    this.lastCameraFrame = null;
   }
 
   ensure(width, height) {
     const nextWidth = Math.max(1, Math.floor(width || 1));
     const nextHeight = Math.max(1, Math.floor(height || 1));
-    const nextCols = Math.floor(clamp(SMOKE_SETTINGS.resolution, 48, 124));
-    const nextRows = Math.floor(clamp(nextCols * nextHeight / Math.max(1, nextWidth), 28, 92));
+    const targetCols = Math.min(SMOKE_SETTINGS.resolution, nextWidth * SMOKE_SETTINGS.viewportResolutionScale);
+    const nextCols = Math.floor(clamp(targetCols, 280, 720));
+    const nextRows = Math.floor(clamp(nextCols * nextHeight / Math.max(1, nextWidth), 150, 420));
     if (this.cols === nextCols && this.rows === nextRows && this.width === nextWidth && this.height === nextHeight) return;
 
     const size = nextCols * nextRows;
@@ -66,6 +73,7 @@ export class ShipSmokeSimulation {
     this.canvas.height = nextRows;
     this.imageData = this.ctx.createImageData(nextCols, nextRows);
     this.dyeTotal = 0;
+    this.lastCameraFrame = null;
   }
 
   clear() {
@@ -82,6 +90,7 @@ export class ShipSmokeSimulation {
     this.dyeTotal = 0;
     this.flowX = 0;
     this.flowY = 0;
+    this.lastCameraFrame = null;
   }
 
   index(x, y) {
@@ -102,6 +111,64 @@ export class ShipSmokeSimulation {
     return lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
   }
 
+  sampleShifted(field, x, y) {
+    if (x < 0 || y < 0 || x > this.cols - 1 || y > this.rows - 1) return 0;
+    return this.sample(field, x, y);
+  }
+
+  applyCameraShift(cameraFrame, viewScale = 1) {
+    if (!cameraFrame || !this.cols || !this.rows) return;
+
+    const nextFrame = {
+      x: cameraFrame.x || 0,
+      y: cameraFrame.y || 0,
+      shakeX: cameraFrame.shakeX || 0,
+      shakeY: cameraFrame.shakeY || 0,
+    };
+
+    if (!this.lastCameraFrame) {
+      this.lastCameraFrame = nextFrame;
+      return;
+    }
+
+    const scale = Math.max(0.1, viewScale);
+    const screenDx = (-(nextFrame.x - this.lastCameraFrame.x) + (nextFrame.shakeX - this.lastCameraFrame.shakeX)) * scale;
+    const screenDy = (-(nextFrame.y - this.lastCameraFrame.y) + (nextFrame.shakeY - this.lastCameraFrame.shakeY)) * scale;
+    this.lastCameraFrame = nextFrame;
+
+    if (Math.abs(screenDx) < 0.05 && Math.abs(screenDy) < 0.05) return;
+
+    const cellWidth = Math.max(1, this.width / this.cols);
+    const cellHeight = Math.max(1, this.height / this.rows);
+    const dxCells = screenDx / cellWidth;
+    const dyCells = screenDy / cellHeight;
+    this.dyeTotal = 0;
+
+    for (let y = 0; y < this.rows; y += 1) {
+      for (let x = 0; x < this.cols; x += 1) {
+        const idx = this.index(x, y);
+        const sourceX = x - dxCells;
+        const sourceY = y - dyCells;
+        const edgeFade = sourceX < 1 || sourceY < 1 || sourceX > this.cols - 2 || sourceY > this.rows - 2 ? 0.72 : 1;
+        this.dyeNext[idx] = this.sampleShifted(this.dye, sourceX, sourceY) * edgeFade;
+        this.vxNext[idx] = this.sampleShifted(this.vx, sourceX, sourceY) * edgeFade;
+        this.vyNext[idx] = this.sampleShifted(this.vy, sourceX, sourceY) * edgeFade;
+        this.dyeTotal += this.dyeNext[idx];
+      }
+    }
+
+    [this.dye, this.dyeNext] = [this.dyeNext, this.dye];
+    [this.vx, this.vxNext] = [this.vxNext, this.vx];
+    [this.vy, this.vyNext] = [this.vyNext, this.vy];
+    this.dyeNext.fill(0);
+    this.vxNext.fill(0);
+    this.vyNext.fill(0);
+    this.pressure.fill(0);
+    this.pressureNext.fill(0);
+    this.divergence.fill(0);
+    this.curl.fill(0);
+  }
+
   addSplat(canvasX, canvasY, dx, dy, amount = 1, radiusPx = SMOKE_SETTINGS.splatRadius) {
     if (!this.cols || !this.rows) return;
 
@@ -113,8 +180,8 @@ export class ShipSmokeSimulation {
     const maxX = Math.min(this.cols - 1, Math.ceil(gx + radius * 2));
     const minY = Math.max(0, Math.floor(gy - radius * 2));
     const maxY = Math.min(this.rows - 1, Math.ceil(gy + radius * 2));
-    const velocityScale = SMOKE_SETTINGS.force * 0.58;
-    const dyeAmount = amount * (0.48 + SMOKE_SETTINGS.intensity * 0.42);
+    const velocityScale = SMOKE_SETTINGS.force * 0.72;
+    const dyeAmount = amount * (0.7 + SMOKE_SETTINGS.intensity * 0.58);
 
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
@@ -123,7 +190,7 @@ export class ShipSmokeSimulation {
         const falloff = Math.exp(-(px * px + py * py) * 1.65);
         if (falloff < 0.012) continue;
         const idx = this.index(x, y);
-        this.dye[idx] = Math.min(1.85, this.dye[idx] + dyeAmount * falloff);
+        this.dye[idx] = Math.min(2.65, this.dye[idx] + dyeAmount * falloff);
         this.vx[idx] += dx * velocityScale * falloff;
         this.vy[idx] += dy * velocityScale * falloff;
       }
@@ -172,26 +239,27 @@ export class ShipSmokeSimulation {
       this.addSplat(
         screen.x + Math.sin(this.time * 21 + i) * 0.85,
         screen.y + Math.cos(this.time * 19 + i) * 0.85,
-        flowX + Math.cos(sideAngle) * side * (2.6 + jitter),
-        flowY + Math.sin(sideAngle) * side * (2.6 - jitter),
-        power * delta * 8.6,
-        (9.5 + power * 7.2) * shipScale,
+        this.flowX + Math.cos(sideAngle) * side * (2.6 + jitter),
+        this.flowY + Math.sin(sideAngle) * side * (2.6 - jitter),
+        power * delta * 12.2,
+        (8.2 + power * 5.8) * shipScale,
       );
     }
     return true;
   }
 
   applyForces(safeDt) {
-    const driftScale = safeDt * 0.5;
+    const turbulenceScale = safeDt * 3.2;
     for (let y = 0; y < this.rows; y += 1) {
       for (let x = 0; x < this.cols; x += 1) {
         const idx = this.index(x, y);
         const density = this.dye[idx];
-        if (density <= 0.002) continue;
+        if (density <= SMOKE_SETTINGS.densityCutoff) continue;
         const densityBoost = 0.35 + Math.min(1.15, density);
-        this.vx[idx] += this.flowX * driftScale * densityBoost;
-        this.vy[idx] += this.flowY * driftScale * densityBoost;
-        this.vy[idx] -= 3.2 * safeDt * densityBoost;
+        const curlNoise = Math.sin(x * 0.37 + y * 0.23 + this.time * 2.8);
+        this.vx[idx] += Math.cos(curlNoise * Math.PI * 2) * turbulenceScale * densityBoost;
+        this.vy[idx] += Math.sin(curlNoise * Math.PI * 2) * turbulenceScale * 0.5 * densityBoost;
+        this.vy[idx] -= 0.7 * safeDt * densityBoost;
       }
     }
   }
@@ -203,6 +271,7 @@ export class ShipSmokeSimulation {
     for (let y = 1; y < this.rows - 1; y += 1) {
       for (let x = 1; x < this.cols - 1; x += 1) {
         const idx = this.index(x, y);
+        if (this.dye[idx] <= SMOKE_SETTINGS.densityCutoff) continue;
         this.curl[idx] = (
           this.vy[this.index(x + 1, y)]
           - this.vy[this.index(x - 1, y)]
@@ -215,6 +284,7 @@ export class ShipSmokeSimulation {
     for (let y = 1; y < this.rows - 1; y += 1) {
       for (let x = 1; x < this.cols - 1; x += 1) {
         const idx = this.index(x, y);
+        if (this.dye[idx] <= SMOKE_SETTINGS.densityCutoff) continue;
         const left = Math.abs(this.curl[this.index(x - 1, y)]);
         const right = Math.abs(this.curl[this.index(x + 1, y)]);
         const top = Math.abs(this.curl[this.index(x, y - 1)]);
@@ -234,6 +304,10 @@ export class ShipSmokeSimulation {
     for (let y = 1; y < this.rows - 1; y += 1) {
       for (let x = 1; x < this.cols - 1; x += 1) {
         const idx = this.index(x, y);
+        if (this.dye[idx] <= SMOKE_SETTINGS.densityCutoff) {
+          this.divergence[idx] = 0;
+          continue;
+        }
         this.divergence[idx] = -0.5 * (
           this.vx[this.index(x + 1, y)]
           - this.vx[this.index(x - 1, y)]
@@ -247,6 +321,10 @@ export class ShipSmokeSimulation {
       for (let y = 1; y < this.rows - 1; y += 1) {
         for (let x = 1; x < this.cols - 1; x += 1) {
           const idx = this.index(x, y);
+          if (this.dye[idx] <= SMOKE_SETTINGS.densityCutoff) {
+            this.pressureNext[idx] = 0;
+            continue;
+          }
           this.pressureNext[idx] = (
             this.pressure[this.index(x - 1, y)]
             + this.pressure[this.index(x + 1, y)]
@@ -263,6 +341,7 @@ export class ShipSmokeSimulation {
     for (let y = 1; y < this.rows - 1; y += 1) {
       for (let x = 1; x < this.cols - 1; x += 1) {
         const idx = this.index(x, y);
+        if (this.dye[idx] <= SMOKE_SETTINGS.densityCutoff) continue;
         this.vx[idx] -= (this.pressure[this.index(x + 1, y)] - this.pressure[this.index(x - 1, y)]) * pressureScale;
         this.vy[idx] -= (this.pressure[this.index(x, y + 1)] - this.pressure[this.index(x, y - 1)]) * pressureScale;
       }
@@ -271,30 +350,53 @@ export class ShipSmokeSimulation {
 
   advect(safeDt) {
     const advectScale = safeDt * 0.82;
+    const fade = SMOKE_SETTINGS.fadeSubtract + safeDt * 0.018;
     this.dyeTotal = 0;
     for (let y = 0; y < this.rows; y += 1) {
       for (let x = 0; x < this.cols; x += 1) {
         const idx = this.index(x, y);
+        if (
+          this.dye[idx] <= SMOKE_SETTINGS.densityCutoff
+          && Math.abs(this.vx[idx]) < 0.015
+          && Math.abs(this.vy[idx]) < 0.015
+        ) {
+          this.dyeNext[idx] = 0;
+          this.vxNext[idx] = 0;
+          this.vyNext[idx] = 0;
+          continue;
+        }
         const backX = x - this.vx[idx] * advectScale;
         const backY = y - this.vy[idx] * advectScale;
         const edgeDamp = x <= 0 || y <= 0 || x >= this.cols - 1 || y >= this.rows - 1 ? 0.42 : 1;
         this.vxNext[idx] = this.sample(this.vx, backX, backY) * SMOKE_SETTINGS.velocityDissipation * edgeDamp;
         this.vyNext[idx] = this.sample(this.vy, backX, backY) * SMOKE_SETTINGS.velocityDissipation * edgeDamp;
-        this.dyeNext[idx] = Math.max(0, this.sample(this.dye, backX, backY) * SMOKE_SETTINGS.dissipation - 0.0009);
+        const nextDye = this.sample(this.dye, backX, backY) * SMOKE_SETTINGS.dissipation - fade;
+        if (nextDye <= SMOKE_SETTINGS.densityCutoff) {
+          this.dyeNext[idx] = 0;
+          this.vxNext[idx] = 0;
+          this.vyNext[idx] = 0;
+          continue;
+        }
+        this.dyeNext[idx] = nextDye;
         this.dyeTotal += this.dyeNext[idx];
       }
     }
     [this.vx, this.vxNext] = [this.vxNext, this.vx];
     [this.vy, this.vyNext] = [this.vyNext, this.vy];
     [this.dye, this.dyeNext] = [this.dyeNext, this.dye];
+    if (this.dyeTotal <= SMOKE_SETTINGS.clearThreshold) this.clear();
   }
 
-  update({ delta, viewport, ship, camera, input, fuelRatio = 1, viewScale = 1 }) {
+  update({ delta, viewport, ship, camera, cameraFrame, input, fuelRatio = 1, viewScale = 1 }) {
     this.ensure(viewport?.width || 1, viewport?.height || 1);
     const safeDt = clamp(delta, 0.001, 0.033);
     this.time += safeDt;
+    this.applyCameraShift(cameraFrame, viewScale);
     const emitted = this.emitFromShip({ ship, camera, input, viewport, fuelRatio, delta: safeDt, viewScale });
-    if (!emitted && this.dyeTotal <= 0.001) return;
+    if (!emitted && this.dyeTotal <= SMOKE_SETTINGS.clearThreshold) {
+      this.clear();
+      return;
+    }
     this.applyForces(safeDt);
     this.solveCurl(safeDt);
     this.solvePressure();
@@ -302,33 +404,35 @@ export class ShipSmokeSimulation {
   }
 
   draw(ctx) {
-    if (!this.imageData || this.dyeTotal <= 0.001) return;
+    if (!this.imageData || this.dyeTotal <= SMOKE_SETTINGS.clearThreshold) return;
 
     const data = this.imageData.data;
     for (let i = 0; i < this.dye.length; i += 1) {
       const p = i * 4;
-      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.28, 0, 1.15);
-      if (value <= 0.004) {
+      const value = clamp(this.dye[i] * SMOKE_SETTINGS.intensity * 1.52, 0, 1.65);
+      if (value <= SMOKE_SETTINGS.renderCutoff) {
         data[p] = 0;
         data[p + 1] = 0;
         data[p + 2] = 0;
         data[p + 3] = 0;
         continue;
       }
-      const shade = clamp(0.68 + value * 0.34, 0.6, 1.02);
-      data[p] = clamp(134 * shade, 0, 255);
-      data[p + 1] = clamp(140 * shade, 0, 255);
-      data[p + 2] = clamp(148 * shade, 0, 255);
-      data[p + 3] = clamp(value * 122, 0, 156);
+      const shade = clamp(0.76 + value * 0.28, 0.68, 1.08);
+      data[p] = clamp(148 * shade, 0, 255);
+      data[p + 1] = clamp(154 * shade, 0, 255);
+      data[p + 2] = clamp(162 * shade, 0, 255);
+      data[p + 3] = clamp(42 + value * 148, 0, 232);
     }
 
     this.ctx.putImageData(this.imageData, 0, 0);
     ctx.save();
     ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.78;
+    ctx.globalAlpha = 1;
+    ctx.filter = 'blur(0.9px)';
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.38;
     ctx.filter = 'blur(5px)';
     ctx.drawImage(this.canvas, 0, 0, this.width, this.height);
     ctx.restore();

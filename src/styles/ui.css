@@ -990,6 +990,21 @@
   box-shadow: 0 8px 0 #7d3028, 0 0 24px rgba(255, 143, 61, 0.42), 0 16px 24px rgba(0, 0, 0, 0.28);
 }
 
+.mining-action-controls {
+  display: flex;
+  gap: clamp(8px, 1.4vw, 14px);
+  align-items: end;
+  pointer-events: none;
+}
+
+.attack-button {
+  width: clamp(82px, 14vw, 118px);
+  min-height: clamp(66px, 11vw, 88px);
+  border-radius: 20px;
+  pointer-events: auto;
+  box-shadow: 0 8px 0 #071222, 0 0 22px rgba(102, 216, 232, 0.34), 0 16px 24px rgba(0, 0, 0, 0.24);
+}
+
 .mine-hold-button .button-icon {
   width: 32px;
   height: 32px;
@@ -1000,6 +1015,11 @@
 .mine-hold-button.is-held {
   filter: brightness(1.16) saturate(1.2);
   box-shadow: 0 3px 0 #7d3028, 0 0 34px rgba(255, 211, 107, 0.62);
+}
+
+.attack-button.is-held {
+  filter: brightness(1.12) saturate(1.16);
+  box-shadow: 0 3px 0 #071222, 0 0 32px rgba(102, 216, 232, 0.55);
 }
 
 .mine-hold-button.is-land-mode {
@@ -1293,4 +1313,46 @@
 .mine-hold-button {
   border-radius: 18px;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24), 0 0 24px rgba(217, 134, 66, 0.2);
+}
+
+.attack-button {
+  border-radius: 18px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24), 0 0 24px rgba(102, 216, 232, 0.18);
+}
+
+/* PC-first platform layer.
+   Touch controls stay built and styled for mobile-landscape, but desktop defaults
+   to keyboard/mouse with a cleaner playfield. */
+html[data-platform-target="pc"] .mobile-controls {
+  display: none;
+}
+
+html[data-layout-profile="mobile-landscape"] .mobile-controls,
+html[data-input-mode="touch"] .mobile-controls {
+  display: flex;
+}
+
+@media (pointer: coarse) and (orientation: landscape) {
+  .mobile-controls {
+    display: flex;
+  }
+}
+
+html[data-layout-profile="pc"] .game-button,
+html[data-layout-profile="pc"] .tab-button,
+html[data-layout-profile="pc"] .dialogue-next-button {
+  min-height: 36px;
+}
+
+html[data-layout-profile="pc"] .pause-button {
+  width: 42px;
+  min-height: 34px;
+}
+
+html[data-layout-profile="pc"] .global-dialogue-box {
+  left: 50%;
+  right: auto;
+  bottom: calc(var(--safe-bottom) + 20px);
+  width: min(720px, calc(100vw - 180px));
+  transform: translateX(-50%);
 }
