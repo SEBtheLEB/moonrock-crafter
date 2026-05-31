@@ -1,6 +1,6 @@
-import { materials } from '../data/materials.js?v=93';
-import { gameBalance } from '../data/gameBalance.js?v=93';
-import { getPointAabbDistance, getPointPolygonDistanceSq, getSegmentPolygonHit } from '../utils/raycast.js?v=93';
+import { materials } from '../data/materials.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
+import { getPointAabbDistance, getPointPolygonDistanceSq, getSegmentPolygonHit } from '../utils/raycast.js?v=112';
 
 const MATERIAL_COLORS = Object.fromEntries(materials.map((material) => [material.id, material.color]));
 
@@ -432,37 +432,40 @@ export class VoxelAsteroidBody {
     return null;
   }
 
-  mineCircleWorld(worldX, worldY, radius, power, delta, asteroid) {
+  mineCircleWorld(worldX, worldY, radius, power, delta, asteroid, options = {}) {
     const local = this.localFromWorld(worldX, worldY, asteroid);
     const halfSize = this.cellSize * 0.5;
-    const startCol = clamp(Math.floor((local.x + this.originX - radius - halfSize) / this.cellSize), 0, this.cols - 1);
-    const endCol = clamp(Math.ceil((local.x + this.originX + radius + halfSize) / this.cellSize), 0, this.cols - 1);
-    const startRow = clamp(Math.floor((local.y + this.originY - radius - halfSize) / this.cellSize), 0, this.rows - 1);
-    const endRow = clamp(Math.ceil((local.y + this.originY + radius + halfSize) / this.cellSize), 0, this.rows - 1);
+    const hasTarget = Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow);
+    const startCol = hasTarget ? options.targetCol : clamp(Math.floor((local.x + this.originX - radius - halfSize) / this.cellSize), 0, this.cols - 1);
+    const endCol = hasTarget ? options.targetCol : clamp(Math.ceil((local.x + this.originX + radius + halfSize) / this.cellSize), 0, this.cols - 1);
+    const startRow = hasTarget ? options.targetRow : clamp(Math.floor((local.y + this.originY - radius - halfSize) / this.cellSize), 0, this.rows - 1);
+    const endRow = hasTarget ? options.targetRow : clamp(Math.ceil((local.y + this.originY + radius + halfSize) / this.cellSize), 0, this.rows - 1);
     const broken = [];
 
     for (let row = startRow; row <= endRow; row += 1) {
       for (let col = startCol; col <= endCol; col += 1) {
         const slot = this.getCell(col, row);
         if (slot <= 0) continue;
+        const left = col * this.cellSize - this.originX;
+        const top = row * this.cellSize - this.originY;
         const center = {
-          x: col * this.cellSize - this.originX,
-          y: row * this.cellSize - this.originY,
+          x: left + halfSize,
+          y: top + halfSize,
         };
-        const distance = getPointAabbDistance(
-          local.x,
-          local.y,
-          center.x - halfSize,
-          center.y - halfSize,
-          center.x + halfSize,
-          center.y + halfSize,
-        );
-        const edgeNoise = signedNoise(col * 29.71 + row * 63.49 + this.seed * 113) * this.cellSize * 0.35;
-        if (distance > radius + edgeNoise + this.cellSize * 0.2) continue;
+        if (!hasTarget) {
+          const distance = getPointAabbDistance(
+            local.x,
+            local.y,
+            left,
+            top,
+            left + this.cellSize,
+            top + this.cellSize,
+          );
+          if (distance > radius) continue;
+        }
         const slotDef = this.slotDefs[slot] || this.slotDefs[1];
-        const falloff = 0.28 + clamp01(1 - distance / Math.max(1, radius)) ** 2 * 1.1;
         const index = this.index(col, row);
-        this.damage[index] += power * delta * falloff;
+        this.damage[index] += power * delta;
         if (this.damage[index] < slotDef.hardness) continue;
         this.damage[index] = 0;
         this.cells[index] = 0;

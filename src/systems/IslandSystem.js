@@ -1,7 +1,8 @@
-import { islands } from '../data/islands.js?v=93';
-import { TerrainGrid } from './TerrainGrid.js?v=93';
+import { islands } from '../data/islands.js?v=112';
+import { TerrainGrid } from './TerrainGrid.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
-const ISLAND_LAYOUT_VERSION = 5;
+const ISLAND_LAYOUT_VERSION = 6;
 
 export class IslandSystem {
   constructor(game) {
@@ -84,7 +85,7 @@ export class IslandSystem {
       type: 'crashPlanet',
       biome: 'scrap',
       kind: 'story',
-      worldPosition: { x: -2800, y: 900 },
+      worldPosition: { x: -7600, y: 2400 },
       size: { width: 3400, height: 3400 },
       discovered: true,
       dangerLevel: 1,
@@ -96,13 +97,13 @@ export class IslandSystem {
       description: 'The chunky starter planet where the ship crashed. Stone, iron, copper, and sealed crystal rooms are buried under the surface.',
     });
 
-    const ringSize = 10000;
+    const ringSize = gameBalance.mining?.ringSize || 20000;
     const starter = islands[0];
     layout.push({
       ...starter,
       kind: 'poi',
       size: { width: 2050, height: 2050 },
-      worldPosition: this.positionInRing(random, 0, ringSize, 1900, 6200, layout),
+      worldPosition: this.positionInRing(random, 0, ringSize, 5600, ringSize - 5200, layout),
       landingZoneRadius: 560,
       discovered: true,
     });
@@ -112,8 +113,8 @@ export class IslandSystem {
       for (let index = 0; index < count; index += 1) {
         const type = types[(ring * 3 + index) % types.length];
         const id = `spaceIsland-r${ring}-${index}-${type.type}`;
-        const min = ring === 0 ? 2400 : ring * ringSize + 1400;
-        const max = ring === 0 ? ringSize - 1400 : (ring + 1) * ringSize - 1600;
+        const min = ring === 0 ? 7600 : ring * ringSize + 5200;
+        const max = ring === 0 ? ringSize - 3600 : (ring + 1) * ringSize - 5200;
         layout.push({
           id,
           name: `${type.name} ${ring + 1}-${index + 1}`,
@@ -149,7 +150,8 @@ export class IslandSystem {
 
   positionInRing(random, ring, ringSize, minDistance, maxDistance, existing) {
     let best = null;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    const targetClearance = Math.max(6800, ringSize * 0.34);
+    for (let attempt = 0; attempt < 96; attempt += 1) {
       const angle = random() * Math.PI * 2;
       const distance = minDistance + random() * Math.max(1, maxDistance - minDistance);
       const point = {
@@ -162,7 +164,7 @@ export class IslandSystem {
         return Math.min(nearest, Math.hypot(dx, dy));
       }, Infinity);
       if (!best || clearance > best.clearance) best = { ...point, clearance };
-      if (clearance > ringSize * 0.22) break;
+      if (clearance > targetClearance) break;
     }
     return { x: best?.x || minDistance, y: best?.y || 0 };
   }

@@ -1251,6 +1251,45 @@
   pointer-events: none;
 }
 
+.touch-utility-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.touch-jump-button,
+.touch-interact-button {
+  width: clamp(62px, 10vw, 78px);
+  min-height: clamp(46px, 7.5vw, 58px);
+  padding: 7px;
+  border-radius: 14px;
+  pointer-events: auto;
+  font-size: 0.72rem;
+}
+
+.mining-action-controls .aim-joystick {
+  width: clamp(118px, 18vw, 150px);
+  opacity: 0.28;
+}
+
+.mining-action-controls .aim-joystick.is-active,
+.mining-action-controls .aim-joystick.is-held {
+  opacity: 0.68;
+}
+
+.mining-action-controls .aim-joystick .joystick-base {
+  border-color: rgba(102, 216, 232, 0.2);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(102, 216, 232, 0.12), transparent 34%),
+    rgba(4, 12, 22, 0.22);
+}
+
+.mining-action-controls .aim-joystick .joystick-knob {
+  background: rgba(102, 216, 232, 0.32);
+  box-shadow: 0 0 18px rgba(102, 216, 232, 0.18);
+}
+
 .attack-button {
   width: clamp(82px, 14vw, 118px);
   min-height: clamp(66px, 11vw, 88px);
@@ -1587,6 +1626,10 @@ html[data-input-mode="touch"] .mobile-controls {
   display: flex;
 }
 
+html[data-force-touch-controls="true"] .mobile-controls {
+  display: flex;
+}
+
 @media (pointer: coarse) and (orientation: landscape) {
   .mobile-controls {
     display: flex;
@@ -1817,6 +1860,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 .voxel-craft-tabs,
 .voxel-craft-side,
 .voxel-material-palette,
+.voxel-craft-tools,
+.voxel-detail-palette,
 .voxel-craft-rules,
 .voxel-craft-actions {
   display: grid;
@@ -1824,7 +1869,9 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 }
 
 .voxel-craft-tabs button,
-.voxel-material-palette button {
+.voxel-material-palette button,
+.voxel-tool-chip,
+.voxel-detail-palette button {
   display: grid;
   grid-template-columns: 38px 1fr;
   gap: 8px;
@@ -1839,14 +1886,17 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 }
 
 .voxel-craft-tabs button.is-active,
-.voxel-material-palette button.is-selected {
+.voxel-material-palette button.is-selected,
+.voxel-tool-chip.is-active,
+.voxel-detail-palette button.is-selected {
   border-color: rgba(118, 243, 255, 0.56);
   background: rgba(118, 243, 255, 0.12);
   box-shadow: 0 0 18px rgba(118, 243, 255, 0.12);
 }
 
 .voxel-craft-tabs span,
-.voxel-material-palette span {
+.voxel-material-palette span,
+.voxel-tool-chip span {
   width: 34px;
   height: 34px;
   display: grid;
@@ -1858,7 +1908,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 }
 
 .voxel-craft-tabs strong,
-.voxel-material-palette strong {
+.voxel-material-palette strong,
+.voxel-tool-chip strong {
   min-width: 0;
   font-size: 0.92rem;
 }
@@ -1869,6 +1920,44 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   color: var(--muted);
   font-size: 0.74rem;
   font-style: normal;
+}
+
+.voxel-craft-tools {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.voxel-tool-chip {
+  grid-template-columns: 1fr;
+  min-height: 48px;
+  text-align: center;
+}
+
+.voxel-tool-chip span {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.voxel-detail-palette {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.voxel-detail-palette.is-open {
+  display: grid;
+}
+
+.voxel-detail-palette button {
+  grid-template-columns: 1fr;
+  min-height: 34px;
+  padding: 7px 8px;
+  font-size: 0.74rem;
+  text-align: center;
 }
 
 .voxel-craft-grid {
@@ -1974,6 +2063,19 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   background: rgba(255, 242, 207, 0.24);
   box-shadow: 0 0 10px rgba(255, 242, 207, 0.18);
   transform: translate(-50%, -50%) rotate(-24deg);
+  pointer-events: none;
+}
+
+.voxel-craft-cell.has-detail::before {
+  content: "";
+  position: absolute;
+  right: 18%;
+  top: 18%;
+  width: 16%;
+  height: 16%;
+  border-radius: 999px;
+  background: rgba(118, 243, 255, 0.42);
+  box-shadow: 0 0 9px rgba(118, 243, 255, 0.32);
   pointer-events: none;
 }
 

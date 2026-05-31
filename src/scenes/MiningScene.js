@@ -1,27 +1,41 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=93';
-import { Ship } from '../entities/Ship.js?v=93';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=93';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=93';
-import { MineralPickup } from '../entities/MineralPickup.js';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=93';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=93';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=93';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=93';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=93';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=93';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=93';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=93';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=93';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=93';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=93';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=93';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=93';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=93';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=93';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=93';
-import { gameBalance } from '../data/gameBalance.js?v=93';
+import { Hotbar } from '../ui/Hotbar.js?v=112';
+import { Ship } from '../entities/Ship.js?v=112';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=112';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=112';
+import { MineralPickup } from '../entities/MineralPickup.js?v=112';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=112';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=112';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=112';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=112';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=112';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=112';
+import { EnemySystem } from '../systems/EnemySystem.js?v=112';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=112';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=112';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=112';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=112';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=112';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=112';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=112';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=112';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=112';
+import {
+  MACHINE_DETAIL_STATES,
+  MACHINE_SHAPE_STATES,
+  getCellLayers,
+  getAutoShapeType,
+  getNextShapeState,
+  getShapeState,
+  getShapeStateLabel,
+  getTopMaterialId,
+  getVoxelEntries,
+  normalizeMachineVoxel,
+  validateRecipe as validateMachineRecipe,
+} from '../systems/MachineSculptingSystem.js?v=112';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -29,9 +43,10 @@ const STATION_SAFE_RADIUS_SQ = (DOCK_RADIUS * 0.7) ** 2;
 const ASTEROID_META_BY_ID = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 const MAX_PARTICLES = gameBalance.mining.maxActiveParticles || 150;
 const MAX_FLOATING_TEXT = gameBalance.mining.maxFloatingText || 24;
-const RING_SIZE = gameBalance.mining.ringSize || 10000;
+const RING_SIZE = gameBalance.mining.ringSize || 20000;
 const RING_COLORS = ['#2f5e89', '#284d82', '#c7602c', '#8d66e8', '#dfe7ff'];
 const ASTEROID_CHIP_BRUSH_RADIUS = gameBalance.mining.asteroidMiningBrushRadius || 20;
+const GOD_MODE_MINING_MULTIPLIER = 18;
 const TERRAIN_LASER_RANGE = 390;
 const TERRAIN_MINING_BRUSH_RADIUS = 22;
 const STARTER_FURNACE_WIDTH = 138;
@@ -114,10 +129,13 @@ export class MiningScene {
     this.crashStart = Boolean(payload.crashStart) || !game.state.story?.thrustersRepaired;
     this.ship = new Ship(game.state.ship);
     this.combatDrone = new CompanionDrone({ cooldown: 0.48, damage: 18, targetRange: 920 });
+    this.enemySystem = new EnemySystem(this);
     this.asteroids = [];
     this.spaceEnemies = [];
     this.pickups = [];
     this.pickupPool = [];
+    this.islandPickups = [];
+    this.islandPickupPool = [];
     this.asteroidPool = [];
     this.fragmentation = new AsteroidFragmentationSystem({
       config: gameBalance.mining.asteroidFragmentation,
@@ -187,8 +205,12 @@ export class MiningScene {
     this.rockIslands = this.createSpaceIslands();
     this.gravityIsland = null;
     this.gravityFieldStrength = 0;
+    this.atmosphereIsland = null;
+    this.atmosphereStrength = 0;
+    this.atmosphereSurfaceDistance = Infinity;
     this.backgroundAsteroids = [];
     this.backgroundAsteroidSourceId = '';
+    this.loadedIslandFocusId = '';
     this.spaceObjectsSuspended = false;
     this.landingIsland = null;
     this.landingTargetPreview = null;
@@ -224,6 +246,9 @@ export class MiningScene {
     this.islandFloatingText = [];
     this.islandTerrainParticles = [];
     this.gpsPingTimer = 0;
+    this.destinationIndicator = null;
+    this.destinationIndicatorAngle = 0;
+    this.destinationIndicatorReady = false;
     this.destinationReachedId = '';
     this.cargoDumping = false;
     this.cargoDumpTimer = 0;
@@ -270,6 +295,9 @@ export class MiningScene {
     this.landingIsland = island;
     this.gravityIsland = island;
     this.gravityFieldStrength = 1;
+    this.atmosphereIsland = island;
+    this.atmosphereStrength = 1;
+    this.atmosphereSurfaceDistance = 0;
     this.islandMode = 'onIsland';
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
@@ -294,6 +322,7 @@ export class MiningScene {
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
     this.seedPlanetPlayer(island, this.islandPlayer);
     this.loadCrashFurnace();
+    this.enemySystem.setActiveIsland(island);
     this.suspendSpaceObjectsForIsland(island);
     this.updateCamera(1);
     this.updateHud();
@@ -477,7 +506,8 @@ export class MiningScene {
   }
 
   mountControls() {
-    const moveStick = new Joystick({ label: 'Move' }).element;
+    const moveStick = new Joystick({ label: 'Move', className: 'move-joystick', mode: 'move' }).element;
+    const aimStick = new Joystick({ label: 'Aim', className: 'aim-joystick', mode: 'aim' }).element;
     this.hotbar = new Hotbar(this.game, { className: 'mining-tool-hotbar' });
     this.game.ui.addSceneElement(this.hotbar.element);
     const useButton = new Button('Use', () => {}, {
@@ -486,22 +516,48 @@ export class MiningScene {
       variant: 'forge',
       holdAction: 'primaryUse',
     }).element;
+    const jumpButton = new Button('Jump', () => {}, {
+      icon: '^',
+      className: 'touch-jump-button',
+      variant: 'metal',
+      holdAction: 'jump',
+    }).element;
+    const interactButton = new Button('Act', () => {}, {
+      icon: 'E',
+      className: 'touch-interact-button',
+      variant: 'metal',
+      holdAction: 'interact',
+    }).element;
+    const utilityButtons = document.createElement('div');
+    utilityButtons.className = 'touch-utility-buttons';
+    utilityButtons.append(jumpButton, interactButton);
     const actionCluster = document.createElement('div');
     actionCluster.className = 'mining-action-controls';
-    actionCluster.append(useButton);
+    actionCluster.append(aimStick, utilityButtons, useButton);
     this.moveStick = moveStick;
+    this.aimStick = aimStick;
     this.mineButton = useButton;
     this.mineButtonLabel = useButton.querySelector('span:last-child');
     this.mineButtonIcon = useButton.querySelector('.button-icon');
     this.game.ui.addControls([moveStick, actionCluster]);
     this.game.input.bindJoystick(moveStick, { mode: 'move', radius: 46, floating: true, activationRegion: 'left' });
+    this.game.input.bindJoystick(aimStick, {
+      mode: 'aim',
+      radius: 54,
+      floating: true,
+      activationRegion: 'right',
+      holdAction: 'aimUse',
+    });
     this.game.input.bindHoldButton(useButton, 'primaryUse');
+    this.game.input.bindHoldButton(jumpButton, 'jump');
+    this.game.input.bindHoldButton(interactButton, 'interact');
   }
 
   exit() {
     this.closeSurvivalModal();
     this.closeQuickInventory();
     this.moveStick?.__inputCleanup?.();
+    this.aimStick?.__inputCleanup?.();
     this.game.audio.stopLaserLoop();
     this.game.audio.stopEngineBoost();
     this.game.audio.setDangerMode(false);
@@ -510,22 +566,27 @@ export class MiningScene {
       this.islandTerrainDirty = false;
     }
     this.stopIslandTerrainLaser?.();
+    this.enemySystem?.clear();
     this.shipSmoke?.clear();
     this.combatDrone?.clear();
     this.game.input.virtualButtons.set('mine', false);
     this.game.input.virtualButtons.set('attack', false);
     this.game.input.virtualButtons.set('primaryUse', false);
+    this.game.input.virtualButtons.set('aimUse', false);
+    this.game.input.virtualButtons.set('jump', false);
+    this.game.input.virtualButtons.set('interact', false);
   }
 
   seedAsteroidField() {
     for (let i = 0; i < gameBalance.mining.targetAsteroidCount; i += 1) {
-      this.asteroids.push(this.createAsteroid(gameBalance.mining.asteroidSpawnMinDistance * 0.65, 2400));
+      const asteroid = this.createAsteroid(gameBalance.mining.asteroidSpawnMinDistance * 0.65, 2400);
+      if (asteroid) this.asteroids.push(asteroid);
     }
   }
 
   createAsteroid(minDistance = 360, spawnRange = gameBalance.mining.asteroidSpawnMaxDistance) {
     let fallback = null;
-    for (let attempt = 0; attempt < 28; attempt += 1) {
+    for (let attempt = 0; attempt < 64; attempt += 1) {
       const angle = Math.random() * Math.PI * 2;
       const distance = minDistance + Math.random() * spawnRange;
       const x = this.ship.x + Math.cos(angle) * distance;
@@ -544,6 +605,7 @@ export class MiningScene {
         break;
       }
     }
+    if (!fallback || fallback.clearance < 0) return null;
     const spawn = fallback || {
       x: this.ship.x + gameBalance.mining.asteroidSpawnMinDistance,
       y: this.ship.y,
@@ -583,7 +645,35 @@ export class MiningScene {
       const minDistance = candidate.radius + other.radius + gap;
       clearance = Math.min(clearance, Math.sqrt(dx * dx + dy * dy) - minDistance);
     }
+    const surfaceGap = gameBalance.mining.asteroidPlanetSurfaceClearance || 3000;
+    for (const island of this.rockIslands || []) {
+      const broadRadius = (island.atmosphereRadius || island.gravityFieldRadius || island.radius || 0)
+        + surfaceGap
+        + candidate.radius
+        + 400;
+      const dx = candidate.x - island.x;
+      const dy = candidate.y - island.y;
+      if (dx * dx + dy * dy > broadRadius * broadRadius) continue;
+      const surfaceClearance = island.getSurfaceClearanceToPoint?.(candidate.x, candidate.y, candidate.radius) ?? Infinity;
+      clearance = Math.min(clearance, surfaceClearance - surfaceGap);
+    }
     return clearance;
+  }
+
+  isAsteroidTooCloseToIsland(asteroid) {
+    const surfaceGap = gameBalance.mining.asteroidPlanetSurfaceClearance || 3000;
+    return (this.rockIslands || []).some((island) => (
+      this.isPointNearIslandBroadphase(asteroid.x, asteroid.y, island, surfaceGap + asteroid.radius + 400)
+      && (island.getSurfaceClearanceToPoint?.(asteroid.x, asteroid.y, asteroid.radius) ?? Infinity) < surfaceGap
+    ));
+  }
+
+  isPointNearIslandBroadphase(x, y, island, padding = 0) {
+    if (!island) return false;
+    const broadRadius = (island.atmosphereRadius || island.gravityFieldRadius || island.radius || 0) + padding;
+    const dx = x - island.x;
+    const dy = y - island.y;
+    return dx * dx + dy * dy <= broadRadius * broadRadius;
   }
 
   acquireAsteroid(options) {
@@ -625,13 +715,28 @@ export class MiningScene {
     const rareTypes = asteroidData.filter((asteroid) => ['rare', 'epic'].includes(asteroid.rarity));
     const meta = rareTypes[Math.floor(Math.random() * rareTypes.length)] || ASTEROID_META_BY_ID.void;
     const angle = this.ship.angle || 0;
-    const distance = 360;
-    const asteroid = this.acquireAsteroid({
-      x: this.ship.x + Math.cos(angle) * distance,
-      y: this.ship.y + Math.sin(angle) * distance,
-      type: meta.id,
-      seed: Math.random(),
-    });
+    let spawn = null;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const distance = 720 + attempt * 520;
+      const seed = Math.random();
+      const candidate = {
+        x: this.ship.x + Math.cos(angle) * distance,
+        y: this.ship.y + Math.sin(angle) * distance,
+        type: meta.id,
+        seed,
+        fragmentTier: 2,
+        radius: estimateAsteroidRadius({ type: meta.id, seed, fragmentTier: 2 }),
+      };
+      if (this.getAsteroidSpawnClearance(candidate) >= 0) {
+        spawn = candidate;
+        break;
+      }
+    }
+    if (!spawn) {
+      this.game.ui.showToast('Rare asteroid needs open space away from planets', 'danger', 1700);
+      return;
+    }
+    const asteroid = this.acquireAsteroid(spawn);
     asteroid.scannerRevealed = true;
     this.asteroids.push(asteroid);
     this.game.audio.playRareFind();
@@ -777,7 +882,8 @@ export class MiningScene {
   isMiningInputActive() {
     if (!this.game.input.actions.mine) return false;
     if (!this.isGodMode() || !this.game.input.keys.has(' ')) return true;
-    return this.game.input.actions.primaryUse && this.game.input.getSelectedHotbarAction?.() === 'mine';
+    return (this.game.input.actions.primaryUse || this.game.input.actions.aimUse)
+      && this.game.input.getSelectedHotbarAction?.() === 'mine';
   }
 
   finishCargoDumpAndContinue() {
@@ -950,12 +1056,20 @@ export class MiningScene {
   }
 
   updateAsteroids(delta) {
+    if (this.shouldUnloadSpaceObjects()) {
+      this.clearSpaceAsteroidsAndPickups();
+      return;
+    }
     const cullDistanceSq = gameBalance.mining.asteroidCullDistance ** 2;
     const keepNearStation = this.distanceFromStation < 900;
     let writeIndex = 0;
     for (let index = 0; index < this.asteroids.length; index += 1) {
       const asteroid = this.asteroids[index];
       asteroid.update(delta, this.time);
+      if (this.isAsteroidTooCloseToIsland(asteroid)) {
+        this.releaseAsteroid(asteroid);
+        continue;
+      }
       if (keepNearStation || this.distanceToShipSq(asteroid) < cullDistanceSq) {
         this.asteroids[writeIndex] = asteroid;
         writeIndex += 1;
@@ -964,8 +1078,11 @@ export class MiningScene {
       }
     }
     this.asteroids.length = writeIndex;
-    while (this.asteroids.length < gameBalance.mining.targetAsteroidCount) {
+    let spawnSafety = 0;
+    while (this.asteroids.length < gameBalance.mining.targetAsteroidCount && spawnSafety < 40) {
+      spawnSafety += 1;
       const asteroid = this.createAsteroid(gameBalance.mining.asteroidSpawnMinDistance);
+      if (!asteroid) continue;
       if (asteroid.x * asteroid.x + asteroid.y * asteroid.y > 260 * 260) this.asteroids.push(asteroid);
       else this.releaseAsteroid(asteroid);
     }
@@ -974,6 +1091,22 @@ export class MiningScene {
       this.asteroids.splice(gameBalance.mining.maxAsteroidCount).forEach((asteroid) => this.releaseAsteroid(asteroid));
     }
     this.resolveAsteroidSpacing();
+  }
+
+  shouldUnloadSpaceObjects() {
+    if (this.spaceObjectsSuspended || this.islandMode !== 'flight') return true;
+    return Boolean(this.atmosphereIsland && (this.atmosphereStrength || 0) > 0.015);
+  }
+
+  clearSpaceAsteroidsAndPickups() {
+    if (this.asteroids.length) {
+      this.asteroids.forEach((asteroid) => this.releaseAsteroid(asteroid));
+      this.asteroids.length = 0;
+    }
+    if (this.pickups.length) {
+      this.pickups.forEach((pickup) => this.releasePickup(pickup));
+      this.pickups.length = 0;
+    }
   }
 
   resolveAsteroidSpacing() {
@@ -1049,9 +1182,11 @@ export class MiningScene {
       this.spawnHitParticles(hit.x, hit.y, asteroid.data.accent);
     }
 
-    const power = (gameBalance.mining.asteroidMiningPowerBase ?? 0.85)
-      + this.stats.miningPower * (gameBalance.mining.asteroidMiningPowerScale ?? 0.78);
-    const broken = asteroid.mineCircle(hit.x, hit.y, ASTEROID_CHIP_BRUSH_RADIUS, power, delta);
+    const power = this.getAsteroidMiningPower();
+    const broken = asteroid.mineCircle(hit.x, hit.y, ASTEROID_CHIP_BRUSH_RADIUS, power, delta, {
+      targetCol: hit.col,
+      targetRow: hit.row,
+    });
     if (broken.length) {
       this.collectAsteroidChips(asteroid, broken);
       this.spawnHitParticles(hit.x, hit.y, asteroid.data.accent);
@@ -1069,8 +1204,16 @@ export class MiningScene {
   }
 
   canMineAsteroid(asteroid) {
+    if (this.isGodMode()) return true;
     const requiredPower = asteroid?.data?.miningPowerRequired ?? 0;
     return this.stats.miningPower + 0.001 >= requiredPower;
+  }
+
+  getAsteroidMiningPower() {
+    const base = gameBalance.mining.asteroidMiningPowerBase ?? 0.85;
+    const scale = gameBalance.mining.asteroidMiningPowerScale ?? 0.78;
+    const power = base + Math.max(0, this.stats.miningPower || 0) * scale;
+    return this.isGodMode() ? power * GOD_MODE_MINING_MULTIPLIER : power;
   }
 
   showMineBlocked(asteroid) {
@@ -1128,14 +1271,20 @@ export class MiningScene {
     if (!target) return;
     this.game.audio.playDroneHit?.();
     this.spawnHitParticles(projectile.x, projectile.y, target.accent || '#66d8e8');
-    target.takeDamage?.(damage);
+    const defeated = target.takeDamage?.(damage);
+    if (defeated && target.enemyId) this.handleIslandEnemyDefeated(target);
   }
 
   updateOnFootDroneCombat(delta) {
     const weaponSelected = this.isWeaponToolSelected();
     if (!weaponSelected && !this.combatDrone.projectiles.length) return;
     const anchor = this.getIslandDroneAnchor();
-    const threats = [];
+    this.enemySystem?.syncWorldPositions(
+      this.activeIsland,
+      this.getIslandViewRotation(),
+      (x, y) => this.localToActiveIslandWorld(x, y),
+    );
+    const threats = this.enemySystem?.getThreats() || [];
     this.combatDrone.update(delta, anchor, {
       threats,
       onHit: (target, projectile, damage) => this.handleDroneHit(target, projectile, damage),
@@ -1219,7 +1368,9 @@ export class MiningScene {
   }
 
   findMiningTarget() {
-    if (this.mouseAimWorld && document.documentElement.dataset.inputMode !== 'touch') {
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    const hasDirectionalAim = Math.hypot(aim.x, aim.y) > 0.12;
+    if (this.mouseAimWorld && (document.documentElement.dataset.inputMode !== 'touch' || hasDirectionalAim)) {
       return this.mouseAimHit || this.findMiningRayTarget(this.mouseAimWorld);
     }
     return this.findNearestMiningTarget();
@@ -1278,7 +1429,11 @@ export class MiningScene {
   }
 
   getControllerShipAimWorld() {
-    if (!this.game.input.isControllerActive?.()) return null;
+    const inputMode = document.documentElement.dataset.inputMode;
+    const allowDirectionalAim = this.game.input.isControllerActive?.()
+      || inputMode === 'touch'
+      || document.documentElement.dataset.forceTouchControls === 'true';
+    if (!allowDirectionalAim) return null;
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = Math.hypot(aim.x, aim.y);
     if (magnitude < 0.12) return null;
@@ -1501,26 +1656,38 @@ export class MiningScene {
       if (distance <= 240) navigation.discoverLocation(location.id);
     });
 
+    this.hud?.gpsPanel?.classList.add('is-hidden');
     if (!navigation.isUnlocked()) {
-      this.hud?.gpsPanel?.classList.add('is-hidden');
+      this.destinationIndicator = null;
+      this.destinationIndicatorReady = false;
       return;
     }
 
     const destination = navigation.getSelectedDestination();
     if (!destination) {
-      this.hud?.gpsPanel?.classList.add('is-hidden');
+      this.destinationIndicator = null;
+      this.destinationIndicatorReady = false;
       return;
     }
 
     const dx = destination.worldPosition.x - this.ship.x;
     const dy = destination.worldPosition.y - this.ship.y;
     const distance = Math.hypot(dx, dy);
-    this.hud.gpsPanel.classList.remove('is-hidden');
-    this.hud.gpsArrow.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
-    this.setHudText('gpsName', this.hud.gpsName, destination.name);
-    this.setHudText('gpsDistance', this.hud.gpsDistance, `${Math.round(distance)}m`);
-    const warning = this.stats.fuel < destination.recommendedFuel * 0.42 ? 'Fuel risk' : '';
-    this.setHudText('gpsWarning', this.hud.gpsWarning, warning);
+    const targetAngle = Math.atan2(dy, dx);
+    if (!this.destinationIndicatorReady) {
+      this.destinationIndicatorAngle = targetAngle;
+      this.destinationIndicatorReady = true;
+    } else {
+      this.destinationIndicatorAngle += angleDifference(this.destinationIndicatorAngle, targetAngle) * Math.min(1, delta * 8);
+    }
+    const warning = this.stats.fuel < (destination.recommendedFuel || 0) * 0.42 ? 'Fuel risk' : '';
+    this.destinationIndicator = {
+      id: destination.id,
+      name: destination.name,
+      distance,
+      warning,
+      angle: this.destinationIndicatorAngle,
+    };
 
     this.gpsPingTimer -= delta;
     if (distance < 560 && this.gpsPingTimer <= 0) {
@@ -1540,22 +1707,26 @@ export class MiningScene {
     if (this.islandMode !== 'flight') return;
     let nearest = null;
     let nearestDistanceSq = Infinity;
-    let strongestGravityIsland = null;
-    let strongestGravity = 0;
-    let strongestGravityDistanceSq = Infinity;
+    let strongestAtmosphereIsland = null;
+    let strongestAtmosphere = 0;
+    let strongestAtmosphereDistanceSq = Infinity;
+    let strongestSurfaceDistance = Infinity;
     for (const island of this.rockIslands) {
       const distanceSq = island.distanceSqTo(this.ship);
-      const gravityStrength = island.getGravityFieldStrength(this.ship);
+      const atmosphereRadius = island.atmosphereRadius || island.gravityFieldRadius || island.radius || 0;
+      if (distanceSq > (atmosphereRadius + island.landingZoneRadius + 520) ** 2) continue;
+      const gravityStrength = island.getAtmosphereStrength?.(this.ship) ?? island.getGravityFieldStrength(this.ship);
       if (
         gravityStrength > 0
         && (
-          gravityStrength > strongestGravity
-          || (gravityStrength === strongestGravity && distanceSq < strongestGravityDistanceSq)
+          gravityStrength > strongestAtmosphere
+          || (gravityStrength === strongestAtmosphere && distanceSq < strongestAtmosphereDistanceSq)
         )
       ) {
-        strongestGravityIsland = island;
-        strongestGravity = gravityStrength;
-        strongestGravityDistanceSq = distanceSq;
+        strongestAtmosphereIsland = island;
+        strongestAtmosphere = gravityStrength;
+        strongestAtmosphereDistanceSq = distanceSq;
+        strongestSurfaceDistance = island.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? Math.sqrt(distanceSq);
       }
       if (island.isNearLandingZone(this.ship) && distanceSq < nearestDistanceSq) {
         nearest = island;
@@ -1567,15 +1738,26 @@ export class MiningScene {
       this.game.audio.playGpsPing?.();
     }
     this.landingTargetPreview = nearest ? this.getLandingTargetForIsland(nearest) : null;
-    this.gravityIsland = nearest || strongestGravityIsland;
-    this.gravityFieldStrength = nearest ? 1 : strongestGravity;
-    if (this.gravityIsland && !this.spaceObjectsSuspended && this.backgroundAsteroidSourceId !== this.gravityIsland.id) {
-      this.backgroundAsteroids = this.createIslandBackgroundAsteroids(this.gravityIsland);
-      this.backgroundAsteroidSourceId = this.gravityIsland.id;
-    } else if (!this.gravityIsland && !this.spaceObjectsSuspended && this.backgroundAsteroids.length) {
+    this.atmosphereIsland = nearest || strongestAtmosphereIsland;
+    this.atmosphereStrength = nearest ? 1 : strongestAtmosphere;
+    this.atmosphereSurfaceDistance = nearest
+      ? Math.max(0, nearest.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
+      : strongestSurfaceDistance;
+    this.gravityIsland = this.atmosphereIsland;
+    this.gravityFieldStrength = this.atmosphereStrength;
+    const focusId = this.atmosphereIsland?.id || '';
+    if (focusId !== this.loadedIslandFocusId) {
+      this.loadedIslandFocusId = focusId;
+      this.releaseInactiveIslandRenderCaches(this.atmosphereIsland);
+    }
+    if (this.atmosphereIsland && !this.spaceObjectsSuspended && this.backgroundAsteroidSourceId !== this.atmosphereIsland.id) {
+      this.backgroundAsteroids = this.createIslandBackgroundAsteroids(this.atmosphereIsland);
+      this.backgroundAsteroidSourceId = this.atmosphereIsland.id;
+    } else if (!this.atmosphereIsland && !this.spaceObjectsSuspended && this.backgroundAsteroids.length) {
       this.backgroundAsteroids = [];
       this.backgroundAsteroidSourceId = '';
     }
+    if (this.atmosphereIsland) this.clearSpaceAsteroidsAndPickups();
     this.landingIsland = nearest;
     this.hud?.landingPrompt?.classList.toggle('is-hidden', !nearest);
     if (nearest) {
@@ -1612,7 +1794,7 @@ export class MiningScene {
     const dx = aimLocal.x - shipLocal.x;
     const dy = aimLocal.y - shipLocal.y;
     const distance = Math.hypot(dx, dy) || 1;
-    const castDistance = Math.max(distance + 160, island.gravityFieldRadius * 0.9);
+    const castDistance = Math.max(distance + 160, island.radius + island.landingZoneRadius + 420);
     const end = {
       x: shipLocal.x + (dx / distance) * castDistance,
       y: shipLocal.y + (dy / distance) * castDistance,
@@ -1758,6 +1940,8 @@ export class MiningScene {
       this.updateIslandPlacedFlags(delta);
       this.updatePlacedCraftingStation(delta);
       this.updatePlacedFurnace(delta);
+      if (this.islandMode === 'onIsland') this.updateIslandEnemies(delta);
+      if (this.islandMode === 'onIsland') this.updateIslandPickups(delta);
       this.updateIslandViewRotation(delta);
       if (this.islandMode === 'onIsland') this.updateOnFootDroneCombat(delta);
     }
@@ -1816,6 +2000,7 @@ export class MiningScene {
     const exit = this.activeIsland.getPlayerExitLocal();
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
     this.seedPlanetPlayer(this.activeIsland, this.islandPlayer);
+    this.enemySystem.setActiveIsland(this.activeIsland);
     this.islandRotationTarget = this.islandViewRotation;
     this.islandRotationSettling = false;
     this.islandFreefall = false;
@@ -1861,6 +2046,39 @@ export class MiningScene {
       }
     }
     this.updateIslandPrompt();
+  }
+
+  updateIslandEnemies(delta) {
+    if (!this.activeIsland || !this.islandPlayer) return;
+    this.enemySystem.update(delta, {
+      island: this.activeIsland,
+      player: this.islandPlayer,
+      viewRotation: this.getIslandViewRotation(),
+      toWorld: (x, y) => this.localToActiveIslandWorld(x, y),
+      onPlayerDamage: (hit) => this.handleIslandPlayerDamage(hit),
+    });
+  }
+
+  handleIslandPlayerDamage(hit) {
+    if (!hit || !this.islandPlayer || this.isInvincible()) return;
+    const damaged = this.islandPlayer.damage(hit.amount || 1, hit.sourceX ?? this.islandPlayer.centerX);
+    if (!damaged) return;
+    const world = hit.worldX !== undefined
+      ? { x: hit.worldX, y: hit.worldY }
+      : this.localToActiveIslandWorld(hit.sourceX || this.islandPlayer.centerX, hit.sourceY || this.islandPlayer.centerY);
+    this.game.audio.playShipHit?.();
+    this.addScreenShake(hit.kind === 'projectile' ? 0.18 : 0.24);
+    this.spawnBurst(world.x, world.y, '#7ee36d', 8, 95);
+    this.addFloatingText(
+      this.localToActiveIslandWorld(this.islandPlayer.centerX, this.islandPlayer.centerY - 28).x,
+      this.localToActiveIslandWorld(this.islandPlayer.centerX, this.islandPlayer.centerY - 28).y,
+      `-${Math.ceil(hit.amount || 1)}`,
+      { color: '#ff756f', rarity: 'rare' },
+    );
+    if (this.islandPlayer.health > 0) return;
+    this.islandPlayer.health = this.islandPlayer.maxHealth;
+    this.seedPlanetPlayer(this.activeIsland, this.islandPlayer);
+    this.game.ui.showToast('Suit rebooted at the ship', 'danger', 1500);
   }
 
   updateIslandFreefall(delta) {
@@ -2510,13 +2728,29 @@ export class MiningScene {
     this.voxelCraftState = {
       recipeId: recipe.id,
       selectedMaterialId: Object.keys(recipe.requirements)[0],
+      selectedShapeState: 'full',
+      selectedDetailId: null,
+      detailMode: false,
+      eraseMode: false,
       grid: this.createEmptyVoxelGrid(recipe.gridSize),
+      detailGrid: this.createEmptyVoxelGrid(recipe.gridSize),
     };
     return this.voxelCraftState;
   }
 
   createEmptyVoxelGrid(size = 16) {
     return Array.from({ length: size * size }, () => null);
+  }
+
+  getVoxelCraftRenderGrid(grid = [], detailGrid = []) {
+    return grid.map((cell, index) => {
+      const normalized = this.normalizeVoxelCraftCell(cell);
+      if (!normalized) return null;
+      return {
+        ...normalized,
+        detailId: detailGrid?.[index] ?? normalized.detailId ?? null,
+      };
+    });
   }
 
   getVoxelCraftRecipes() {
@@ -2526,7 +2760,7 @@ export class MiningScene {
       name: recipe.name || 'Starter Furnace',
       icon: 'Fu',
       category: 'Survival',
-      description: 'Draw a custom furnace. Voxels merge together, materials can layer, copper must stay within a 5x5 chamber, and the Fire Core goes inside the body.',
+      description: 'Sculpt a custom furnace body. Leave an inner chamber, socket the Fire Core into the body, and use copper as a heat path.',
       outputItemId: 'starterFurnace',
       requirements: recipe.requirements || { stoneOre: 20, copperShards: 10, fireCore: 1 },
       gridSize: recipe.gridSize || 16,
@@ -2538,8 +2772,10 @@ export class MiningScene {
     const recipes = this.getVoxelCraftRecipes();
     const state = this.ensureVoxelCraftState();
     const recipe = recipes.find((item) => item.id === state.recipeId) || recipes[0];
+    state.detailGrid ||= this.createEmptyVoxelGrid(recipe.gridSize);
     const usage = this.getVoxelCraftUsage(state.grid);
     const validation = this.validateVoxelCraft(recipe, state.grid);
+    const renderGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
     content.replaceChildren();
 
     const shell = document.createElement('div');
@@ -2555,7 +2791,12 @@ export class MiningScene {
         this.voxelCraftState = {
           recipeId: item.id,
           selectedMaterialId: Object.keys(item.requirements)[0],
+          selectedShapeState: 'full',
+          selectedDetailId: null,
+          detailMode: false,
+          eraseMode: false,
           grid: this.createEmptyVoxelGrid(item.gridSize),
+          detailGrid: this.createEmptyVoxelGrid(item.gridSize),
         };
         this.populateVoxelCraftingContent(content);
       });
@@ -2570,18 +2811,27 @@ export class MiningScene {
     previewCanvas.setAttribute('aria-hidden', 'true');
     grid.append(previewCanvas);
     for (let index = 0; index < recipe.gridSize * recipe.gridSize; index += 1) {
-      const craftCell = this.getVoxelCraftGridCell(state.grid, index);
+      const craftCell = this.getVoxelCraftGridCell(renderGrid, index);
       const layers = this.getVoxelCraftCellLayers(craftCell);
       const itemId = layers[layers.length - 1] || null;
+      const shapeLabel = craftCell ? getShapeStateLabel(craftCell.shapeState) : 'Full Block';
       const cell = document.createElement('button');
       cell.type = 'button';
-      cell.className = this.getVoxelCraftCellClassName(index, recipe.gridSize, state.grid);
+      cell.className = this.getVoxelCraftCellClassName(index, recipe.gridSize, renderGrid);
       cell.title = itemId
-        ? `${layers.map((layerId) => this.game.systems.materials.getDisplayName(layerId)).join(' + ')} - right-click to reshape`
-        : 'Empty voxel';
+        ? `${layers.map((layerId) => this.game.systems.materials.getDisplayName(layerId)).join(' + ')} - ${shapeLabel}. Right-click cycles shape. Middle-click erases.`
+        : 'Empty voxel. Left-click places material.';
       cell.setAttribute('aria-label', cell.title);
       cell.addEventListener('click', (event) => {
-        this.paintVoxelCraftCell(index, event.shiftKey ? null : state.selectedMaterialId);
+        if (state.detailMode) this.paintVoxelCraftDetail(index, event.shiftKey ? null : state.selectedDetailId);
+        else this.paintVoxelCraftCell(index, event.shiftKey || state.eraseMode ? null : state.selectedMaterialId);
+        this.populateVoxelCraftingContent(content);
+      });
+      cell.addEventListener('auxclick', (event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        this.paintVoxelCraftCell(index, null);
+        if (state.detailGrid) state.detailGrid[index] = null;
         this.populateVoxelCraftingContent(content);
       });
       cell.addEventListener('contextmenu', (event) => {
@@ -2592,9 +2842,8 @@ export class MiningScene {
       grid.append(cell);
     }
     drawCraftVoxelPreview(previewCanvas, {
-      grid: state.grid,
+      grid: renderGrid,
       size: recipe.gridSize,
-      getCellLayers: (cell) => this.getVoxelCraftCellLayers(cell),
       getMaterialVisual: (itemId) => this.getVoxelCraftMaterialVisual(itemId),
       seed: `${recipe.id}:${this.game.state.stats?.totalItemsCrafted || 0}`,
     });
@@ -2623,6 +2872,57 @@ export class MiningScene {
       palette.append(button);
     });
 
+    const tools = document.createElement('div');
+    tools.className = 'voxel-craft-tools';
+    const currentShape = MACHINE_SHAPE_STATES.find((shape) => shape.id === getShapeState(state.selectedShapeState)) || MACHINE_SHAPE_STATES[0];
+    const shapeButton = document.createElement('button');
+    shapeButton.type = 'button';
+    shapeButton.className = 'voxel-tool-chip';
+    shapeButton.title = 'New voxels use this shape. Right-click an existing voxel to cycle its shape.';
+    shapeButton.innerHTML = `<span>Shape</span><strong>${currentShape.label}</strong>`;
+    shapeButton.addEventListener('click', () => {
+      state.selectedShapeState = getNextShapeState(state.selectedShapeState);
+      this.populateVoxelCraftingContent(content);
+    });
+    const eraseButton = document.createElement('button');
+    eraseButton.type = 'button';
+    eraseButton.className = `voxel-tool-chip ${state.eraseMode ? 'is-active' : ''}`;
+    eraseButton.title = 'Erase mode removes voxels with left-click. Middle-click also erases.';
+    eraseButton.innerHTML = '<span>Tool</span><strong>Erase</strong>';
+    eraseButton.addEventListener('click', () => {
+      state.eraseMode = !state.eraseMode;
+      if (state.eraseMode) state.detailMode = false;
+      this.populateVoxelCraftingContent(content);
+    });
+    const detailToggle = document.createElement('button');
+    detailToggle.type = 'button';
+    detailToggle.className = `voxel-tool-chip ${state.detailMode ? 'is-active' : ''}`;
+    detailToggle.title = 'Detail mode paints surface decoration without using materials.';
+    detailToggle.innerHTML = '<span>Mode</span><strong>Details</strong>';
+    detailToggle.addEventListener('click', () => {
+      state.detailMode = !state.detailMode;
+      state.eraseMode = false;
+      this.populateVoxelCraftingContent(content);
+    });
+    tools.append(shapeButton, eraseButton, detailToggle);
+
+    const detailPalette = document.createElement('div');
+    detailPalette.className = `voxel-detail-palette ${state.detailMode ? 'is-open' : ''}`;
+    MACHINE_DETAIL_STATES.forEach((detail) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = (state.selectedDetailId ?? null) === detail.id ? 'is-selected' : '';
+      button.title = detail.id ? `Paint ${detail.label} on a voxel.` : 'Remove surface detail from a voxel.';
+      button.textContent = detail.label;
+      button.addEventListener('click', () => {
+        state.selectedDetailId = detail.id;
+        state.detailMode = true;
+        state.eraseMode = false;
+        this.populateVoxelCraftingContent(content);
+      });
+      detailPalette.append(button);
+    });
+
     const rules = document.createElement('div');
     rules.className = 'voxel-craft-rules';
     rules.innerHTML = `
@@ -2635,6 +2935,7 @@ export class MiningScene {
     actions.className = 'voxel-craft-actions';
     const clearButton = new Button('Clear', () => {
       state.grid.fill(null);
+      state.detailGrid?.fill(null);
       this.populateVoxelCraftingContent(content);
     }, { icon: 'x', variant: 'metal' }).element;
     const autoButton = new Button('Auto Layout', () => {
@@ -2648,23 +2949,13 @@ export class MiningScene {
     craftButton.disabled = !validation.ok;
     actions.append(clearButton, autoButton, craftButton);
 
-    side.append(palette, rules, actions);
+    side.append(palette, tools, detailPalette, rules, actions);
     shell.append(tabs, grid, side);
     content.append(shell);
   }
 
   normalizeVoxelCraftCell(cell) {
-    if (!cell) return null;
-    if (typeof cell === 'string') return { layers: [cell], shape: 0 };
-    const layers = Array.isArray(cell.layers)
-      ? cell.layers.filter(Boolean)
-      : (cell.itemId ? [cell.itemId] : []);
-    if (!layers.length) return null;
-    return {
-      ...cell,
-      layers,
-      shape: Number.isFinite(cell.shape) ? cell.shape : 0,
-    };
+    return normalizeMachineVoxel(cell);
   }
 
   getVoxelCraftGridCell(grid = [], index = 0) {
@@ -2674,7 +2965,7 @@ export class MiningScene {
   }
 
   getVoxelCraftCellLayers(cell) {
-    return this.normalizeVoxelCraftCell(cell)?.layers || [];
+    return getCellLayers(cell);
   }
 
   getVoxelCraftCellClassName(index, size, grid = []) {
@@ -2690,8 +2981,9 @@ export class MiningScene {
       if (x < 0 || x >= size || y < 0 || y >= size) return false;
       return this.getVoxelCraftCellLayers(this.getVoxelCraftGridCell(grid, y * size + x)).length > 0;
     };
-    classes.push('has-voxel', `shape-${cell.shape || 0}`);
+    classes.push('has-voxel', `shape-${getShapeState(cell.shapeState)}`, `auto-${getAutoShapeType(col, row, grid, size)}`);
     if (layers.length > 1) classes.push('has-layers');
+    if (cell.detailId) classes.push('has-detail');
     if (hasNeighbor(0, -1)) classes.push('join-n');
     if (hasNeighbor(1, 0)) classes.push('join-e');
     if (hasNeighbor(0, 1)) classes.push('join-s');
@@ -2707,6 +2999,11 @@ export class MiningScene {
       id: itemId,
       color: terrain?.color || material?.color || '#6b625a',
       edge: terrain?.edge || material?.color || fallbackEdge,
+      visualType: itemId === 'fireCore'
+        ? 'core'
+        : itemId === 'copperShards' || itemId === 'copperIngot'
+          ? 'metal'
+          : 'stone',
     };
   }
 
@@ -2738,12 +3035,22 @@ export class MiningScene {
     const previous = this.getVoxelCraftGridCell(state.grid, index);
     if (!itemId) {
       state.grid[index] = null;
+      if (state.detailGrid) state.detailGrid[index] = null;
       return;
     }
-    const cell = previous || { layers: [], shape: 0 };
+    const cell = previous || {
+      layers: [],
+      materialId: itemId,
+      itemId,
+      shapeState: getShapeState(state.selectedShapeState),
+      detailId: null,
+      moduleHint: null,
+    };
     const existingIndex = cell.layers.indexOf(itemId);
     if (existingIndex >= 0) {
       cell.layers.splice(existingIndex, 1);
+      cell.materialId = cell.layers[cell.layers.length - 1] || itemId;
+      cell.itemId = cell.materialId;
       state.grid[index] = cell.layers.length ? cell : null;
       return;
     }
@@ -2755,6 +3062,9 @@ export class MiningScene {
       return;
     }
     cell.layers.push(itemId);
+    cell.materialId = itemId;
+    cell.itemId = itemId;
+    cell.shapeState ||= getShapeState(state.selectedShapeState);
     state.grid[index] = cell;
   }
 
@@ -2762,18 +3072,22 @@ export class MiningScene {
     const state = this.ensureVoxelCraftState();
     const cell = this.getVoxelCraftGridCell(state.grid, index);
     if (!cell) return;
-    const recipe = this.getVoxelCraftRecipes().find((item) => item.id === state.recipeId);
-    const size = recipe?.gridSize || Math.sqrt(state.grid.length) || 16;
-    const bevels = this.getVoxelCraftAvailableBevels(index, size, state.grid);
-    if (!bevels.length) {
-      cell.shape = 0;
+    cell.shapeState = getNextShapeState(cell.shapeState);
+    cell.shape = cell.shapeState;
+    state.grid[index] = cell;
+  }
+
+  paintVoxelCraftDetail(index, detailId = null) {
+    const state = this.ensureVoxelCraftState();
+    const cell = this.getVoxelCraftGridCell(state.grid, index);
+    if (!cell) {
       this.game.audio.playError?.();
-      this.game.ui.showToast('Bevels only work on outside corners', 'danger', 900);
+      this.game.ui.showToast('Place a voxel before adding detail', 'danger', 900);
       return;
     }
-    const cycle = [0, ...bevels];
-    const currentIndex = Math.max(0, cycle.indexOf(cell.shape || 0));
-    cell.shape = cycle[(currentIndex + 1) % cycle.length];
+    cell.detailId = detailId || null;
+    state.detailGrid ||= this.createEmptyVoxelGrid(Math.sqrt(state.grid.length) || 16);
+    state.detailGrid[index] = detailId || null;
     state.grid[index] = cell;
   }
 
@@ -2787,48 +3101,15 @@ export class MiningScene {
   }
 
   validateVoxelCraft(recipe, grid) {
-    const usage = this.getVoxelCraftUsage(grid);
-    const messages = [];
-    let ok = true;
-    Object.entries(recipe.requirements).forEach(([itemId, needed]) => {
-      const used = usage[itemId] || 0;
-      const have = this.game.systems.inventory.getStoredAmount(itemId);
-      const materialName = this.game.systems.materials.getDisplayName(itemId);
-      const met = used === needed && have >= needed;
-      if (!met) ok = false;
-      messages.push({
-        ok: met,
-        text: `${materialName}: use exactly ${needed} (${used}/${needed}, owned ${have})`,
-      });
+    return validateMachineRecipe(grid, recipe, {
+      getOwnedAmount: (itemId) => this.game.systems.inventory.getStoredAmount(itemId),
+      getDisplayName: (itemId) => this.game.systems.materials.getDisplayName(itemId),
     });
-    const cells = this.getVoxelCraftCells(recipe, grid);
-    const connected = !recipe.shapeRules?.connected || this.areCraftCellsConnected(cells);
-    if (!connected) ok = false;
-    messages.push({ ok: connected, text: 'All placed voxels must touch as one connected shape.' });
-    Object.entries(recipe.shapeRules?.materialBounds || {}).forEach(([itemId, rule]) => {
-      const bounds = this.getCraftMaterialBounds(cells, itemId);
-      const met = Boolean(bounds)
-        && bounds.width <= rule.maxWidth
-        && bounds.height <= rule.maxHeight;
-      if (!met) ok = false;
-      messages.push({ ok: met, text: rule.label || `${this.game.systems.materials.getDisplayName(itemId)} must fit in ${rule.maxWidth}x${rule.maxHeight}.` });
-    });
-    return { ok, messages };
   }
 
   getVoxelCraftCells(recipe, grid) {
     const size = recipe.gridSize || 16;
-    return grid
-      .map((cell, index) => {
-        const normalized = this.normalizeVoxelCraftCell(cell);
-        if (!normalized) return null;
-        const craftCell = this.createCraftCell(index % size, Math.floor(index / size), normalized);
-        if (craftCell.shape && !this.getVoxelCraftAvailableBevels(index, size, grid).includes(craftCell.shape)) {
-          craftCell.shape = 0;
-        }
-        return craftCell;
-      })
-      .filter(Boolean);
+    return getVoxelEntries(grid, size).map((entry) => this.createCraftCell(entry.x, entry.y, entry));
   }
 
   createCraftCell(x, y, itemOrCell) {
@@ -2842,8 +3123,12 @@ export class MiningScene {
       x,
       y,
       itemId,
+      materialId: itemId,
       layers,
-      shape: normalized?.shape || 0,
+      shape: normalized?.shapeState || normalized?.shape || 'full',
+      shapeState: normalized?.shapeState || normalized?.shape || 'full',
+      detailId: normalized?.detailId || null,
+      moduleHint: normalized?.moduleHint || null,
       color: material?.color || '#fff2cf',
       icon: material?.icon || '?',
     };
@@ -2893,6 +3178,7 @@ export class MiningScene {
   autofillVoxelRecipe(recipe, state) {
     const size = recipe.gridSize || 16;
     state.grid = this.createEmptyVoxelGrid(size);
+    state.detailGrid = this.createEmptyVoxelGrid(size);
     const set = (x, y, itemId) => {
       if (x < 0 || x >= size || y < 0 || y >= size) return;
       const index = y * size + x;
@@ -2901,15 +3187,18 @@ export class MiningScene {
       state.grid[index] = cell;
     };
     const stoneCoords = [
-      [4, 6], [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
-      [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [11, 12],
-      [4, 7], [4, 8], [4, 9], [4, 10],
+      [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
+      [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10],
+      [5, 7], [5, 8], [5, 9],
+      [11, 7], [11, 8], [11, 9],
     ];
     stoneCoords.slice(0, recipe.requirements.stoneOre || 0).forEach(([x, y]) => set(x, y, 'stoneOre'));
-    for (let index = 0; index < (recipe.requirements.copperShards || 0); index += 1) {
-      set(6 + (index % 5), 8 + Math.floor(index / 5), 'copperShards');
-    }
-    if (recipe.requirements.fireCore) set(8, 9, 'fireCore');
+    const copperCoords = [
+      [6, 6], [7, 6], [8, 6], [9, 6], [10, 6],
+      [6, 10], [7, 10], [8, 10], [9, 10], [10, 10],
+    ];
+    copperCoords.slice(0, recipe.requirements.copperShards || 0).forEach(([x, y]) => set(x, y, 'copperShards'));
+    if (recipe.requirements.fireCore) set(5, 8, 'fireCore');
   }
 
   craftVoxelRecipe(recipe, state) {
@@ -2923,7 +3212,8 @@ export class MiningScene {
       this.game.systems.inventory.remove(itemId, amount, { skipSave: true });
     });
     const story = this.getStoryState();
-    const cells = this.getVoxelCraftCells(recipe, state.grid);
+    const sculptGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
+    const cells = this.getVoxelCraftCells(recipe, sculptGrid);
     const tileSize = this.activeIsland?.terrain?.cellSize || 22;
     const blueprint = {
       id: `furnace-blueprint-${Date.now().toString(36)}-${Math.floor(Math.random() * 9999).toString(36)}`,
@@ -2933,6 +3223,7 @@ export class MiningScene {
         gridSize: recipe.gridSize || 16,
         tileSize,
         cells,
+        details: [...(state.detailGrid || [])],
       },
     };
     story.furnaceInventory ||= [];
@@ -2943,6 +3234,7 @@ export class MiningScene {
     this.game.audio.playSuccess?.();
     this.game.ui.showToast(`${recipe.name} blueprint crafted`, 'success', 1600);
     state.grid.fill(null);
+    state.detailGrid?.fill(null);
     this.startCrashTutorialHint('smeltingHint');
     return true;
   }
@@ -3188,7 +3480,8 @@ export class MiningScene {
     const distance = Math.hypot(dx, dy) || 1;
     const angle = Math.atan2(dy, dx);
     const surfaceRadius = island.getSurfaceRadiusAtAngle(angle);
-    const catchDistance = island.gravityFieldRadius * ISLAND_GRAVITY_CATCH_FIELD_RATIO;
+    const catchRadius = island.playerGravityRadius || island.gravityFieldRadius;
+    const catchDistance = catchRadius * ISLAND_GRAVITY_CATCH_FIELD_RATIO;
     const releaseDistance = surfaceRadius + ISLAND_GRAVITY_RELEASE_OFFSET;
     return {
       center,
@@ -3199,7 +3492,7 @@ export class MiningScene {
       surfaceRadius,
       catchDistance,
       releaseDistance,
-      excess: clamp01((distance - catchDistance) / Math.max(1, island.gravityFieldRadius - catchDistance)),
+      excess: clamp01((distance - catchDistance) / Math.max(1, catchRadius - catchDistance)),
     };
   }
 
@@ -3692,7 +3985,15 @@ export class MiningScene {
     this.islandGravityRecoveryBlend = 0;
     this.landingIsland = null;
     this.landingTargetPreview = null;
+    this.enemySystem?.clear();
+    this.islandPickups.forEach((pickup) => this.releaseIslandPickup(pickup));
+    this.islandPickups.length = 0;
     this.activeIsland = null;
+    this.atmosphereIsland = null;
+    this.atmosphereStrength = 0;
+    this.atmosphereSurfaceDistance = Infinity;
+    this.gravityIsland = null;
+    this.gravityFieldStrength = 0;
     this.islandLandingTarget = null;
     this.islandLandingAnchor = null;
     this.islandViewRotation = 0;
@@ -3783,9 +4084,8 @@ export class MiningScene {
     this.asteroids.length = 0;
     this.pickups.forEach((pickup) => this.releasePickup(pickup));
     this.pickups.length = 0;
-    this.rockIslands.forEach((otherIsland) => {
-      if (otherIsland !== island) otherIsland.terrain?.releaseRenderCache?.();
-    });
+    this.releaseInactiveIslandRenderCaches(island);
+    this.loadedIslandFocusId = island?.id || '';
     this.laserTarget = null;
     this.laserAimPoint = null;
     this.spaceObjectsSuspended = true;
@@ -3796,10 +4096,12 @@ export class MiningScene {
     this.backgroundAsteroids = [];
     this.backgroundAsteroidSourceId = '';
     this.spaceObjectsSuspended = false;
-    while (this.asteroids.length < gameBalance.mining.targetAsteroidCount) {
-      const asteroid = this.createAsteroid(gameBalance.mining.asteroidSpawnMinDistance, gameBalance.mining.asteroidSpawnMaxDistance);
-      this.asteroids.push(asteroid);
-    }
+  }
+
+  releaseInactiveIslandRenderCaches(keepIsland = null) {
+    this.rockIslands.forEach((island) => {
+      if (island !== keepIsland && island !== this.activeIsland) island.terrain?.releaseRenderCache?.();
+    });
   }
 
   createIslandBackgroundAsteroids(island) {
@@ -3904,7 +4206,10 @@ export class MiningScene {
     }
     const beforeRatio = island.terrain.getDamageRatio(hit.col, hit.row, hit.material);
     const power = this.getTerrainMiningPower();
-    const broken = island.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta);
+    const broken = island.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta, {
+      targetCol: hit.col,
+      targetRow: hit.row,
+    });
     const brokeTarget = broken.some((cell) => cell.col === hit.col && cell.row === hit.row);
     const afterRatio = brokeTarget ? 1 : island.terrain.getDamageRatio(hit.col, hit.row, hit.material);
     this.islandMiningHitFeedback = {
@@ -3923,10 +4228,12 @@ export class MiningScene {
   getTerrainMiningPower() {
     const base = gameBalance.mining.terrainMiningPowerBase ?? 0.42;
     const scale = gameBalance.mining.terrainMiningPowerScale ?? 0.78;
-    return base + Math.max(0, this.stats.miningPower || 0) * scale;
+    const power = base + Math.max(0, this.stats.miningPower || 0) * scale;
+    return this.isGodMode() ? power * GOD_MODE_MINING_MULTIPLIER : power;
   }
 
   canMineTerrainMaterial(material) {
+    if (this.isGodMode()) return true;
     const data = TERRAIN_MATERIALS[material];
     const requiredPower = data?.miningPowerRequired ?? 0;
     return (this.stats.miningPower ?? 0) + 0.001 >= requiredPower;
@@ -3970,46 +4277,138 @@ export class MiningScene {
   collectIslandTerrainCells(cells) {
     if (!this.activeIsland) return;
     const grouped = new Map();
-    const positions = new Map();
     for (const cell of cells) {
       if (!cell.data?.materialId || !cell.data.yield) continue;
-      grouped.set(cell.data.materialId, (grouped.get(cell.data.materialId) || 0) + cell.data.yield);
-      positions.set(cell.data.materialId, cell);
+      const entry = grouped.get(cell.data.materialId) || {
+        amount: 0,
+        x: cell.x,
+        y: cell.y,
+        chip: cell.chip,
+      };
+      entry.amount += cell.data.yield;
+      entry.x = (entry.x + cell.x) * 0.5;
+      entry.y = (entry.y + cell.y) * 0.5;
+      entry.chip ||= cell.chip;
+      grouped.set(cell.data.materialId, entry);
     }
-    for (const [materialId, amount] of grouped.entries()) {
-      if (this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId) {
-        this.collectCrashStarterMaterial(materialId, amount, positions.get(materialId));
+    let index = 0;
+    for (const [materialId, entry] of grouped.entries()) {
+      const material = this.game.systems.materials.getMaterial(materialId);
+      const spawn = this.activeIsland.terrain.getClosestTerrainSurfacePoint?.(entry.x, entry.y, 14) || entry;
+      this.islandPickups.push(this.acquireIslandPickup({
+        materialId,
+        amount: entry.amount,
+        x: spawn.x + Math.cos(index * 2.3 + this.time) * 4,
+        y: spawn.y + Math.sin(index * 1.7 + this.time) * 4,
+        seed: Math.random(),
+        material,
+        chip: entry.chip,
+      }));
+      index += 1;
+    }
+  }
+
+  acquireIslandPickup(options) {
+    const pickup = this.islandPickupPool.pop() || new MineralPickup();
+    return pickup.reset(options);
+  }
+
+  releaseIslandPickup(pickup) {
+    pickup.active = false;
+    if (this.islandPickupPool.length < (gameBalance.mining.maxPickupPool || 80)) this.islandPickupPool.push(pickup);
+  }
+
+  updateIslandPickups(delta) {
+    if (!this.activeIsland || !this.islandPlayer) return;
+    let writeIndex = 0;
+    for (let index = 0; index < this.islandPickups.length; index += 1) {
+      const pickup = this.islandPickups[index];
+      this.updateIslandPickupPhysics(pickup, delta);
+      const dx = this.islandPlayer.centerX - pickup.x;
+      const dy = this.islandPlayer.centerY - pickup.y;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq > (pickup.radius + 28) ** 2) {
+        if (pickup.age < 45) {
+          this.islandPickups[writeIndex] = pickup;
+          writeIndex += 1;
+        } else {
+          this.releaseIslandPickup(pickup);
+        }
         continue;
       }
-      const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
-        capacity: this.stats.cargoCapacity,
-      });
-      const material = this.game.systems.materials.getMaterial(materialId);
-      const position = positions.get(materialId);
-      const world = this.activeIsland.localToWorldRotated(
-        position?.x || this.islandPlayer.centerX,
-        position?.y || this.islandPlayer.centerY,
-        this.getIslandViewRotation(),
-      );
-      if (!result.ok) {
+      if (!this.collectIslandPickup(pickup)) {
+        this.islandPickups[writeIndex] = pickup;
+        writeIndex += 1;
+        continue;
+      }
+      this.releaseIslandPickup(pickup);
+    }
+    this.islandPickups.length = writeIndex;
+  }
+
+  updateIslandPickupPhysics(pickup, delta) {
+    pickup.update(delta);
+    const terrain = this.activeIsland?.terrain;
+    if (!terrain?.getClosestTerrainSurfacePoint) return;
+    const surface = terrain.getClosestTerrainSurfacePoint(pickup.x, pickup.y, pickup.radius + 4);
+    if (!surface) return;
+    const inside = terrain.containsCollisionPoint?.(pickup.x, pickup.y);
+    const dx = pickup.x - surface.surfaceX;
+    const dy = pickup.y - surface.surfaceY;
+    const normalDistance = dx * surface.normal.x + dy * surface.normal.y;
+    if (!inside && normalDistance > pickup.radius + 6) return;
+    pickup.x = surface.x;
+    pickup.y = surface.y;
+    const tangentSpeed = pickup.vx * surface.tangent.x + pickup.vy * surface.tangent.y;
+    pickup.vx = surface.tangent.x * tangentSpeed * 0.72;
+    pickup.vy = surface.tangent.y * tangentSpeed * 0.72;
+  }
+
+  collectIslandPickup(pickup) {
+    if (this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId) {
+      this.collectCrashStarterMaterial(pickup.materialId, pickup.amount, pickup);
+      return true;
+    }
+    const result = this.game.systems.inventory.addToRunCargo(pickup.materialId, pickup.amount, {
+      capacity: this.stats.cargoCapacity,
+    });
+    const world = this.activeIsland.localToWorldRotated(pickup.x, pickup.y, this.getIslandViewRotation());
+    if (!result.ok) {
+      if (this.cargoFullToastReady) {
+        this.cargoFullToastReady = false;
         this.game.ui.showToast('Cargo Full', 'danger');
         this.game.audio.playCargoFull();
         this.addFloatingText(world.x, world.y, 'Cargo Full', { color: '#ff756f', rarity: 'rare' });
-        continue;
+        window.setTimeout(() => {
+          this.cargoFullToastReady = true;
+        }, 1200);
       }
-      this.runCargo = result.cargo;
-      this.runCargoWeight = result.currentWeight;
-      this.stats.cargo = Math.ceil(this.runCargoWeight);
-      this.runCargoCount += amount;
-      this.game.systems.objectives.record('materialCollected', { materialId, amount });
-      this.addFloatingText(
-        world.x,
-        world.y,
-        `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`,
-        { color: material?.color || '#fff2cf', rarity: material?.rarity || 'common' },
-      );
-      this.game.audio.playIslandPickup?.();
+      return false;
     }
+    this.runCargo = result.cargo;
+    this.runCargoWeight = result.currentWeight;
+    this.stats.cargo = Math.ceil(this.runCargoWeight);
+    this.runCargoCount += pickup.amount;
+    this.game.systems.objectives.record('materialCollected', {
+      materialId: pickup.materialId,
+      amount: pickup.amount,
+    });
+    const material = this.game.systems.materials.getMaterial(pickup.materialId);
+    this.addFloatingText(
+      world.x,
+      world.y,
+      `+${pickup.amount} ${this.game.systems.materials.getDisplayName(pickup.materialId)}`,
+      { color: material?.color || '#fff2cf', rarity: material?.rarity || 'common' },
+    );
+    this.game.audio.playIslandPickup?.();
+    if (material && material.rarity !== 'common') {
+      this.game.systems.achievements.record('rareFind', { materialId: pickup.materialId, rarity: material.rarity });
+    }
+    if (material?.rarity === 'rare' || material?.rarity === 'epic') {
+      this.game.audio.playRareFind();
+      this.rareFindBurst(world.x, world.y, material.color);
+    }
+    return true;
   }
 
   collectCrashStarterMaterial(materialId, amount, position = null) {
@@ -4032,6 +4431,48 @@ export class MiningScene {
     this.game.saveGame();
   }
 
+  handleIslandEnemyDefeated(enemy) {
+    if (!enemy || enemy.rewarded) return;
+    enemy.rewarded = true;
+    const world = enemy.getPosition?.() || { x: enemy.worldX, y: enemy.worldY };
+    this.spawnBurst(world.x, world.y, enemy.accent || '#7ee36d', 16, 130);
+    this.addFloatingText(world.x, world.y - 26, enemy.data?.name || 'Enemy defeated', {
+      color: enemy.accent || '#7ee36d',
+      rarity: 'uncommon',
+    });
+    this.game.audio.playAnimalDefeated?.();
+
+    const drops = enemy.data?.drops || {};
+    Object.entries(drops).forEach(([materialId, amount]) => {
+      const material = this.game.systems.materials.getMaterial(materialId);
+      const dropText = `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`;
+      if (this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId) {
+        this.game.systems.inventory.add(materialId, amount, { skipSave: true });
+        this.game.saveGame();
+      } else {
+        const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
+          capacity: this.stats.cargoCapacity,
+        });
+        if (!result.ok) {
+          this.game.ui.showToast('Cargo Full', 'danger');
+          this.game.audio.playCargoFull();
+          this.addFloatingText(world.x, world.y - 44, 'Cargo Full', { color: '#ff756f', rarity: 'rare' });
+          return;
+        }
+        this.runCargo = result.cargo;
+        this.runCargoWeight = result.currentWeight;
+        this.stats.cargo = Math.ceil(this.runCargoWeight);
+        this.runCargoCount += amount;
+      }
+      this.game.systems.objectives.record('materialCollected', { materialId, amount });
+      this.addFloatingText(world.x, world.y - 44, dropText, {
+        color: material?.color || '#7ee36d',
+        rarity: material?.rarity || 'common',
+      });
+      this.game.audio.playIslandPickup?.();
+    });
+  }
+
   getIslandAimPoint() {
     const controllerAim = this.getControllerIslandAimPoint();
     if (controllerAim) return controllerAim;
@@ -4046,7 +4487,11 @@ export class MiningScene {
   }
 
   getControllerIslandAimPoint() {
-    if (!this.game.input.isControllerActive?.() || !this.islandPlayer) return null;
+    const inputMode = document.documentElement.dataset.inputMode;
+    const allowDirectionalAim = this.game.input.isControllerActive?.()
+      || inputMode === 'touch'
+      || document.documentElement.dataset.forceTouchControls === 'true';
+    if (!allowDirectionalAim || !this.islandPlayer) return null;
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = Math.hypot(aim.x, aim.y);
     if (magnitude < 0.12) return null;
@@ -4359,6 +4804,18 @@ export class MiningScene {
     element.classList.toggle(className, enabled);
   }
 
+  shouldRenderIsland(island) {
+    if (!island) return false;
+    if (this.islandMode !== 'flight') return island === this.activeIsland;
+    if (island === this.landingIsland || island === this.atmosphereIsland || island === this.gravityIsland) return true;
+    const loadRadius = (island.atmosphereRadius || island.gravityFieldRadius || island.radius || 0) + 1400;
+    const dx = island.x - this.ship.x;
+    const dy = island.y - this.ship.y;
+    if (dx * dx + dy * dy > loadRadius * loadRadius) return false;
+    const clearance = island.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? Infinity;
+    return clearance <= (island.atmosphereDepth || 5000) + 1400;
+  }
+
   render(ctx) {
     const { width, height } = this.game.viewport;
     ctx.clearRect(0, 0, width, height);
@@ -4370,8 +4827,8 @@ export class MiningScene {
     this.drawDistanceRings(ctx);
     this.drawStation(ctx);
     const camera = this.cameraView;
-    this.rockIslands.forEach((island) => {
-      if (this.islandMode !== 'flight' && island !== this.activeIsland) return;
+    for (const island of this.rockIslands) {
+      if (!this.shouldRenderIsland(island)) continue;
       const distanceSq = island.distanceSqToPoint(this.camera.x, this.camera.y);
       const visibleRange = Math.max(2200, island.width + island.height, island.gravityFieldRadius * 1.2);
       if (
@@ -4396,8 +4853,10 @@ export class MiningScene {
         placedFlags: island.placedFlags || [],
         placedCraftingStations: island === this.activeIsland && this.placedCraftingStation ? [this.placedCraftingStation] : [],
         placedFurnaces: island === this.activeIsland ? this.placedFurnaces : [],
+        enemies: island === this.activeIsland ? this.enemySystem?.getDrawableEnemies() : [],
+        materialPickups: island === this.activeIsland ? this.islandPickups : [],
       });
-    });
+    }
     this.drawLandingTargetPreview(ctx);
     this.drawIslandMiningBeam(ctx);
     if (this.islandMode === 'flight') {
@@ -4416,6 +4875,7 @@ export class MiningScene {
     this.applyWorldScale(ctx, width, height);
     if (this.islandMode !== 'onIsland' && this.islandMode !== 'boarding') {
       this.ship.draw(ctx, camera, this.game.input, { boost: this.isGodBoosting() });
+      this.drawShipDestinationIndicator(ctx);
     }
     if (this.isWeaponToolSelected() && (this.islandMode === 'flight' || this.islandMode === 'onIsland')) {
       this.combatDrone.draw(ctx, camera);
@@ -4434,6 +4894,7 @@ export class MiningScene {
     const centerX = this.game.viewport.width * 0.5;
     const centerY = this.game.viewport.height * 0.5;
     ctx.save();
+    const atmosphere = Math.max(this.atmosphereStrength || 0, this.gravityFieldStrength || 0);
     for (const rock of this.backgroundAsteroids) {
       const parallax = 0.38;
       const driftX = Math.cos(this.time * rock.drift + rock.seed) * 18;
@@ -4441,7 +4902,7 @@ export class MiningScene {
       const x = centerX + (rock.x - this.camera.x) * parallax + driftX;
       const y = centerY + (rock.y - this.camera.y) * parallax + driftY;
       if (x < -80 || x > this.game.viewport.width + 80 || y < -80 || y > this.game.viewport.height + 80) continue;
-      ctx.globalAlpha = this.islandMode === 'flight' ? 0.2 * this.gravityFieldStrength : 0.28;
+      ctx.globalAlpha = this.islandMode === 'flight' ? 0.08 + 0.28 * atmosphere : 0.28;
       ctx.fillStyle = rock.color;
       ctx.strokeStyle = rock.accent;
       ctx.lineWidth = 1;
@@ -4483,12 +4944,79 @@ export class MiningScene {
       return this.islandViewScale;
     }
 
-    const gravityZoom = clamp01(this.gravityFieldStrength || 0);
+    const gravityZoom = clamp01(this.atmosphereStrength || this.gravityFieldStrength || 0);
     if (gravityZoom > 0) {
-      return this.viewScale + (this.islandViewScale - this.viewScale) * gravityZoom;
+      const easedZoom = Math.pow(gravityZoom, 0.78);
+      return this.viewScale + (this.islandViewScale - this.viewScale) * easedZoom;
     }
 
     return this.viewScale;
+  }
+
+  drawShipDestinationIndicator(ctx) {
+    const indicator = this.destinationIndicator;
+    if (!indicator || this.islandMode === 'onIsland' || this.islandMode === 'boarding') return;
+    const scale = Math.max(0.1, this.getActiveViewScale());
+    const shipScreen = this.cameraView.worldToScreen(this.ship.x, this.ship.y);
+    const ringRadius = 104 / scale;
+    const markerSize = 13 / scale;
+    const labelGap = 24 / scale;
+    const angle = indicator.angle;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const markerX = shipScreen.x + cos * ringRadius;
+    const markerY = shipScreen.y + sin * ringRadius;
+    const distanceLabel = `${Math.round(indicator.distance)}m`;
+
+    ctx.save();
+    ctx.lineWidth = 1.25 / scale;
+    ctx.strokeStyle = 'rgba(118, 243, 255, 0.22)';
+    ctx.setLineDash([6 / scale, 9 / scale]);
+    ctx.beginPath();
+    ctx.arc(shipScreen.x, shipScreen.y, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.strokeStyle = indicator.warning ? 'rgba(255, 117, 111, 0.72)' : 'rgba(118, 243, 255, 0.78)';
+    ctx.lineWidth = 1.8 / scale;
+    ctx.beginPath();
+    ctx.arc(shipScreen.x, shipScreen.y, ringRadius, angle - 0.22, angle + 0.22);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(markerX, markerY);
+    ctx.rotate(angle);
+    ctx.fillStyle = indicator.warning ? '#ff756f' : '#76f3ff';
+    ctx.strokeStyle = 'rgba(3, 9, 18, 0.82)';
+    ctx.lineWidth = 2.2 / scale;
+    ctx.shadowColor = indicator.warning ? 'rgba(255, 117, 111, 0.55)' : 'rgba(118, 243, 255, 0.55)';
+    ctx.shadowBlur = 10 / scale;
+    ctx.beginPath();
+    ctx.moveTo(markerSize * 1.35, 0);
+    ctx.lineTo(-markerSize * 0.75, -markerSize * 0.72);
+    ctx.lineTo(-markerSize * 0.32, 0);
+    ctx.lineTo(-markerSize * 0.75, markerSize * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    const labelX = markerX + cos * labelGap;
+    const labelY = markerY + sin * labelGap;
+    ctx.font = `800 ${Math.max(11 / scale, 10)}px system-ui, sans-serif`;
+    ctx.textAlign = cos > 0.28 ? 'left' : cos < -0.28 ? 'right' : 'center';
+    ctx.textBaseline = sin > 0.32 ? 'top' : sin < -0.32 ? 'bottom' : 'middle';
+    ctx.lineWidth = 3.5 / scale;
+    ctx.strokeStyle = 'rgba(2, 7, 14, 0.88)';
+    ctx.fillStyle = indicator.warning ? '#ffb0a9' : '#dff9ff';
+    ctx.strokeText(distanceLabel, labelX, labelY);
+    ctx.fillText(distanceLabel, labelX, labelY);
+    ctx.font = `700 ${Math.max(9 / scale, 8)}px system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(236, 231, 216, 0.78)';
+    const nameOffset = sin < -0.32 ? 13 / scale : -11 / scale;
+    ctx.strokeText(indicator.name, labelX, labelY + nameOffset);
+    ctx.fillText(indicator.name, labelX, labelY + nameOffset);
+    ctx.restore();
   }
 
   drawSpace(ctx, width, height) {
@@ -4514,6 +5042,114 @@ export class MiningScene {
       ctx.arc(x, y, 0.8 + (i % 3) * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
+    this.drawAtmosphereOverlay(ctx, width, height);
+  }
+
+  drawAtmosphereOverlay(ctx, width, height) {
+    const island = this.atmosphereIsland || this.activeIsland;
+    const strength = clamp01(this.islandMode === 'flight' ? (this.atmosphereStrength || 0) : (island ? 1 : 0));
+    if (!island || strength <= 0.015) return;
+    const palette = this.getAtmospherePalette(island.biome);
+    const phaseSeed = ((island.id || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % 100) / 100;
+    const day = (Math.sin(this.time * 0.055 + phaseSeed * Math.PI * 2) + 1) * 0.5;
+    const dusk = 1 - Math.abs(day - 0.5) * 2;
+    const alpha = Math.min(0.82, 0.12 + strength * 0.7);
+    const horizonY = height * (0.76 - strength * 0.18 + Math.sin(this.time * 0.025 + phaseSeed) * 0.025);
+    const topColor = lerpColor(palette.nightTop, palette.dayTop, day);
+    const midColor = lerpColor(palette.nightMid, palette.dayMid, day);
+    const horizonColor = lerpColor(palette.horizon, palette.sunset, dusk * 0.72);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, topColor);
+    sky.addColorStop(0.56, midColor);
+    sky.addColorStop(1, horizonColor);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    const planetScreen = this.cameraView.worldToScreen(island.x, island.y);
+    const glow = ctx.createRadialGradient(
+      planetScreen.x,
+      horizonY + height * 0.08,
+      10,
+      planetScreen.x,
+      horizonY + height * 0.08,
+      width * (0.28 + strength * 0.42),
+    );
+    glow.addColorStop(0, `${palette.haze}${Math.round((0.28 + strength * 0.22) * 255).toString(16).padStart(2, '0')}`);
+    glow.addColorStop(1, `${palette.haze}00`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.globalAlpha = Math.min(0.9, 0.18 + strength * 0.58);
+    const horizon = ctx.createLinearGradient(0, horizonY - 60, 0, horizonY + 90);
+    horizon.addColorStop(0, `${palette.haze}00`);
+    horizon.addColorStop(0.52, `${palette.haze}88`);
+    horizon.addColorStop(1, `${palette.ground}00`);
+    ctx.fillStyle = horizon;
+    ctx.fillRect(0, horizonY - 80, width, 180);
+    ctx.strokeStyle = `${palette.haze}${Math.round((0.22 + strength * 0.46) * 255).toString(16).padStart(2, '0')}`;
+    ctx.lineWidth = 1.5 + strength * 2.4;
+    ctx.beginPath();
+    ctx.moveTo(-40, horizonY + Math.sin(this.time * 0.06) * 5);
+    ctx.quadraticCurveTo(width * 0.5, horizonY - 42 * strength, width + 40, horizonY + Math.cos(this.time * 0.05) * 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  getAtmospherePalette(biome = 'scrap') {
+    return {
+      scrap: {
+        nightTop: '#07142a',
+        nightMid: '#102844',
+        dayTop: '#1b4266',
+        dayMid: '#275f7d',
+        horizon: '#5f7c87',
+        sunset: '#d58a52',
+        haze: '#76f3ff',
+        ground: '#243342',
+      },
+      forest: {
+        nightTop: '#061b1f',
+        nightMid: '#143333',
+        dayTop: '#204d57',
+        dayMid: '#416f5f',
+        horizon: '#8bb673',
+        sunset: '#d6a35c',
+        haze: '#8df0a4',
+        ground: '#1d3128',
+      },
+      crystal: {
+        nightTop: '#071534',
+        nightMid: '#142858',
+        dayTop: '#1c4a78',
+        dayMid: '#345f95',
+        horizon: '#8ee8ff',
+        sunset: '#b58cff',
+        haze: '#8ee8ff',
+        ground: '#202b4f',
+      },
+      ember: {
+        nightTop: '#18090d',
+        nightMid: '#321414',
+        dayTop: '#4e2117',
+        dayMid: '#6e331b',
+        horizon: '#ff9f43',
+        sunset: '#ffd36b',
+        haze: '#ff8f3d',
+        ground: '#2b1715',
+      },
+    }[biome] || {
+      nightTop: '#070b18',
+      nightMid: '#15162c',
+      dayTop: '#1e315a',
+      dayMid: '#34406b',
+      horizon: '#a983ff',
+      sunset: '#ffd36b',
+      haze: '#a983ff',
+      ground: '#111424',
+    };
   }
 
   drawDistanceRings(ctx) {
@@ -4547,7 +5183,7 @@ export class MiningScene {
         const label = this.cameraView.worldToScreen(Math.cos(shipAngle) * radius, Math.sin(shipAngle) * radius);
         ctx.setLineDash([]);
         ctx.fillStyle = `rgba(236, 231, 216, ${0.35 + closeAlpha * 0.5})`;
-        ctx.fillText(`${ring * 10}k ring`, label.x, label.y - 18 / scale);
+        ctx.fillText(`${Math.round(radius / 1000)}k ring`, label.x, label.y - 18 / scale);
       }
     }
     ctx.restore();
@@ -4755,39 +5391,9 @@ export class MiningScene {
 
   drawIslandTerrainTargetGlow(ctx, state) {
     if (!state?.hit || !this.activeIsland?.terrain) return;
-    const hit = state.hit;
-    const size = this.activeIsland.terrain.cellSize || 20;
-    const material = TERRAIN_MATERIALS[hit.material] || TERRAIN_MATERIALS[1];
-    const color = material.edge || '#ffd36b';
-    const rgb = hexToRgb(color);
-    const centerX = hit.col * size + size * 0.5;
-    const centerY = hit.row * size + size * 0.5;
-    const pulse = 1 + Math.sin(this.time * 15) * 0.07;
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.scale(pulse, pulse);
-    ctx.globalAlpha = 0.38;
-    ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.22)`;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 18;
-    ctx.beginPath();
-    ctx.roundRect(-size * 0.5, -size * 0.5, size, size, Math.max(4, size * 0.22));
-    ctx.fill();
-
-    ctx.globalAlpha = 0.82;
-    ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([size * 0.32, size * 0.22]);
-    ctx.lineDashOffset = -this.time * 20;
-    ctx.stroke();
-
-    ctx.globalAlpha = 0.24;
-    ctx.setLineDash([]);
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.arc(0, 0, TERRAIN_MINING_BRUSH_RADIUS, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    this.activeIsland.terrain.drawCellTargetGlow(ctx, state.hit, this.time, {
+      brushRadius: TERRAIN_MINING_BRUSH_RADIUS,
+    });
   }
 
   drawFlagPlacementPreview(ctx, state) {

@@ -1,28 +1,28 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=93';
+import { InputManager } from './InputManager.js?v=112';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=93';
+import { AudioManager } from './AudioManager.js?v=112';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=93';
+import { DebugPanel } from '../ui/DebugPanel.js?v=112';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=93';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=93';
-import { EconomySystem } from '../systems/EconomySystem.js?v=93';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=93';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=93';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=93';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=93';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=93';
-import { IslandSystem } from '../systems/IslandSystem.js?v=93';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=112';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=112';
+import { EconomySystem } from '../systems/EconomySystem.js?v=112';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=112';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=112';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=112';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=112';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=112';
+import { IslandSystem } from '../systems/IslandSystem.js?v=112';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=93';
-import { MiningScene } from '../scenes/MiningScene.js?v=93';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=93';
-import { StorageScene } from '../scenes/StorageScene.js?v=93';
-import { IslandScene } from '../scenes/IslandScene.js?v=93';
-import { gameBalance } from '../data/gameBalance.js?v=93';
+import { StationScene } from '../scenes/StationScene.js?v=112';
+import { MiningScene } from '../scenes/MiningScene.js?v=112';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=112';
+import { StorageScene } from '../scenes/StorageScene.js?v=112';
+import { IslandScene } from '../scenes/IslandScene.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -44,6 +44,8 @@ export class Game {
     this.paused = false;
     this.controllerUiFocusIndex = 0;
     this.controllerUiFocusScope = '';
+    this.controllerUiNavRepeatTimer = 0;
+    this.controllerUiNavLastKey = '';
 
     this.state = this.createInitialState();
     this.systems = this.createSystems();
@@ -90,6 +92,7 @@ export class Game {
       },
       settings: {
         audioMuted: this.audio ? !this.audio.enabled : false,
+        touchControlsEnabled: false,
       },
       stats: {
         totalAsteroidsMined: 0,
@@ -223,7 +226,7 @@ export class Game {
   }
 
   createSystems() {
-    return {
+    const systems = {
       inventory: new InventorySystem(this),
       materials: new MaterialSystem(this),
       dialogue: new DialogueSystem(this),
@@ -233,9 +236,10 @@ export class Game {
       tutorial: new TutorialSystem(this),
       objectives: new ObjectiveSystem(this),
       achievements: new AchievementSystem(this),
-      navigation: new NavigationSystem(this),
-      islands: new IslandSystem(this),
     };
+    systems.islands = new IslandSystem(this);
+    systems.navigation = new NavigationSystem(this, systems.islands);
+    return systems;
   }
 
   start() {
@@ -245,6 +249,7 @@ export class Game {
       this.systems = this.createSystems();
     }
     this.audio.setMuted(Boolean(this.state.settings?.audioMuted));
+    this.applyTouchControlsSetting();
     this.systems.upgrades.applyUpgrades();
 
     this.registerScenes();
@@ -254,6 +259,7 @@ export class Game {
     this.resize();
     window.addEventListener('resize', this.resize);
     window.addEventListener('orientationchange', this.resize);
+    document.addEventListener('fullscreenchange', this.resize);
     this.preventBrowserGestures();
     this.requestFullscreen();
 
@@ -278,6 +284,7 @@ export class Game {
     this.canvas.height = Math.floor(rect.height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.viewport = { width: rect.width, height: rect.height, dpr };
+    this.input?.invalidatePointerBounds?.();
     this.updatePlatformProfile();
     this.sceneManager.current?.resize?.(this.viewport);
   }
@@ -292,6 +299,7 @@ export class Game {
     document.documentElement.dataset.mobilePort = 'ready';
     document.documentElement.dataset.inputMode = inputMode;
     document.documentElement.dataset.layoutProfile = mobileLandscape ? 'mobile-landscape' : 'pc';
+    this.applyTouchControlsSetting();
   }
 
   preventBrowserGestures() {
@@ -325,6 +333,7 @@ export class Game {
     this.state = this.createInitialState();
     this.systems = this.createSystems();
     this.systems.upgrades.applyUpgrades({ refuel: true, repair: true });
+    this.applyTouchControlsSetting();
     this.saveGame();
     this.paused = false;
     this.ui.hidePauseMenu();
@@ -336,6 +345,24 @@ export class Game {
     this.paused = typeof forceState === 'boolean' ? forceState : !this.paused;
     if (this.paused) this.ui.showPauseMenu(this);
     else this.ui.hidePauseMenu();
+  }
+
+  applyTouchControlsSetting() {
+    document.documentElement.dataset.forceTouchControls = this.state.settings?.touchControlsEnabled ? 'true' : 'false';
+  }
+
+  setTouchControlsEnabled(enabled) {
+    this.state.settings = {
+      ...(this.state.settings || {}),
+      touchControlsEnabled: Boolean(enabled),
+    };
+    this.applyTouchControlsSetting();
+    this.saveGame();
+    this.ui.showToast(this.state.settings.touchControlsEnabled ? 'Touch controls shown' : 'Touch controls hidden', 'success');
+  }
+
+  toggleTouchControls() {
+    this.setTouchControlsEnabled(!this.state.settings?.touchControlsEnabled);
   }
 
   returnToStation() {
@@ -442,15 +469,16 @@ export class Game {
       else this.returnToStation();
     }
     if (this.input.actions.justPressed.debugToggle) this.debugPanel.toggle();
-    this.handleControllerUiNavigation();
+    this.handleControllerUiNavigation(delta);
     if (!this.paused) this.sceneManager.update(delta);
     this.sceneManager.render(this.ctx);
     this.input.endFrame();
     requestAnimationFrame(this.loop);
   }
 
-  handleControllerUiNavigation() {
+  handleControllerUiNavigation(delta = 0) {
     if (!this.input.isControllerActive?.()) return;
+    this.controllerUiNavRepeatTimer = Math.max(0, this.controllerUiNavRepeatTimer - delta);
     const scope = this.getControllerUiScope();
     if (!scope) {
       this.controllerUiFocusScope = '';
@@ -461,6 +489,8 @@ export class Game {
     if (scope !== this.controllerUiFocusScope) {
       this.controllerUiFocusScope = scope;
       this.controllerUiFocusIndex = 0;
+      this.controllerUiNavLastKey = '';
+      this.controllerUiNavRepeatTimer = 0;
       controls[0].focus({ preventScroll: true });
     }
 
@@ -468,14 +498,13 @@ export class Game {
     if (actions.justPressed.cancel) {
       if (this.paused) this.togglePause(false);
       else if (scope === 'upgrades' || scope === 'storage') this.sceneManager.switchTo('station');
+      this.suppressGameplayInputForUi(scope);
       return;
     }
 
-    const direction = Number(actions.justPressed.right || actions.justPressed.down)
-      - Number(actions.justPressed.left || actions.justPressed.up);
-    if (direction !== 0) {
-      this.controllerUiFocusIndex = (this.controllerUiFocusIndex + direction + controls.length) % controls.length;
-      controls[this.controllerUiFocusIndex].focus({ preventScroll: true });
+    const moveVector = this.getControllerUiMoveVector(actions);
+    if (moveVector) {
+      this.moveControllerUiFocus(controls, moveVector);
       this.audio.playButtonHover();
     }
 
@@ -484,6 +513,7 @@ export class Game {
     if ((actions.justPressed.confirm || actions.justPressed.interact) && controls[this.controllerUiFocusIndex]) {
       controls[this.controllerUiFocusIndex].click();
     }
+    this.suppressGameplayInputForUi(scope);
   }
 
   getControllerUiScope() {
@@ -502,5 +532,105 @@ export class Game {
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden';
       });
+  }
+
+  getControllerUiMoveVector(actions) {
+    const directions = [
+      { key: 'right', vector: { x: 1, y: 0 } },
+      { key: 'left', vector: { x: -1, y: 0 } },
+      { key: 'down', vector: { x: 0, y: 1 } },
+      { key: 'up', vector: { x: 0, y: -1 } },
+    ];
+    const pressed = directions.find((direction) => actions.justPressed[direction.key]);
+    if (pressed) {
+      this.controllerUiNavLastKey = pressed.key;
+      this.controllerUiNavRepeatTimer = 0.28;
+      return pressed.vector;
+    }
+    const held = directions.find((direction) => actions[direction.key]);
+    if (!held) {
+      this.controllerUiNavLastKey = '';
+      this.controllerUiNavRepeatTimer = 0;
+      return null;
+    }
+    if (held.key !== this.controllerUiNavLastKey) {
+      this.controllerUiNavLastKey = held.key;
+      this.controllerUiNavRepeatTimer = 0.28;
+      return held.vector;
+    }
+    if (this.controllerUiNavRepeatTimer <= 0) {
+      this.controllerUiNavRepeatTimer = 0.11;
+      return held.vector;
+    }
+    return null;
+  }
+
+  moveControllerUiFocus(controls, vector) {
+    const currentIndex = Math.max(0, controls.indexOf(document.activeElement) >= 0
+      ? controls.indexOf(document.activeElement)
+      : Math.min(this.controllerUiFocusIndex, controls.length - 1));
+    const current = controls[currentIndex] || controls[0];
+    const currentRect = current.getBoundingClientRect();
+    const currentCenter = {
+      x: currentRect.left + currentRect.width * 0.5,
+      y: currentRect.top + currentRect.height * 0.5,
+    };
+    let bestIndex = -1;
+    let bestScore = Infinity;
+
+    controls.forEach((element, index) => {
+      if (index === currentIndex) return;
+      const rect = element.getBoundingClientRect();
+      const center = {
+        x: rect.left + rect.width * 0.5,
+        y: rect.top + rect.height * 0.5,
+      };
+      const dx = center.x - currentCenter.x;
+      const dy = center.y - currentCenter.y;
+      const forward = dx * vector.x + dy * vector.y;
+      if (forward <= 4) return;
+      const perpendicular = Math.abs(dx * -vector.y + dy * vector.x);
+      const distance = Math.hypot(dx, dy);
+      const sameBand = vector.x !== 0
+        ? Math.abs(center.y - currentCenter.y) <= Math.max(currentRect.height, rect.height) * 0.62
+        : Math.abs(center.x - currentCenter.x) <= Math.max(currentRect.width, rect.width) * 0.62;
+      const score = perpendicular * (sameBand ? 0.55 : 1.25) + distance * 0.16 + forward * 0.04;
+      if (score < bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    if (bestIndex < 0) {
+      const direction = vector.x + vector.y > 0 ? 1 : -1;
+      bestIndex = (currentIndex + direction + controls.length) % controls.length;
+    }
+    this.controllerUiFocusIndex = bestIndex;
+    controls[bestIndex].focus({ preventScroll: true });
+  }
+
+  suppressGameplayInputForUi(scope) {
+    if (scope !== 'overlay') return;
+    this.input.moveVector = { x: 0, y: 0 };
+    [
+      'up',
+      'down',
+      'left',
+      'right',
+      'jump',
+      'interact',
+      'primaryUse',
+      'aimUse',
+      'mine',
+      'attack',
+      'placeFlag',
+      'placeFurnace',
+      'placeCraftingStation',
+      'crafting',
+      'inventory',
+    ].forEach((actionName) => {
+      this.input.actions[actionName] = false;
+      this.input.actions.justPressed[actionName] = false;
+    });
   }
 }

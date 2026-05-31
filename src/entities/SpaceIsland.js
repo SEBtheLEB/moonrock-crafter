@@ -1,4 +1,5 @@
-import { PlacedFlag } from './PlacedFlag.js?v=93';
+import { PlacedFlag } from './PlacedFlag.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothStep = (value) => {
@@ -19,10 +20,14 @@ export class SpaceIsland {
     this.height = terrain?.height || data.size?.height || 760;
     this.radius = Math.min(this.width, this.height) * 0.39;
     this.landingZoneRadius = data.landingZoneRadius || Math.max(320, this.radius * 0.28);
+    this.atmosphereDepth = data.atmosphereDepth || gameBalance.mining?.planetAtmosphereDepth || 5000;
     this.landingAngle = data.landingAngle ?? -Math.PI / 2;
     this.landingSurfaceLocal = data.landingSurfaceLocal || null;
-    this.gravityFieldRadius = data.gravityFieldRadius
+    this.atmosphereRadius = data.atmosphereRadius || this.radius + this.atmosphereDepth;
+    this.playerGravityRadius = data.playerGravityRadius
       || Math.hypot(this.width * 0.5, this.height * 0.5) + Math.max(620, this.landingZoneRadius * 1.75);
+    this.gravityFieldRadius = data.gravityFieldRadius
+      || this.atmosphereRadius;
     this.terrain = terrain;
     this.placedFlags = (data.placedFlags || []).map((flag) => PlacedFlag.deserialize(flag));
     this.world = {
@@ -197,12 +202,27 @@ export class SpaceIsland {
   }
 
   getGravityFieldStrength(ship) {
+    return this.getAtmosphereStrength(ship);
+  }
+
+  getAtmosphereStrength(ship) {
     const distance = Math.sqrt(this.distanceSqTo(ship));
-    if (distance >= this.gravityFieldRadius) return 0;
-    const fullStrengthRadius = Math.max(this.radius * 0.9, this.gravityFieldRadius * 0.5);
-    if (distance <= fullStrengthRadius) return 1;
-    const falloff = (this.gravityFieldRadius - distance) / Math.max(1, this.gravityFieldRadius - fullStrengthRadius);
-    return smoothStep(falloff);
+    const local = this.worldToLocal(ship.x, ship.y);
+    const angle = this.getAngleForLocal(local.x, local.y);
+    const surfaceRadius = this.getSurfaceRadiusAtAngle(angle);
+    const surfaceDistance = Math.max(0, distance - surfaceRadius);
+    if (surfaceDistance >= this.atmosphereDepth) return 0;
+    return smoothStep((this.atmosphereDepth - surfaceDistance) / Math.max(1, this.atmosphereDepth));
+  }
+
+  getSurfaceClearanceToPoint(x, y, extraRadius = 0) {
+    const local = this.worldToLocal(x, y);
+    const center = this.getCenterLocal();
+    const dx = local.x - center.x;
+    const dy = local.y - center.y;
+    const angle = Math.atan2(dy, dx);
+    const distance = Math.hypot(dx, dy);
+    return distance - this.getSurfaceRadiusAtAngle(angle) - extraRadius;
   }
 
   isPlayerNearShip(player) {
@@ -215,7 +235,7 @@ export class SpaceIsland {
   containsPlayerInGravity(player) {
     const center = this.getCenterLocal();
     const distance = Math.hypot(player.centerX - center.x, player.centerY - center.y);
-    return distance < this.gravityFieldRadius * 0.95;
+    return distance < this.playerGravityRadius * 0.95;
   }
 
   draw(ctx, camera, {
@@ -234,6 +254,8 @@ export class SpaceIsland {
     placedFlags = this.placedFlags,
     placedCraftingStations = [],
     placedFurnaces = [],
+    enemies = [],
+    materialPickups = [],
   } = {}) {
     if (!this.terrain) return;
     const screen = anchorLocal && anchorWorld
@@ -251,6 +273,8 @@ export class SpaceIsland {
     (placedCraftingStations || []).forEach((station) => station.draw(ctx, { time }));
     (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time, tileSize: this.terrain?.cellSize }));
     (placedFlags || []).forEach((flag) => flag.draw(ctx, { time }));
+    (materialPickups || []).forEach((pickup) => pickup.drawLocal?.(ctx));
+    (enemies || []).forEach((enemy) => enemy.draw?.(ctx, { time, viewRotation }));
     if (drawShip) this.drawParkedShip(ctx, ship, time, { broken: shipBroken });
     if (player) {
       ctx.save();

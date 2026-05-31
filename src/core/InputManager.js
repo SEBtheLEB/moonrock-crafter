@@ -1,4 +1,4 @@
-import { HOTBAR_SLOT_COUNT, getHotbarSlot } from '../data/hotbar.js?v=93';
+import { HOTBAR_SLOT_COUNT, getHotbarSlot } from '../data/hotbar.js?v=112';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',
@@ -72,10 +72,15 @@ export class InputManager {
     this.gamepadConnected = false;
     this.controllerActivityFrames = 0;
     this.inputMode = document.documentElement.dataset.inputMode || 'keyboard';
+    this.cursorHost = null;
+    this.gameShellRect = null;
+    this.canvasRect = null;
+    this.cursorSpeedBucket = -1;
     this.cursorElement = this.createCustomCursor();
     this.cursorX = -100;
     this.cursorY = -100;
     this.cursorVisible = false;
+    this.cursorPressed = false;
     this.selectedHotbarIndex = 0;
     this.selectHotbarSlot(0);
     this.virtualButtons = new Map();
@@ -94,6 +99,8 @@ export class InputManager {
     this.onWheel = this.onWheel.bind(this);
     this.onGamepadConnected = this.onGamepadConnected.bind(this);
     this.onGamepadDisconnected = this.onGamepadDisconnected.bind(this);
+    this.onFullscreenChange = this.onFullscreenChange.bind(this);
+    this.invalidatePointerBounds = this.invalidatePointerBounds.bind(this);
 
     window.addEventListener('keydown', (event) => this.onKey(event, true), { passive: false });
     window.addEventListener('keyup', (event) => this.onKey(event, false), { passive: false });
@@ -106,8 +113,11 @@ export class InputManager {
       if (event.target.closest?.('#game-shell')) event.preventDefault();
     }, { capture: true });
     window.addEventListener('blur', () => this.resetTransientState());
+    window.addEventListener('resize', this.invalidatePointerBounds, { passive: true });
+    window.addEventListener('scroll', this.invalidatePointerBounds, { passive: true });
     window.addEventListener('gamepadconnected', this.onGamepadConnected);
     window.addEventListener('gamepaddisconnected', this.onGamepadDisconnected);
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
   }
 
   createActionState() {
@@ -124,6 +134,7 @@ export class InputManager {
       jump: false,
       tool: false,
       primaryUse: false,
+      aimUse: false,
       stabilize: false,
       mine: false,
       attack: false,
@@ -225,6 +236,12 @@ export class InputManager {
     document.documentElement.dataset.inputMode = mode;
   }
 
+  invalidatePointerBounds() {
+    this.gameShellRect = null;
+    this.canvasRect = null;
+    this.cursorHost = null;
+  }
+
   capturePointer(event) {
     if (event.target.closest?.('#game-shell')) event.preventDefault();
   }
@@ -232,42 +249,93 @@ export class InputManager {
   createCustomCursor() {
     if (typeof document === 'undefined' || !document.body) return null;
     const existing = document.querySelector('.game-custom-cursor');
-    if (existing) return existing;
+    if (existing) {
+      this.ensureCursorParent(existing);
+      return existing;
+    }
     const element = document.createElement('div');
     element.className = 'game-custom-cursor';
     element.setAttribute('aria-hidden', 'true');
-    document.body.append(element);
+    this.ensureCursorParent(element);
     return element;
+  }
+
+  getGameShell() {
+    return this.canvas?.closest?.('#game-shell') || document.querySelector('#game-shell');
+  }
+
+  getCursorHost() {
+    const shell = this.getGameShell();
+    const fullscreenElement = document.fullscreenElement;
+    if (fullscreenElement && fullscreenElement !== this.canvas) return fullscreenElement;
+    return shell || document.body;
+  }
+
+  ensureCursorParent(element = this.cursorElement) {
+    if (!element || typeof document === 'undefined') return;
+    const host = this.cursorHost || this.getCursorHost();
+    this.cursorHost = host;
+    if (host && element.parentElement !== host) host.append(element);
+  }
+
+  onFullscreenChange() {
+    this.invalidatePointerBounds();
+    this.ensureCursorParent();
+  }
+
+  isPointerInsideGameViewport(event) {
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return false;
+    if (event.clientX < 0 || event.clientY < 0 || event.clientX > window.innerWidth || event.clientY > window.innerHeight) return false;
+    if (document.fullscreenElement) return true;
+    const shell = this.getGameShell();
+    if (!shell) return true;
+    const rect = this.gameShellRect || shell.getBoundingClientRect();
+    this.gameShellRect = rect;
+    return event.clientX >= rect.left
+      && event.clientX <= rect.right
+      && event.clientY >= rect.top
+      && event.clientY <= rect.bottom;
   }
 
   updateCustomCursor(event, pressed = false) {
     if (!this.cursorElement || event.pointerType === 'touch') {
       this.cursorElement?.classList.remove('is-visible', 'is-pressed');
+      this.cursorVisible = false;
+      this.cursorPressed = false;
       return;
     }
-    const insideGame = Boolean(event.target?.closest?.('#game-shell'));
-    if (!insideGame) {
+    if (!this.cursorElement.parentElement || this.cursorElement.parentElement !== this.cursorHost) this.ensureCursorParent();
+    if (!this.isPointerInsideGameViewport(event)) {
       this.cursorElement.classList.remove('is-visible', 'is-pressed');
       this.cursorVisible = false;
+      this.cursorPressed = false;
       return;
     }
-    const previousX = this.cursorX;
-    const previousY = this.cursorY;
+    const previousX = this.cursorVisible ? this.cursorX : event.clientX;
+    const previousY = this.cursorVisible ? this.cursorY : event.clientY;
     this.cursorX = event.clientX;
     this.cursorY = event.clientY;
     const dx = this.cursorX - previousX;
     const dy = this.cursorY - previousY;
-    const speed = Math.min(1, Math.hypot(dx, dy) / 34);
-    this.cursorElement.style.setProperty('--cursor-x', `${this.cursorX}px`);
-    this.cursorElement.style.setProperty('--cursor-y', `${this.cursorY}px`);
-    this.cursorElement.style.setProperty('--cursor-speed', `${speed.toFixed(3)}`);
-    this.cursorElement.classList.toggle('is-visible', true);
-    this.cursorElement.classList.toggle('is-pressed', Boolean(pressed));
+    const speed = Math.min(1, Math.hypot(dx, dy) / 42);
+    const scale = (pressed ? 0.9 : 1) + speed * 0.08;
+    const speedBucket = Math.round(speed * 10);
+    if (speedBucket !== this.cursorSpeedBucket) {
+      this.cursorSpeedBucket = speedBucket;
+      this.cursorElement.style.setProperty('--cursor-speed', `${(speedBucket / 10).toFixed(1)}`);
+    }
+    this.cursorElement.style.transform = `translate3d(${this.cursorX - 7}px, ${this.cursorY - 7}px, 0) scale(${scale.toFixed(3)})`;
+    if (!this.cursorVisible) this.cursorElement.classList.add('is-visible');
+    if (this.cursorPressed !== Boolean(pressed)) {
+      this.cursorPressed = Boolean(pressed);
+      this.cursorElement.classList.toggle('is-pressed', this.cursorPressed);
+    }
     this.cursorVisible = true;
   }
 
   pointerFromEvent(event, down) {
-    const canvasRect = this.canvas.getBoundingClientRect();
+    const canvasRect = this.canvasRect || this.canvas.getBoundingClientRect();
+    this.canvasRect = canvasRect;
     return {
       id: event.pointerId,
       x: event.clientX,
@@ -292,7 +360,7 @@ export class InputManager {
       down,
       button: pointer.button,
       buttons: pointer.buttons,
-      inside: Boolean(pointer.target?.closest?.('#game-shell')),
+      inside: this.isPointerInsideGameViewport({ clientX: pointer.x, clientY: pointer.y }),
       source: pointer.source,
     };
   }
@@ -311,7 +379,13 @@ export class InputManager {
     };
   }
 
-  bindJoystick(element, { mode = 'move', radius = 48, floating = false, activationRegion = 'element' } = {}) {
+  bindJoystick(element, {
+    mode = 'move',
+    radius = 48,
+    floating = false,
+    activationRegion = 'element',
+    holdAction = null,
+  } = {}) {
     element.__inputCleanup?.();
     let activePointerId = null;
     let floatingCenter = null;
@@ -353,7 +427,8 @@ export class InputManager {
       if (event.pointerType === 'mouse') return false;
       if (!event.target.closest?.('#game-shell')) return false;
       if (event.target.closest?.('button, .modal-backdrop, .global-dialogue-box, .debug-panel')) return false;
-      if (activationRegion === 'left' && event.clientX > window.innerWidth * 0.54) return false;
+      if (activationRegion === 'left' && event.clientX > window.innerWidth * 0.48) return false;
+      if (activationRegion === 'right' && event.clientX < window.innerWidth * 0.52) return false;
       return true;
     };
 
@@ -362,8 +437,12 @@ export class InputManager {
       const rect = element.getBoundingClientRect();
       const baseCenterX = rect.left + rect.width / 2;
       const baseCenterY = rect.top + rect.height / 2;
-      const leftLimit = Math.max(8, window.innerWidth * 0.08);
-      const rightLimit = Math.max(leftLimit, window.innerWidth * 0.54 - rect.width * 0.5);
+      const leftLimit = activationRegion === 'right'
+        ? Math.min(window.innerWidth - 8, window.innerWidth * 0.56)
+        : Math.max(8, window.innerWidth * 0.08);
+      const rightLimit = activationRegion === 'right'
+        ? Math.max(leftLimit, window.innerWidth - 8)
+        : Math.max(leftLimit, window.innerWidth * 0.46 - rect.width * 0.5);
       const topLimit = 44;
       const bottomLimit = Math.max(topLimit, window.innerHeight - rect.height * 0.42);
       const centerX = Math.max(leftLimit, Math.min(rightLimit, event.clientX));
@@ -371,6 +450,12 @@ export class InputManager {
       floatingCenter = { x: centerX, y: centerY };
       element.style.setProperty('--joystick-float-x', `${Math.round(centerX - baseCenterX)}px`);
       element.style.setProperty('--joystick-float-y', `${Math.round(centerY - baseCenterY)}px`);
+    };
+
+    const setHoldAction = (isHeld) => {
+      if (!holdAction) return;
+      this.virtualButtons.set(holdAction, Boolean(isHeld));
+      element.classList.toggle('is-held', Boolean(isHeld));
     };
 
     const activate = (event) => {
@@ -384,6 +469,7 @@ export class InputManager {
         // Floating joysticks may begin from a sibling/canvas pointer target.
       }
       element.classList.add('is-active');
+      setHoldAction(true);
       setVector(event);
     };
 
@@ -408,6 +494,7 @@ export class InputManager {
       floatingCenter = null;
       if (mode === 'aim') this.virtualAim = { x: 0, y: 0 };
       else this.virtualMove = { x: 0, y: 0 };
+      setHoldAction(false);
       knob.style.transform = 'translate(0, 0)';
       element.style.setProperty('--joystick-float-x', '0px');
       element.style.setProperty('--joystick-float-y', '0px');
@@ -431,6 +518,7 @@ export class InputManager {
         floatingCenter = null;
         if (mode === 'aim') this.virtualAim = { x: 0, y: 0 };
         else this.virtualMove = { x: 0, y: 0 };
+        setHoldAction(false);
       }
     };
   }
@@ -505,7 +593,7 @@ export class InputManager {
       }
     });
 
-    if (next.primaryUse) {
+    if (next.primaryUse || next.aimUse) {
       const selectedAction = this.getSelectedHotbarAction();
       if (selectedAction) next[selectedAction] = true;
     }
@@ -569,14 +657,17 @@ export class InputManager {
 
     if (buttonHeld(GAMEPAD_BUTTONS.confirm)) {
       actions.add('confirm');
+      actions.add('interact');
+    }
+    if (buttonHeld(GAMEPAD_BUTTONS.cancel)) {
+      actions.add('cancel');
       actions.add('jump');
     }
-    if (buttonHeld(GAMEPAD_BUTTONS.cancel)) actions.add('cancel');
     if (buttonHeld(GAMEPAD_BUTTONS.mineFace) || buttonHeld(GAMEPAD_BUTTONS.mineTrigger)) actions.add('primaryUse');
     if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) actions.add('stabilize');
     if (buttonHeld(GAMEPAD_BUTTONS.tool)) actions.add('hotbarPrevious');
     if (buttonHeld(GAMEPAD_BUTTONS.attackShoulder) || buttonHeld(GAMEPAD_BUTTONS.attackTrigger)) actions.add('hotbarNext');
-    if (buttonHeld(GAMEPAD_BUTTONS.select)) actions.add('interact');
+    if (buttonHeld(GAMEPAD_BUTTONS.select)) actions.add('inventory');
     if (buttonHeld(GAMEPAD_BUTTONS.pause)) actions.add('pause');
 
     const leftStick = this.readGamepadStick(gamepad, 0, 1);

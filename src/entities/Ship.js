@@ -13,10 +13,27 @@ export class Ship {
     this.maxSpeed = 176 + (stats.speed || 1) * 21;
     this.turnSpeed = 9.5 + (stats.handling || 1) * 1.2;
     this.hitCooldown = 0;
+    this.steerX = 0;
+    this.steerY = 0;
   }
 
   update(delta, input, fuelRatio = 1, { boost = false } = {}) {
-    const move = input.moveVector;
+    const rawMove = input.moveVector || { x: 0, y: 0 };
+    const inputMode = input.inputMode
+      || (typeof document !== 'undefined' ? document.documentElement.dataset.inputMode : 'keyboard')
+      || 'keyboard';
+    const keyboardMoveHeld = input.keys
+      ? ['w', 'W', 'a', 'A', 's', 'S', 'd', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
+        .some((key) => input.keys.has(key))
+      : inputMode === 'keyboard';
+    const hasKeyboardMove = keyboardMoveHeld && Math.hypot(rawMove.x, rawMove.y) > 0.05;
+    const response = hasKeyboardMove ? 6.6 : 13.5;
+    const releaseResponse = hasKeyboardMove ? 5.4 : 11;
+    const blend = 1 - Math.exp(-delta * (Math.hypot(rawMove.x, rawMove.y) > 0.05 ? response : releaseResponse));
+    this.steerX += (rawMove.x - this.steerX) * blend;
+    this.steerY += (rawMove.y - this.steerY) * blend;
+
+    const move = { x: this.steerX, y: this.steerY };
     let thrust = Math.hypot(move.x, move.y);
     const fuelFactor = fuelRatio > 0 ? 1 : 0.28;
 

@@ -1,11 +1,38 @@
-import { locations } from '../data/locations.js?v=93';
-import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=93';
+import { locations } from '../data/locations.js?v=112';
+import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=112';
 
 export class NavigationSystem {
-  constructor(game) {
+  constructor(game, islandSystem = null) {
     this.game = game;
-    this.locations = locations;
+    this.islandSystem = islandSystem;
+    this.locations = this.createLocations();
     this.upgrades = scannerUpgrades;
+  }
+
+  createLocations() {
+    const merged = new Map(locations.map((location) => [location.id, { ...location }]));
+    const islands = this.islandSystem?.getAllIslands?.() || [];
+    islands.forEach((island) => {
+      if (!island?.id || island.id === 'crashPlanet') return;
+      const existing = merged.get(island.id) || {};
+      merged.set(island.id, {
+        ...existing,
+        id: island.id,
+        name: island.name || existing.name || 'Unknown Island',
+        type: island.kind === 'story' ? 'story' : 'island',
+        worldPosition: { ...island.worldPosition },
+        discovered: Boolean(island.discovered || existing.discovered),
+        dangerLevel: island.dangerLevel ?? existing.dangerLevel ?? 1,
+        recommendedFuel: existing.recommendedFuel || Math.max(48, Math.round(Math.hypot(island.worldPosition.x, island.worldPosition.y) / 155)),
+        description: island.description || existing.description || 'A drifting planetoid with a breathable pocket of atmosphere.',
+        resources: island.resources?.length ? [...island.resources] : (existing.resources || []),
+        icon: existing.icon || 'IS',
+        requiredScannerLevel: island.requiredScannerLevel || existing.requiredScannerLevel || 1,
+        biome: island.biome || existing.biome || 'scrap',
+        canSetDestination: true,
+      });
+    });
+    return [...merged.values()];
   }
 
   get state() {

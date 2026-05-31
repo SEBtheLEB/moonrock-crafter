@@ -220,6 +220,7 @@ export class UIManager {
 
   showPauseMenu(game) {
     const mutedLabel = game.audio.enabled ? 'Mute Audio' : 'Unmute Audio';
+    const touchLabel = game.state.settings?.touchControlsEnabled ? 'Hide Touch Controls' : 'Show Touch Controls';
     this.audio.playModalOpen();
     const modal = new Modal({
       title: 'Paused',
@@ -228,6 +229,10 @@ export class UIManager {
       children: [
         new Button('Resume', () => game.togglePause(false), { icon: '>', variant: 'success' }).element,
         new Button('Settings', () => this.showToast('Settings panel coming soon.', 'default'), { icon: '*' }).element,
+        new Button(touchLabel, () => {
+          game.toggleTouchControls();
+          this.showPauseMenu(game);
+        }, { icon: 'T', variant: 'metal' }).element,
         new Button('Manual Save', () => game.manualSave(), { icon: 'S', variant: 'metal' }).element,
         new Button('Return to Station', () => game.returnToStation(), { icon: '<' }).element,
         new Button('Reset Save', () => game.resetSave(), { icon: '!', variant: 'danger' }).element,

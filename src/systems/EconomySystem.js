@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=93';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 export class EconomySystem {
   constructor(game) {

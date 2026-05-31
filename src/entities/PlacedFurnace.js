@@ -1,3 +1,5 @@
+import { getShapeState } from '../systems/MachineSculptingSystem.js?v=112';
+
 const FURNACE_WIDTH = 112;
 const FURNACE_HEIGHT = 82;
 const FURNACE_TOUCH_RADIUS = 92;
@@ -233,6 +235,22 @@ export class PlacedFurnace {
         ctx.arc(x + tile * 0.5, y + tile * 0.5, tile * 0.28, 0, Math.PI * 2);
         ctx.fill();
       }
+      if (cell.detailId === 'bolts' || cell.shapeState === 'boltedPlate') {
+        ctx.fillStyle = 'rgba(255, 242, 207, 0.34)';
+        [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].forEach(([px, py]) => {
+          ctx.beginPath();
+          ctx.arc(x + tile * px, y + tile * py, tile * 0.045, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      if (cell.detailId === 'warningStripes') {
+        ctx.strokeStyle = 'rgba(255, 211, 107, 0.65)';
+        ctx.lineWidth = Math.max(1, tile * 0.08);
+        ctx.beginPath();
+        ctx.moveTo(x + tile * 0.18, y + tile * 0.82);
+        ctx.lineTo(x + tile * 0.82, y + tile * 0.18);
+        ctx.stroke();
+      }
     }
 
     if (progress > 0) {
@@ -257,36 +275,37 @@ export class PlacedFurnace {
   }
 
   static traceVoxelCell(ctx, x, y, tile, shape = 0) {
+    const shapeState = getShapeState(shape);
     const inset = Math.max(0.5, tile * 0.035);
     const left = x + inset;
     const top = y + inset;
     const right = x + tile - inset;
     const bottom = y + tile - inset;
     const cut = tile * 0.32;
-    if (shape === 1) {
+    if (shapeState === 'diagonalSlope') {
       ctx.moveTo(left + cut, top);
       ctx.lineTo(right, top);
       ctx.lineTo(right, bottom);
       ctx.lineTo(left, bottom);
       ctx.lineTo(left, top + cut);
-    } else if (shape === 2) {
+    } else if (shapeState === 'invertedDiagonal') {
       ctx.moveTo(left, top);
       ctx.lineTo(right - cut, top);
       ctx.lineTo(right, top + cut);
       ctx.lineTo(right, bottom);
       ctx.lineTo(left, bottom);
-    } else if (shape === 3) {
-      ctx.moveTo(left, top);
-      ctx.lineTo(right, top);
-      ctx.lineTo(right, bottom - cut);
-      ctx.lineTo(right - cut, bottom);
-      ctx.lineTo(left, bottom);
-    } else if (shape === 4) {
-      ctx.moveTo(left, top);
-      ctx.lineTo(right, top);
-      ctx.lineTo(right, bottom);
-      ctx.lineTo(left + cut, bottom);
-      ctx.lineTo(left, bottom - cut);
+    } else if (shapeState === 'halfBlock') {
+      ctx.roundRect(left, top + tile * 0.34, tile - inset * 2, tile * 0.62, Math.max(2, tile * 0.08));
+      return;
+    } else if (shapeState === 'quarterBlock') {
+      ctx.roundRect(left, top, tile * 0.64, tile * 0.64, Math.max(2, tile * 0.08));
+      return;
+    } else if (shapeState === 'roundedCorner') {
+      ctx.roundRect(left, top, tile - inset * 2, tile - inset * 2, Math.max(4, tile * 0.24));
+      return;
+    } else if (shapeState === 'pipeCorner') {
+      ctx.arc(x + tile * 0.5, y + tile * 0.5, tile * 0.42, 0, Math.PI * 2);
+      return;
     } else {
       ctx.roundRect(left, top, tile - inset * 2, tile - inset * 2, Math.max(2, tile * 0.1));
       return;

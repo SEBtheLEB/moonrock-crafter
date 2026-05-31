@@ -1,6 +1,6 @@
-import { asteroids as asteroidData } from '../data/asteroids.js?v=93';
-import { VoxelAsteroidBody } from './VoxelAsteroidBody.js?v=93';
-import { gameBalance } from '../data/gameBalance.js?v=93';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=112';
+import { VoxelAsteroidBody } from './VoxelAsteroidBody.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 
@@ -97,8 +97,8 @@ export class Asteroid {
     return this.body.containsWorldPoint(worldX, worldY, this, padding);
   }
 
-  mineCircle(worldX, worldY, radius, power, delta) {
-    const broken = this.body.mineCircleWorld(worldX, worldY, radius, power, delta, this);
+  mineCircle(worldX, worldY, radius, power, delta, options = {}) {
+    const broken = this.body.mineCircleWorld(worldX, worldY, radius, power, delta, this, options);
     if (broken.length) {
       this.chippedCells += broken.length;
       this.health = this.body.remainingSolidCount;

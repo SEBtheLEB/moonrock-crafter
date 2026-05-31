@@ -117,6 +117,17 @@ export const materials = [
     zoneAvailability: ['crashPlanet', 'originBlue'],
   },
   {
+    id: 'alienGoop',
+    name: 'Alien Goop',
+    rarity: 'common',
+    icon: 'G',
+    color: '#7ee36d',
+    baseValue: 8,
+    weight: 0.35,
+    description: 'Springy alien slime left behind by goo creatures. Sticky enough to be useful, unfortunately.',
+    zoneAvailability: ['islands'],
+  },
+  {
     id: 'emberstone',
     name: 'Emberstone',
     rarity: 'uncommon',

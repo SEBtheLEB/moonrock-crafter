@@ -253,7 +253,7 @@ export function isCoreEmbedded(grid = [], size = 16, coreId = 'fireCore') {
     if (!entry.layers.includes(coreId)) return false;
     const sideNeighbors = ['n', 'e', 's', 'w'].filter((direction) => entry.neighbors[direction]).length;
     const onOuterFrame = entry.x === 0 || entry.y === 0 || entry.x === size - 1 || entry.y === size - 1;
-    return sideNeighbors >= 3 && !onOuterFrame;
+    return sideNeighbors >= 2 && !onOuterFrame;
   });
 }
 
@@ -319,7 +319,7 @@ export function validateRecipe(grid = [], recipe = {}, {
 
   const chambers = detectInternalChambers(grid, size);
   if (rules.requiresInternalChamber) {
-    const hasChamber = chambers.some((chamber) => chamber.cells.length >= (rules.minChamberCells || 2) && chamber.surroundedRatio >= 0.52);
+    const hasChamber = chambers.some((chamber) => chamber.cells.length >= (rules.minChamberCells || 2) && chamber.surroundedRatio >= (rules.minChamberSurroundedRatio || 0.24));
     if (!hasChamber) ok = false;
     messages.push({ ok: hasChamber, text: `${recipe.name || 'Machine'} needs an internal chamber.` });
   }

@@ -79,21 +79,21 @@ html[data-input-mode="keyboard-mouse"] #game-shell * {
 }
 
 .game-custom-cursor {
-  --cursor-x: -100px;
-  --cursor-y: -100px;
   --cursor-speed: 0;
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 99999;
+  z-index: 2147483647;
   width: 14px;
   height: 14px;
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(calc(var(--cursor-x) - 7px), calc(var(--cursor-y) - 7px), 0) scale(calc(1 + var(--cursor-speed) * 0.12));
-  transition: opacity 120ms ease, filter 120ms ease;
+  transform: translate3d(-100px, -100px, 0) scale(1);
+  transition: opacity 35ms linear, filter 80ms ease;
   filter: drop-shadow(0 0 8px rgba(90, 218, 255, 0.78));
   mix-blend-mode: screen;
+  contain: layout style paint;
+  will-change: transform, opacity;
 }
 
 .game-custom-cursor::before,
@@ -140,6 +140,10 @@ html[data-input-mode="keyboard-mouse"] #game-shell * {
 
 html[data-input-mode="touch"] .game-custom-cursor {
   display: none;
+}
+
+:fullscreen .game-custom-cursor {
+  z-index: 2147483647;
 }
 
 .game-shell {

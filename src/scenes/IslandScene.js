@@ -1,15 +1,17 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=93';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=93';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=93';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=93';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=93';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=93';
-import { gameBalance } from '../data/gameBalance.js?v=93';
+import { Hotbar } from '../ui/Hotbar.js?v=112';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=112';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=112';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=112';
+import { MineralPickup } from '../entities/MineralPickup.js?v=112';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=112';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=112';
+import { gameBalance } from '../data/gameBalance.js?v=112';
 
 const TERRAIN_LASER_RANGE = 390;
 const TERRAIN_MINING_BRUSH_RADIUS = 18;
+const GOD_MODE_MINING_MULTIPLIER = 18;
 
 export class IslandScene {
   constructor(game, payload = {}) {
@@ -35,6 +37,8 @@ export class IslandScene {
     this.hudCache = {};
     this.floatingText = [];
     this.terrainParticles = [];
+    this.terrainPickups = [];
+    this.terrainPickupPool = [];
     this.miningBeam = null;
     this.terrainMiningHitFeedback = null;
     this.laserSoundActive = false;
@@ -43,6 +47,7 @@ export class IslandScene {
     this.flagPlacementPreview = null;
     this.toolCooldown = 0;
     this.mineBlockedCooldown = 0;
+    this.cargoFullToastReady = true;
     this.exiting = false;
   }
 
@@ -166,6 +171,7 @@ export class IslandScene {
     this.handleAnimalContact();
     this.updateFloatingText(delta);
     this.updateTerrainParticles(delta);
+    this.updateTerrainPickups(delta);
     this.promptTarget = this.findPromptTarget();
     if (actions.justPressed.interact || actions.justPressed.confirm) this.useInteract();
     const miningInput = actions.mine;
@@ -306,7 +312,10 @@ export class IslandScene {
     this.startTerrainLaser();
     const beforeRatio = this.terrain.getDamageRatio(hit.col, hit.row, hit.material);
     const power = this.getTerrainMiningPower();
-    const broken = this.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta);
+    const broken = this.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta, {
+      targetCol: hit.col,
+      targetRow: hit.row,
+    });
     const brokeTarget = broken.some((cell) => cell.col === hit.col && cell.row === hit.row);
     const afterRatio = brokeTarget ? 1 : this.terrain.getDamageRatio(hit.col, hit.row, hit.material);
     this.terrainMiningHitFeedback = {
@@ -325,13 +334,19 @@ export class IslandScene {
   getTerrainMiningPower() {
     const base = gameBalance.mining.terrainMiningPowerBase ?? 0.42;
     const scale = gameBalance.mining.terrainMiningPowerScale ?? 0.78;
-    return base + Math.max(0, this.miningStats.miningPower || 0) * scale;
+    const power = base + Math.max(0, this.miningStats.miningPower || 0) * scale;
+    return this.isGodMode() ? power * GOD_MODE_MINING_MULTIPLIER : power;
   }
 
   canMineTerrainMaterial(material) {
+    if (this.isGodMode()) return true;
     const data = TERRAIN_MATERIALS[material];
     const requiredPower = data?.miningPowerRequired ?? 0;
     return (this.miningStats.miningPower ?? 0) + 0.001 >= requiredPower;
+  }
+
+  isGodMode() {
+    return Boolean(this.game.state.debug?.godMode);
   }
 
   showTerrainMineBlocked(hit) {
@@ -426,38 +441,122 @@ export class IslandScene {
 
   collectTerrainCells(cells) {
     const grouped = new Map();
-    const positions = new Map();
     for (const cell of cells) {
       if (!cell.data?.materialId || !cell.data.yield) continue;
-      const existing = grouped.get(cell.data.materialId) || 0;
-      grouped.set(cell.data.materialId, existing + cell.data.yield);
-      positions.set(cell.data.materialId, cell);
+      const entry = grouped.get(cell.data.materialId) || {
+        amount: 0,
+        x: cell.x,
+        y: cell.y,
+        chip: cell.chip,
+      };
+      entry.amount += cell.data.yield;
+      entry.x = (entry.x + cell.x) * 0.5;
+      entry.y = (entry.y + cell.y) * 0.5;
+      entry.chip ||= cell.chip;
+      grouped.set(cell.data.materialId, entry);
     }
 
-    for (const [materialId, amount] of grouped.entries()) {
-      const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
-        capacity: this.miningStats.cargoCapacity,
-      });
+    let index = 0;
+    for (const [materialId, entry] of grouped.entries()) {
       const material = this.game.systems.materials.getMaterial(materialId);
-      const position = positions.get(materialId);
-      if (!result.ok) {
-        this.game.ui.showToast('Cargo Full', 'danger');
-        this.game.audio.playCargoFull();
-        this.addFloatingText('Cargo Full', '#ff756f', position?.x, position?.y);
-        continue;
-      }
-      this.game.systems.objectives.record('materialCollected', { materialId, amount });
-      this.addFloatingText(
-        `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`,
-        material?.color || '#fff2cf',
-        position?.x,
-        position?.y,
-      );
-      this.game.audio.playIslandPickup?.();
+      const spawn = this.terrain.getClosestTerrainSurfacePoint?.(entry.x, entry.y, 14) || entry;
+      this.terrainPickups.push(this.acquireTerrainPickup({
+        materialId,
+        amount: entry.amount,
+        x: spawn.x + Math.cos(index * 2.3 + this.time) * 4,
+        y: spawn.y + Math.sin(index * 1.7 + this.time) * 4,
+        seed: Math.random(),
+        material,
+        chip: entry.chip,
+      }));
+      index += 1;
     }
 
     const weight = this.game.systems.inventory.getRunCargoWeight();
     this.miningStats.cargo = Math.ceil(weight);
+  }
+
+  acquireTerrainPickup(options) {
+    const pickup = this.terrainPickupPool.pop() || new MineralPickup();
+    return pickup.reset(options);
+  }
+
+  releaseTerrainPickup(pickup) {
+    pickup.active = false;
+    if (this.terrainPickupPool.length < (gameBalance.mining.maxPickupPool || 80)) this.terrainPickupPool.push(pickup);
+  }
+
+  updateTerrainPickups(delta) {
+    let writeIndex = 0;
+    for (let index = 0; index < this.terrainPickups.length; index += 1) {
+      const pickup = this.terrainPickups[index];
+      this.updateTerrainPickupPhysics(pickup, delta);
+      const dx = this.player.centerX - pickup.x;
+      const dy = this.player.centerY - pickup.y;
+      if (dx * dx + dy * dy > (pickup.radius + 28) ** 2) {
+        if (pickup.age < 45) {
+          this.terrainPickups[writeIndex] = pickup;
+          writeIndex += 1;
+        } else {
+          this.releaseTerrainPickup(pickup);
+        }
+        continue;
+      }
+      if (!this.collectTerrainPickup(pickup)) {
+        this.terrainPickups[writeIndex] = pickup;
+        writeIndex += 1;
+        continue;
+      }
+      this.releaseTerrainPickup(pickup);
+    }
+    this.terrainPickups.length = writeIndex;
+  }
+
+  updateTerrainPickupPhysics(pickup, delta) {
+    pickup.update(delta);
+    if (!this.terrain?.getClosestTerrainSurfacePoint) return;
+    const surface = this.terrain.getClosestTerrainSurfacePoint(pickup.x, pickup.y, pickup.radius + 4);
+    if (!surface) return;
+    const inside = this.terrain.containsCollisionPoint?.(pickup.x, pickup.y);
+    const dx = pickup.x - surface.surfaceX;
+    const dy = pickup.y - surface.surfaceY;
+    const normalDistance = dx * surface.normal.x + dy * surface.normal.y;
+    if (!inside && normalDistance > pickup.radius + 6) return;
+    pickup.x = surface.x;
+    pickup.y = surface.y;
+    const tangentSpeed = pickup.vx * surface.tangent.x + pickup.vy * surface.tangent.y;
+    pickup.vx = surface.tangent.x * tangentSpeed * 0.72;
+    pickup.vy = surface.tangent.y * tangentSpeed * 0.72;
+  }
+
+  collectTerrainPickup(pickup) {
+    const result = this.game.systems.inventory.addToRunCargo(pickup.materialId, pickup.amount, {
+      capacity: this.miningStats.cargoCapacity,
+    });
+    if (!result.ok) {
+      if (this.cargoFullToastReady) {
+        this.cargoFullToastReady = false;
+        this.game.ui.showToast('Cargo Full', 'danger');
+        this.game.audio.playCargoFull();
+        this.addFloatingText('Cargo Full', '#ff756f', pickup.x, pickup.y);
+        window.setTimeout(() => {
+          this.cargoFullToastReady = true;
+        }, 1200);
+      }
+      return false;
+    }
+    const material = this.game.systems.materials.getMaterial(pickup.materialId);
+    this.game.systems.objectives.record('materialCollected', { materialId: pickup.materialId, amount: pickup.amount });
+    this.addFloatingText(
+      `+${pickup.amount} ${this.game.systems.materials.getDisplayName(pickup.materialId)}`,
+      material?.color || '#fff2cf',
+      pickup.x,
+      pickup.y,
+    );
+    this.game.audio.playIslandPickup?.();
+    const weight = this.game.systems.inventory.getRunCargoWeight();
+    this.miningStats.cargo = Math.ceil(weight);
+    return true;
   }
 
   updateDroneCombat(delta) {
@@ -679,6 +778,7 @@ export class IslandScene {
     this.applyWorldScale(ctx, width, height);
     ctx.translate(0, -this.camera.y);
     this.drawTerrain(ctx, width);
+    this.drawTerrainPickups(ctx);
     this.drawPlacedFlags(ctx);
     this.drawShip(ctx);
     this.nodes.forEach((node) => node.draw(ctx, this.camera, this.time));
@@ -731,6 +831,14 @@ export class IslandScene {
 
   drawTerrain(ctx, width) {
     this.terrain?.draw(ctx, this.camera, this.getVisibleWorldWidth(), this.getVisibleWorldHeight());
+  }
+
+  drawTerrainPickups(ctx) {
+    if (!this.terrainPickups.length) return;
+    ctx.save();
+    ctx.translate(-this.camera.x, 0);
+    this.terrainPickups.forEach((pickup) => pickup.drawLocal(ctx));
+    ctx.restore();
   }
 
   drawPlacedFlags(ctx) {
@@ -797,6 +905,14 @@ export class IslandScene {
     if (!this.miningBeam) return;
     const { start, end, hit } = this.miningBeam;
     const hitColor = hit ? (TERRAIN_MATERIALS[hit.material]?.edge || '#ffcf5a') : '#65d6ff';
+    if (hit) {
+      ctx.save();
+      ctx.translate(-this.camera.x, 0);
+      this.terrain.drawCellTargetGlow(ctx, hit, this.time, {
+        brushRadius: TERRAIN_MINING_BRUSH_RADIUS,
+      });
+      ctx.restore();
+    }
     if (this.terrainMiningHitFeedback) {
       ctx.save();
       ctx.translate(-this.camera.x, 0);

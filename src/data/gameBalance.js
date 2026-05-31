@@ -17,7 +17,7 @@ export const gameBalance = {
     acceleration: 0.9,
     handling: 1,
     sizeScale: 1,
-    miningPower: 0.7,
+    miningPower: 1.08,
     range: 1,
     miningRange: 214,
     collectionMagnet: 0,
@@ -50,14 +50,16 @@ export const gameBalance = {
     miningFuelDrain: 0.18,
     depositCreditMultiplier: 0.55,
     mouseAimSnapRadius: 18,
-    ringSize: 10000,
-    miniMapMaxDistance: 50000,
+    ringSize: 20000,
+    miniMapMaxDistance: 100000,
+    planetAtmosphereDepth: 5000,
+    asteroidPlanetSurfaceClearance: 3000,
     fragmentPartialDropScale: 0.2,
     asteroidMiningBrushRadius: 42,
-    asteroidMiningPowerBase: 0.85,
-    asteroidMiningPowerScale: 0.78,
-    terrainMiningPowerBase: 0.42,
-    terrainMiningPowerScale: 0.78,
+    asteroidMiningPowerBase: 1.15,
+    asteroidMiningPowerScale: 1.05,
+    terrainMiningPowerBase: 0.9,
+    terrainMiningPowerScale: 1.05,
     asteroidCellHardnessBase: 3.15,
     asteroidCellHardnessRequirementScale: 1.25,
     asteroidOreHardnessBonus: 0.72,
@@ -68,11 +70,11 @@ export const gameBalance = {
     asteroidFragmentation: {
       childSpreadSpeed: 92,
       distanceTierWeights: [
-        { minDistance: 0, maxDistance: 10000, weights: { 0: 50, 1: 40, 2: 10, 3: 0 } },
-        { minDistance: 10000, maxDistance: 20000, weights: { 0: 34, 1: 42, 2: 21, 3: 3 } },
-        { minDistance: 20000, maxDistance: 30000, weights: { 0: 24, 1: 38, 2: 30, 3: 8 } },
-        { minDistance: 30000, maxDistance: 40000, weights: { 0: 16, 1: 34, 2: 34, 3: 16 } },
-        { minDistance: 40000, maxDistance: Infinity, weights: { 0: 10, 1: 28, 2: 38, 3: 24 } },
+        { minDistance: 0, maxDistance: 20000, weights: { 0: 50, 1: 40, 2: 10, 3: 0 } },
+        { minDistance: 20000, maxDistance: 40000, weights: { 0: 34, 1: 42, 2: 21, 3: 3 } },
+        { minDistance: 40000, maxDistance: 60000, weights: { 0: 24, 1: 38, 2: 30, 3: 8 } },
+        { minDistance: 60000, maxDistance: 80000, weights: { 0: 16, 1: 34, 2: 34, 3: 16 } },
+        { minDistance: 80000, maxDistance: Infinity, weights: { 0: 10, 1: 28, 2: 38, 3: 24 } },
       ],
       tiers: {
         0: { childMin: 0, childMax: 0 },
@@ -81,13 +83,13 @@ export const gameBalance = {
         3: { childMin: 2, childMax: 3 },
       },
     },
-    maxStarterReachHint: 10000,
+    maxStarterReachHint: 20000,
     asteroidDistanceBands: [
       {
         id: 'originBlue',
         label: 'Origin Blue Ring',
         minDistance: 0,
-        maxDistance: 10000,
+        maxDistance: 20000,
         weights: {
           stone: 66,
           copperVein: 28,
@@ -97,8 +99,8 @@ export const gameBalance = {
       {
         id: 'cobaltRim',
         label: 'Cobalt Crystal Rim',
-        minDistance: 10000,
-        maxDistance: 20000,
+        minDistance: 20000,
+        maxDistance: 40000,
         weights: {
           stone: 24,
           copperVein: 28,
@@ -110,8 +112,8 @@ export const gameBalance = {
       {
         id: 'emberShelf',
         label: 'Ember Shelf',
-        minDistance: 20000,
-        maxDistance: 30000,
+        minDistance: 40000,
+        maxDistance: 60000,
         weights: {
           stone: 4,
           copperVein: 10,
@@ -126,8 +128,8 @@ export const gameBalance = {
       {
         id: 'violetReef',
         label: 'Violet Reef',
-        minDistance: 30000,
-        maxDistance: 40000,
+        minDistance: 60000,
+        maxDistance: 80000,
         weights: {
           copperVein: 3,
           crystal: 10,
@@ -141,7 +143,7 @@ export const gameBalance = {
       {
         id: 'starlessDeep',
         label: 'Starless Deep',
-        minDistance: 40000,
+        minDistance: 80000,
         maxDistance: Infinity,
         weights: {
           crystal: 4,
@@ -210,7 +212,7 @@ export const gameBalance = {
       targetFirstRunMinutes: [1, 2],
       targetFirstUpgradeMinutes: [5, 7],
       starterZone: 'originBlue',
-      previewZoneDistance: 10000,
+      previewZoneDistance: 20000,
     },
     objectives: [
       {
@@ -243,9 +245,9 @@ export const gameBalance = {
       },
       {
         id: 'reachCrystalRim',
-        label: 'Reach 10000m from station',
+        label: 'Reach 20000m from station',
         description: 'Push past the inner blue ring toward crystal-heavy space.',
-        condition: { type: 'distanceReached', amount: 10000 },
+        condition: { type: 'distanceReached', amount: 20000 },
         reward: { credits: 18 },
       },
       {
@@ -257,9 +259,9 @@ export const gameBalance = {
       },
       {
         id: 'reachEmberPreview',
-        label: 'Reach 20000m from station',
+        label: 'Reach 40000m from station',
         description: 'Reach the Ember Shelf and get home.',
-        condition: { type: 'distanceReached', amount: 20000 },
+        condition: { type: 'distanceReached', amount: 40000 },
         reward: { credits: 18 },
       },
       {
@@ -278,9 +280,9 @@ export const gameBalance = {
       },
       {
         id: 'reachFarPlanetSignal',
-        label: 'Reach 50000m from station',
+        label: 'Reach 100000m from station',
         description: 'Fly toward the faraway planet signal beyond the Starless Deep.',
-        condition: { type: 'distanceReached', amount: 50000 },
+        condition: { type: 'distanceReached', amount: 100000 },
         reward: { credits: 80, researchPoints: 2 },
       },
     ],
@@ -302,7 +304,7 @@ export const gameBalance = {
       id: 'originBlue',
       name: 'Origin Blue Ring',
       minDistance: 0,
-      maxDistance: 10000,
+      maxDistance: 20000,
       difficulty: 1,
       background: { inner: '#163458', middle: '#0a1d38', outer: '#030813' },
       particleColor: '#6f9fca',
@@ -311,8 +313,8 @@ export const gameBalance = {
     {
       id: 'cobaltRim',
       name: 'Cobalt Rim',
-      minDistance: 10000,
-      maxDistance: 20000,
+      minDistance: 20000,
+      maxDistance: 40000,
       researchId: 'emberDrift',
       difficulty: 2,
       background: { inner: '#102d57', middle: '#082145', outer: '#050d22' },
@@ -322,8 +324,8 @@ export const gameBalance = {
     {
       id: 'emberShelf',
       name: 'Ember Shelf',
-      minDistance: 20000,
-      maxDistance: 30000,
+      minDistance: 40000,
+      maxDistance: 60000,
       researchId: 'frostRing',
       difficulty: 3,
       background: { inner: '#3d1b16', middle: '#5b2d1a', outer: '#16080a' },
@@ -333,8 +335,8 @@ export const gameBalance = {
     {
       id: 'violetReef',
       name: 'Violet Reef',
-      minDistance: 30000,
-      maxDistance: 40000,
+      minDistance: 60000,
+      maxDistance: 80000,
       researchId: 'voidReef',
       difficulty: 4,
       background: { inner: '#321a5d', middle: '#190b3a', outer: '#060416' },
@@ -344,7 +346,7 @@ export const gameBalance = {
     {
       id: 'starlessDeep',
       name: 'Starless Deep',
-      minDistance: 40000,
+      minDistance: 80000,
       maxDistance: Infinity,
       researchId: 'starGraveyard',
       difficulty: 5,

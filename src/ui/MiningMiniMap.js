@@ -1,5 +1,5 @@
 export class MiningMiniMap {
-  constructor({ zones, ringSize = 10000, maxDistance = 50000 } = {}) {
+  constructor({ zones, ringSize = 20000, maxDistance = 100000 } = {}) {
     this.zones = zones || [];
     this.ringSize = ringSize;
     this.maxDistance = maxDistance;
@@ -85,7 +85,7 @@ export class MiningMiniMap {
         ctx.fillStyle = 'rgba(236, 231, 216, 0.54)';
         ctx.font = '700 9px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${ring * 10}k`, centerX, centerY - radius + 12);
+        ctx.fillText(`${Math.round((ring * this.ringSize) / 1000)}k`, centerX, centerY - radius + 12);
       }
     }
 
