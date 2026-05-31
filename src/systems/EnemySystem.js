@@ -1,7 +1,7 @@
-import { enemies, enemySpawnProfiles } from '../data/enemies.js?v=112';
-import { AlienGoo } from '../entities/enemies/AlienGoo.js?v=112';
-import { GooSpitter } from '../entities/enemies/GooSpitter.js?v=112';
-import { BurrowWorm } from '../entities/enemies/BurrowWorm.js?v=112';
+import { enemies, enemySpawnProfiles } from '../data/enemies.js?v=115';
+import { AlienGoo } from '../entities/enemies/AlienGoo.js?v=115';
+import { GooSpitter } from '../entities/enemies/GooSpitter.js?v=115';
+import { BurrowWorm } from '../entities/enemies/BurrowWorm.js?v=115';
 
 const TAU = Math.PI * 2;
 

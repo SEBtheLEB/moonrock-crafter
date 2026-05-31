@@ -1,6 +1,6 @@
-import { islands } from '../data/islands.js?v=112';
-import { TerrainGrid } from './TerrainGrid.js?v=112';
-import { gameBalance } from '../data/gameBalance.js?v=112';
+import { islands } from '../data/islands.js?v=115';
+import { TerrainGrid } from './TerrainGrid.js?v=115';
+import { gameBalance } from '../data/gameBalance.js?v=115';
 
 const ISLAND_LAYOUT_VERSION = 6;
 

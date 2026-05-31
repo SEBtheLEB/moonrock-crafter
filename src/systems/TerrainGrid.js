@@ -1,4 +1,4 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=112';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=115';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -12,17 +12,17 @@ export const TERRAIN_MATERIALS = {
   8: { id: 'redCrystal', name: 'Red Crystal', color: '#a9213c', edge: '#ff6f7d', hardness: 9.4, yield: 1, materialId: 'redCrystal', miningPowerRequired: 1.15 },
 };
 
-const TERRAIN_SAVE_VERSION = 13;
+const TERRAIN_SAVE_VERSION = 14;
 const DEFAULT_TERRAIN_CELL_SIZE = 16;
 
 const VISUAL_CONTOUR_OPTIONS = {
-  smoothingIterations: 0,
-  smoothingAmount: 0.06,
+  smoothingIterations: 1,
+  smoothingAmount: 0.11,
   minSegmentLength: 2,
-  sharpAngleDegrees: 36,
-  sharpAngleAmount: 0.06,
-  gridSnapAmount: 0.82,
-  cornerRoundAmount: 0.06,
+  sharpAngleDegrees: 34,
+  sharpAngleAmount: 0.1,
+  gridSnapAmount: 0.66,
+  cornerRoundAmount: 0.09,
 };
 
 const COLLISION_CONTOUR_OPTIONS = {
@@ -473,6 +473,8 @@ export class TerrainGrid {
     this.placeOreVeins(random, island, flattenedSurfaceRows);
     this.placeFireCoreDeposit(random, island);
     this.placeCrystalVault(random, island);
+    this.shapeGentlePlanetSurface(island);
+    this.flattenSurfaceTeeth(2);
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -487,37 +489,35 @@ export class TerrainGrid {
     const left = solidColumns[0];
     const right = solidColumns[solidColumns.length - 1];
     const centerCol = clamp(Math.round(this.planetCenterX / this.cellSize), left, right);
-    const centerWindow = [];
-    const windowRadius = Math.max(4, Math.round((right - left) * 0.08));
-    for (let col = centerCol - windowRadius; col <= centerCol + windowRadius; col += 1) {
-      const row = profiles.surfaceRows[col];
-      if (row !== null) centerWindow.push(row);
-    }
-    if (!centerWindow.length) return;
-    centerWindow.sort((a, b) => a - b);
-    const topRow = Math.max(3, centerWindow[Math.floor(centerWindow.length * 0.35)] - 1);
+    const centerRow = this.planetCenterY / this.cellSize;
+    const radiusYRows = Math.max(10, this.planetRadius / this.cellSize);
+    const topRow = Math.max(3, centerRow - radiusYRows);
     const halfWidth = Math.max(1, (right - left) * 0.5);
     const crashPlanet = island?.type === 'crashPlanet';
-    const maxShoulderDrop = crashPlanet ? 15 : 20;
-    const maxSlope = crashPlanet ? 0.16 : 0.2;
+    const maxSlope = crashPlanet ? 0.72 : 0.86;
     const targetRows = new Array(this.cols).fill(null);
 
     for (let col = left; col <= right; col += 1) {
       const current = profiles.surfaceRows[col];
       if (current === null) continue;
       const normalized = Math.abs((col - centerCol) / halfWidth);
-      const shoulder = smoothStep((normalized - 0.28) / 0.72);
-      const broadWave = Math.sin(col * 0.085 + this.seed * 0.0009) * (crashPlanet ? 0.75 : 1.2);
-      const fineWave = signedNoise(col * 12.71 + this.seed * 0.002) * (crashPlanet ? 0.75 : 1.05);
-      const chipStep = Math.round(signedNoise(Math.floor(col / 3) * 19.31 + this.seed * 0.004) * (crashPlanet ? 1.4 : 1.9));
-      const existingBlend = clamp01((normalized - 0.72) / 0.28) * 0.16;
-      const gentleRow = topRow + shoulder * maxShoulderDrop + broadWave + fineWave + chipStep;
-      targetRows[col] = gentleRow * (1 - existingBlend) + current * existingBlend;
+      if (normalized > 0.99) {
+        targetRows[col] = current;
+        continue;
+      }
+      const circle = Math.sqrt(Math.max(0, 1 - normalized * normalized));
+      const roundedRow = centerRow - radiusYRows * circle;
+      const broadWave = Math.sin(col * 0.045 + this.seed * 0.0009) * (crashPlanet ? 1.15 : 1.65);
+      const detailWave = Math.sin(col * 0.15 + this.seed * 0.0017) * (crashPlanet ? 0.35 : 0.55);
+      const chipStep = Math.round(signedNoise(Math.floor(col / 4) * 19.31 + this.seed * 0.004) * (crashPlanet ? 0.95 : 1.25));
+      const edgeBlend = smoothStep((normalized - 0.78) / 0.21) * 0.1;
+      const roundedTarget = roundedRow + broadWave + detailWave + chipStep;
+      targetRows[col] = roundedTarget * (1 - edgeBlend) + current * edgeBlend;
     }
 
     this.limitSurfaceSlope(targetRows, left, right, maxSlope);
     this.applySurfaceRows(targetRows, profiles.bottomRows, {
-      minThickness: crashPlanet ? 26 : 20,
+      minThickness: crashPlanet ? 32 : 26,
     });
   }
 
@@ -898,6 +898,7 @@ export class TerrainGrid {
       for (let col = startCol; col <= endCol; col += 1) {
         const x = col * this.cellSize + this.cellSize * 0.5;
         const y = row * this.cellSize + this.cellSize * 0.5;
+        if (!this.isSolidCell(col, row)) continue;
         const centerDistance = Math.hypot(x - this.planetCenterX, y - this.planetCenterY);
         if (centerDistance > this.planetRadius * 1.04) continue;
         const t = clamp(((x - startX) * dx + (y - startY) * dy) / lengthSq, 0, 1);
@@ -1663,26 +1664,31 @@ export class TerrainGrid {
   getCellShapePoints(col, row, { scale = 1, offsetX = 0, offsetY = 0 } = {}) {
     const size = this.cellSize;
     const half = size * 0.5 * scale;
-    const bevel = size * 0.18 * scale;
+    const bevel = size * 0.14 * scale;
+    const cornerCut = size * 0.38 * scale;
     const centerX = col * size + size * 0.5 + offsetX;
     const centerY = row * size + size * 0.5 + offsetY;
     const exposedUp = !this.isSolidCell(col, row - 1);
     const exposedRight = !this.isSolidCell(col + 1, row);
     const exposedDown = !this.isSolidCell(col, row + 1);
     const exposedLeft = !this.isSolidCell(col - 1, row);
+    const cutTl = exposedUp && exposedLeft ? cornerCut : exposedUp || exposedLeft ? bevel : 0;
+    const cutTr = exposedUp && exposedRight ? cornerCut : exposedUp || exposedRight ? bevel : 0;
+    const cutBr = exposedDown && exposedRight ? cornerCut : exposedDown || exposedRight ? bevel : 0;
+    const cutBl = exposedDown && exposedLeft ? cornerCut : exposedDown || exposedLeft ? bevel : 0;
     const top = centerY - half;
     const right = centerX + half;
     const bottom = centerY + half;
     const left = centerX - half;
     return [
-      { x: left + (exposedUp || exposedLeft ? bevel : 0), y: top },
-      { x: right - (exposedUp || exposedRight ? bevel : 0), y: top },
-      { x: right, y: top + (exposedRight || exposedUp ? bevel : 0) },
-      { x: right, y: bottom - (exposedRight || exposedDown ? bevel : 0) },
-      { x: right - (exposedDown || exposedRight ? bevel : 0), y: bottom },
-      { x: left + (exposedDown || exposedLeft ? bevel : 0), y: bottom },
-      { x: left, y: bottom - (exposedLeft || exposedDown ? bevel : 0) },
-      { x: left, y: top + (exposedLeft || exposedUp ? bevel : 0) },
+      { x: left + cutTl, y: top },
+      { x: right - cutTr, y: top },
+      { x: right, y: top + cutTr },
+      { x: right, y: bottom - cutBr },
+      { x: right - cutBr, y: bottom },
+      { x: left + cutBl, y: bottom },
+      { x: left, y: bottom - cutBl },
+      { x: left, y: top + cutTl },
     ];
   }
 
@@ -1694,19 +1700,82 @@ export class TerrainGrid {
     ctx.closePath();
   }
 
+  getCellSurfaceContourSegments(col, row) {
+    const size = this.cellSize;
+    const bounds = {
+      minX: col * size - size * 0.12,
+      minY: row * size - size * 0.12,
+      maxX: (col + 1) * size + size * 0.12,
+      maxY: (row + 1) * size + size * 0.12,
+    };
+    const segments = [];
+    const addSegment = (a, b) => {
+      const midX = (a.x + b.x) * 0.5;
+      const midY = (a.y + b.y) * 0.5;
+      if (midX < bounds.minX || midX > bounds.maxX || midY < bounds.minY || midY > bounds.maxY) return;
+      segments.push({ a, b });
+    };
+
+    for (let marchingRow = row - 1; marchingRow <= row; marchingRow += 1) {
+      for (let marchingCol = col - 1; marchingCol <= col; marchingCol += 1) {
+        const index = this.getMarchingIndex(marchingCol, marchingRow, (x, y) => this.isSolidCell(x, y));
+        const edgeSegments = EDGE_SEGMENTS[index];
+        if (!edgeSegments?.length) continue;
+        const originX = marchingCol * size;
+        const originY = marchingRow * size;
+        for (const segment of edgeSegments) {
+          const start = POINTS[segment[0]];
+          const end = POINTS[segment[1]];
+          addSegment(
+            { x: originX + start[0] * size, y: originY + start[1] * size },
+            { x: originX + end[0] * size, y: originY + end[1] * size },
+          );
+        }
+      }
+    }
+    return segments;
+  }
+
+  drawCellSurfaceContourSegments(ctx, col, row, time, color) {
+    const segments = this.getCellSurfaceContourSegments(col, row);
+    if (!segments.length) return false;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.6, this.cellSize * 0.12);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([this.cellSize * 0.32, this.cellSize * 0.18]);
+    ctx.lineDashOffset = -time * 22;
+    ctx.beginPath();
+    for (const segment of segments) {
+      ctx.moveTo(segment.a.x, segment.a.y);
+      ctx.lineTo(segment.b.x, segment.b.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+    return true;
+  }
+
   getCellPickupChip(col, row, materialId) {
     const data = TERRAIN_MATERIALS[materialId] || TERRAIN_MATERIALS[1];
     const centerX = col * this.cellSize + this.cellSize * 0.5;
     const centerY = row * this.cellSize + this.cellSize * 0.5;
+    const normalizePoint = (point) => ({
+      x: (point.x - centerX) / Math.max(1, this.cellSize * 0.5),
+      y: (point.y - centerY) / Math.max(1, this.cellSize * 0.5),
+    });
     return {
       terrainMaterial: materialId,
       color: data.color || '#6b625a',
       edge: data.edge || '#91867a',
+      darkEdge: 'rgba(5, 11, 19, 0.74)',
       size: this.cellSize,
+      darkLineWidth: Math.max(3.2, this.cellSize * 0.24),
       lineWidth: Math.max(1.4, this.cellSize * 0.11),
-      points: this.getCellShapePoints(col, row).map((point) => ({
-        x: (point.x - centerX) / Math.max(1, this.cellSize * 0.5),
-        y: (point.y - centerY) / Math.max(1, this.cellSize * 0.5),
+      points: this.getCellShapePoints(col, row).map(normalizePoint),
+      surfaceSegments: this.getCellSurfaceContourSegments(col, row).map((segment) => ({
+        a: normalizePoint(segment.a),
+        b: normalizePoint(segment.b),
       })),
     };
   }
@@ -1873,25 +1942,43 @@ export class TerrainGrid {
     const color = material.edge || '#ffd36b';
     const rgb = hexToRgb(color);
     const pulse = 1 + Math.sin(time * 15) * 0.045;
+    const hasSurfaceContour = this.getCellSurfaceContourSegments(hit.col, hit.row).length > 0;
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
     ctx.shadowBlur = 14;
-    ctx.globalAlpha = 0.36;
+    ctx.globalAlpha = hasSurfaceContour ? 0.16 : 0.36;
     ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`;
     ctx.beginPath();
     this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
     ctx.fill();
 
-    ctx.globalAlpha = 0.88;
+    ctx.globalAlpha = hasSurfaceContour ? 0.2 : 0.42;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.92)`;
-    ctx.lineWidth = Math.max(1.4, this.cellSize * 0.09);
-    ctx.setLineDash([this.cellSize * 0.34, this.cellSize * 0.2]);
-    ctx.lineDashOffset = -time * 20;
+    ctx.lineWidth = Math.max(1.2, this.cellSize * 0.07);
+    ctx.setLineDash([]);
     ctx.beginPath();
     this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
     ctx.stroke();
+
+    ctx.globalAlpha = 0.96;
+    ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.98)`;
+    ctx.lineWidth = Math.max(1.7, this.cellSize * 0.12);
+    ctx.setLineDash([this.cellSize * 0.34, this.cellSize * 0.2]);
+    ctx.lineDashOffset = -time * 20;
+    ctx.beginPath();
+    const drewSurfaceContour = this.drawCellSurfaceContourSegments(
+      ctx,
+      hit.col,
+      hit.row,
+      time,
+      `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.98)`,
+    );
+    if (!drewSurfaceContour) {
+      this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
+      ctx.stroke();
+    }
 
     if (brushRadius > 0) {
       ctx.shadowBlur = 0;

@@ -58,7 +58,7 @@ export class DebugPanel {
       new Button('Spawn Rare', () => this.spawnRareAsteroid(), { icon: '*', variant: 'metal' }).element,
       new Button('Jump Home', () => this.jumpToStation(), { icon: '<', variant: 'metal' }).element,
       new Button('Unlock Upgrades', () => this.unlockAllUpgrades(), { icon: '+', variant: 'metal' }).element,
-      new Button('Clear Save', () => this.game.resetSave(), { icon: '!', variant: 'danger' }).element,
+      new Button('Reset World', () => this.game.resetSave(), { icon: '!', variant: 'danger' }).element,
     );
     this.updateToggleButtons();
   }

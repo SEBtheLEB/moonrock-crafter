@@ -1,28 +1,28 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=112';
+import { InputManager } from './InputManager.js?v=115';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=112';
+import { AudioManager } from './AudioManager.js?v=115';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=112';
+import { DebugPanel } from '../ui/DebugPanel.js?v=115';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=112';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=112';
-import { EconomySystem } from '../systems/EconomySystem.js?v=112';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=112';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=112';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=112';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=112';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=112';
-import { IslandSystem } from '../systems/IslandSystem.js?v=112';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=115';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=115';
+import { EconomySystem } from '../systems/EconomySystem.js?v=115';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=115';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=115';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=115';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=115';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=115';
+import { IslandSystem } from '../systems/IslandSystem.js?v=115';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=112';
-import { MiningScene } from '../scenes/MiningScene.js?v=112';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=112';
-import { StorageScene } from '../scenes/StorageScene.js?v=112';
-import { IslandScene } from '../scenes/IslandScene.js?v=112';
-import { gameBalance } from '../data/gameBalance.js?v=112';
+import { StationScene } from '../scenes/StationScene.js?v=115';
+import { MiningScene } from '../scenes/MiningScene.js?v=115';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=115';
+import { StorageScene } from '../scenes/StorageScene.js?v=115';
+import { IslandScene } from '../scenes/IslandScene.js?v=115';
+import { gameBalance } from '../data/gameBalance.js?v=115';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -46,6 +46,7 @@ export class Game {
     this.controllerUiFocusScope = '';
     this.controllerUiNavRepeatTimer = 0;
     this.controllerUiNavLastKey = '';
+    this.isResettingWorld = false;
 
     this.state = this.createInitialState();
     this.systems = this.createSystems();
@@ -59,7 +60,14 @@ export class Game {
     window.addEventListener('keydown', () => this.audio.unlock(), { once: true });
   }
 
-  createInitialState() {
+  createWorldSeed() {
+    const cryptoSeed = globalThis.crypto?.getRandomValues
+      ? globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
+      : Math.floor(Math.random() * 0xffffffff);
+    return (cryptoSeed ^ Date.now()) >>> 0;
+  }
+
+  createInitialState({ worldSeed = this.createWorldSeed() } = {}) {
     return {
       credits: gameBalance.startingCredits,
       day: 1,
@@ -118,7 +126,7 @@ export class Game {
         terrain: {},
         layout: null,
         layoutVersion: 0,
-        seed: null,
+        seed: worldSeed,
       },
     };
   }
@@ -329,15 +337,24 @@ export class Game {
   }
 
   resetSave() {
-    this.save.reset();
-    this.state = this.createInitialState();
-    this.systems = this.createSystems();
-    this.systems.upgrades.applyUpgrades({ refuel: true, repair: true });
-    this.applyTouchControlsSetting();
-    this.saveGame();
-    this.paused = false;
-    this.ui.hidePauseMenu();
-    this.audio.playReset();
+    this.isResettingWorld = true;
+    try {
+      this.sceneManager.current?.exit?.();
+      this.sceneManager.current = null;
+      this.sceneManager.currentName = '';
+      this.save.reset();
+      this.state = this.createInitialState({ worldSeed: this.createWorldSeed() });
+      this.systems = this.createSystems();
+      this.systems.upgrades.applyUpgrades({ refuel: true, repair: true });
+      this.applyTouchControlsSetting();
+      this.saveGame();
+      this.paused = false;
+      this.ui.hidePauseMenu();
+      this.audio.playReset();
+    } finally {
+      this.isResettingWorld = false;
+    }
+    this.ui.showToast('World reset. Planets and locations regenerated.', 'success', 2200);
     this.sceneManager.switchTo('boot');
   }
 

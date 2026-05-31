@@ -1,26 +1,26 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=112';
-import { Ship } from '../entities/Ship.js?v=112';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=112';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=112';
-import { MineralPickup } from '../entities/MineralPickup.js?v=112';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=112';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=112';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=112';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=112';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=112';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=112';
-import { EnemySystem } from '../systems/EnemySystem.js?v=112';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=112';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=112';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=112';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=112';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=112';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=112';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=112';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=112';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=112';
+import { Hotbar } from '../ui/Hotbar.js?v=115';
+import { Ship } from '../entities/Ship.js?v=115';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=115';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=115';
+import { MineralPickup } from '../entities/MineralPickup.js?v=115';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=115';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=115';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=115';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=115';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=115';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=115';
+import { EnemySystem } from '../systems/EnemySystem.js?v=115';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=115';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=115';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=115';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=115';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=115';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=115';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=115';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=115';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=115';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -33,9 +33,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=112';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=112';
-import { gameBalance } from '../data/gameBalance.js?v=112';
+} from '../systems/MachineSculptingSystem.js?v=115';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=115';
+import { gameBalance } from '../data/gameBalance.js?v=115';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -561,7 +561,7 @@ export class MiningScene {
     this.game.audio.stopLaserLoop();
     this.game.audio.stopEngineBoost();
     this.game.audio.setDangerMode(false);
-    if (this.activeIsland && this.islandTerrainDirty) {
+    if (!this.game.isResettingWorld && this.activeIsland && this.islandTerrainDirty) {
       this.game.systems.islands.saveTerrain(this.activeIsland.id, this.activeIsland.terrain);
       this.islandTerrainDirty = false;
     }
@@ -5351,40 +5351,23 @@ export class MiningScene {
     const island = target.island;
     const size = island.terrain?.cellSize || 20;
     const hit = target.hit;
-    const centerX = hit.col * size + size * 0.5;
-    const centerY = hit.row * size + size * 0.5;
     const normalX = Math.cos(target.angle);
     const normalY = Math.sin(target.angle);
-    const pulse = 1 + Math.sin(this.time * 12) * 0.06;
     ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.scale(pulse, pulse);
-    ctx.globalAlpha = 0.5;
-    ctx.fillStyle = 'rgba(118, 243, 255, 0.18)';
-    ctx.shadowColor = '#76f3ff';
-    ctx.shadowBlur = 18;
-    ctx.beginPath();
-    ctx.roundRect(-size * 0.58, -size * 0.58, size * 1.16, size * 1.16, Math.max(4, size * 0.22));
-    ctx.fill();
-    ctx.globalAlpha = 0.92;
-    ctx.strokeStyle = 'rgba(255, 211, 107, 0.96)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([size * 0.34, size * 0.2]);
-    ctx.lineDashOffset = -this.time * 18;
-    ctx.stroke();
+    island.terrain?.drawCellTargetGlow(ctx, hit, this.time, { brushRadius: 0 });
 
     ctx.setLineDash([]);
     ctx.globalAlpha = 0.78;
     ctx.strokeStyle = 'rgba(118, 243, 255, 0.9)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(normalX * size * 0.62, normalY * size * 0.62);
-    ctx.lineTo(normalX * size * 2.3, normalY * size * 2.3);
+    ctx.moveTo(hit.x + normalX * size * 0.62, hit.y + normalY * size * 0.62);
+    ctx.lineTo(hit.x + normalX * size * 2.3, hit.y + normalY * size * 2.3);
     ctx.stroke();
 
     ctx.fillStyle = 'rgba(255, 211, 107, 0.95)';
     ctx.beginPath();
-    ctx.arc(normalX * size * 2.45, normalY * size * 2.45, 3.2, 0, Math.PI * 2);
+    ctx.arc(hit.x + normalX * size * 2.45, hit.y + normalY * size * 2.45, 3.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

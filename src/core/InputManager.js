@@ -1,4 +1,4 @@
-import { HOTBAR_SLOT_COUNT, getHotbarSlot } from '../data/hotbar.js?v=112';
+import { HOTBAR_SLOT_COUNT, getHotbarSlot } from '../data/hotbar.js?v=115';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',
