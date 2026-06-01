@@ -1334,6 +1334,38 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   background: currentColor;
 }
 
+.icon-build-block::before {
+  left: 4px;
+  top: 5px;
+  width: 17px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, currentColor 18%, transparent) 0 48%, transparent 49%),
+    color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.icon-build-block::after {
+  left: 8px;
+  top: 9px;
+  width: 9px;
+  height: 7px;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 38%, transparent);
+}
+
+.icon-build-block i {
+  left: 3px;
+  top: 3px;
+  width: 19px;
+  height: 17px;
+  border-top: 2px solid color-mix(in srgb, currentColor 76%, white 12%);
+  border-left: 2px solid color-mix(in srgb, currentColor 76%, white 12%);
+  border-radius: 4px;
+  opacity: 0.72;
+}
+
 .icon-empty::before,
 .icon-empty::after {
   left: 11px;

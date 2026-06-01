@@ -16,6 +16,7 @@ import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=115';
 import { AchievementSystem } from '../systems/AchievementSystem.js?v=115';
 import { NavigationSystem } from '../systems/NavigationSystem.js?v=115';
 import { IslandSystem } from '../systems/IslandSystem.js?v=115';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=115';
 import { BootScene } from '../scenes/BootScene.js';
 import { StationScene } from '../scenes/StationScene.js?v=115';
 import { MiningScene } from '../scenes/MiningScene.js?v=115';
@@ -313,6 +314,7 @@ export class Game {
       tutorial: new TutorialSystem(this),
       objectives: new ObjectiveSystem(this),
       achievements: new AchievementSystem(this),
+      building: new BuildingSystem(this),
     };
     systems.islands = new IslandSystem(this);
     systems.navigation = new NavigationSystem(this, systems.islands);

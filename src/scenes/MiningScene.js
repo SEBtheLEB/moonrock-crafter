@@ -57,6 +57,7 @@ const TERRAIN_MINING_BRUSH_RADIUS = gameBalance.terrain?.miningBrushRadius || 22
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
+const STARTER_BASE_BUILD_VERSION = 2;
 const CRAFTING_STATION_WIDTH = 150;
 const CRAFTING_STATION_CLEARANCE = 106;
 const CRAFTING_STATION_DEPTH = 54;
@@ -308,6 +309,10 @@ export class MiningScene {
     this.islandMiningBeam = null;
     this.islandMiningHitFeedback = null;
     this.islandAimPreview = null;
+    this.buildPlacementPreview = null;
+    this.activeBuildItemId = null;
+    this.activeBuildMode = 'foregroundBlock';
+    this.buildSaveDelay = 0;
     this.sword = {
       active: null,
       effects: [],
@@ -490,17 +495,22 @@ export class MiningScene {
   ensureStarterBaseCamp(island) {
     if (!island?.terrain) return null;
     const story = this.getStoryState();
-    const shouldCreate = !story.baseLab || story.baseLab.islandId !== island.id;
+    const shouldCreate = !story.baseLab
+      || story.baseLab.islandId !== island.id
+      || story.baseLab.buildVersion !== STARTER_BASE_BUILD_VERSION;
     if (shouldCreate) {
       const surface = island.getSurfaceLocalAtAngle(-Math.PI / 2, 0);
-      const labPad = island.terrain.createPlacementPad(surface.x - 185, surface.y, {
-        viewRotation: 0,
-        width: 430,
-        clearance: 190,
-        depth: 86,
-        material: 1,
+      const baseStamp = this.game.systems.building?.stampStarterBaseOnIsland?.(island, {
+        surfaceX: surface.x,
+        surfaceY: surface.y,
       });
-      const shipPad = island.terrain.createPlacementPad(surface.x + 230, surface.y, {
+      const lab = new BaseLab(baseStamp?.lab || {
+        x: surface.x - 300,
+        y: surface.y,
+        width: 390,
+        height: 176,
+      });
+      const shipPad = island.terrain.createPlacementPad(surface.x + 370, surface.y, {
         viewRotation: 0,
         width: 250,
         clearance: 150,
@@ -508,12 +518,6 @@ export class MiningScene {
         material: 1,
       });
       island.setLandingTargetLocal({ x: shipPad.x, y: shipPad.y });
-      const lab = new BaseLab({
-        x: labPad.x,
-        y: labPad.y - 2,
-        width: 390,
-        height: 176,
-      });
       story.baseLab = {
         ...lab.serialize(),
         islandId: island.id,
@@ -2587,6 +2591,7 @@ export class MiningScene {
       if (this.islandMode !== 'boarding') this.updateIslandViewRotation(delta);
       if (this.islandMode === 'onIsland') this.updateOnFootDebugShortcuts();
       if (this.islandMode === 'onIsland') this.updateOnFootCombat(delta);
+      this.game.systems.building?.flushSave?.(this, delta);
     }
     this.updateViewScale(delta);
     this.updateCamera(delta);
@@ -2681,6 +2686,7 @@ export class MiningScene {
     });
     this.updateGravityStabilizerInput(actions);
     this.islandAimPreview = this.isTerrainToolSelected() ? this.getIslandTerrainPreview({ updateFacing: false }) : null;
+    this.game.systems.building?.update?.(this, delta);
     this.flagPlacementPreview = this.isFlagToolSelected() ? this.getFlagPlacementPreview() : null;
     this.torchPlacementPreview = this.isTorchToolSelected() ? this.getTorchPlacementPreview() : null;
     this.furnacePlacementPreview = this.isFurnaceToolSelected() ? this.getFurnacePlacementPreview() : null;
@@ -2691,7 +2697,7 @@ export class MiningScene {
     if (actions.justPressed.placeFurnace) this.placeFurnaceOnIsland(this.furnacePlacementPreview);
     if (actions.justPressed.placeCraftingStation) this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
     if (actions.justPressed.placeResearchStation) this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
-    if (actions.mine) this.updateIslandTerrainMining(delta, this.islandAimPreview);
+    if (actions.mine && this.isMinerToolSelected()) this.updateIslandTerrainMining(delta, this.islandAimPreview);
     else this.stopIslandTerrainLaser();
     if (actions.justPressed.interact || actions.justPressed.confirm) {
       const nearbyFurnace = this.getNearbyFurnace(player);
@@ -2801,6 +2807,10 @@ export class MiningScene {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'miner';
   }
 
+  isBuildToolSelected() {
+    return Boolean(this.game.systems.building?.getSelectedBuildItem?.(this));
+  }
+
   isResearchStationToolSelected() {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'researchStation';
   }
@@ -2812,7 +2822,8 @@ export class MiningScene {
       || selectedId === 'torch'
       || selectedId === 'furnace'
       || selectedId === 'craftingStation'
-      || selectedId === 'researchStation';
+      || selectedId === 'researchStation'
+      || this.isBuildToolSelected();
   }
 
   getControllerToolAimRange(context = 'island') {
@@ -2827,6 +2838,7 @@ export class MiningScene {
     if (id === 'laserGun') return context === 'island' ? 150 : 170;
     if ((id === 'weapon' || action === 'attack') && context === 'island') return SWORD_COMBAT.slashRange;
     if (id === 'weapon' || id.includes('gun') || id.includes('blaster') || id.includes('drone') || action === 'shoot' || action === 'attack') return 150;
+    if (action === 'build' || this.isBuildToolSelected()) return this.game.systems.building?.getBuildRange?.(this) || TERRAIN_MINER_RANGE;
     if (this.isTerrainToolSelected()) return TERRAIN_LASER_RANGE;
     return context === 'ship' ? 150 : 120;
   }
@@ -3462,6 +3474,12 @@ export class MiningScene {
         return;
       }
       event.stopPropagation();
+      if (this.game.systems.building?.isBuildableItem?.(itemId)) {
+        this.autoAssignItemToHotbar(itemId);
+        this.activeBuildItemId = itemId;
+        this.activeBuildMode ||= 'foregroundBlock';
+        return;
+      }
       this.game.audio.playButtonClick?.();
       this.game.ui.showToast(`${name} x${amount}`, rarity === 'common' ? 'info' : 'success', 1100);
     });
@@ -3670,6 +3688,10 @@ export class MiningScene {
       return false;
     }
     this.refreshHotbar(true);
+    if (this.game.systems.building?.isBuildableItem?.(itemId)) {
+      this.activeBuildItemId = itemId;
+      this.activeBuildMode ||= 'foregroundBlock';
+    }
     this.game.audio.playButtonClick?.();
     this.game.ui.showToast(`${slot.label} assigned to slot ${hotbarIndex + 1}`, 'success', 1000);
     return true;
@@ -5534,6 +5556,13 @@ export class MiningScene {
     if (this.isCraftingStationToolSelected()) text = 'Crafting station - aim at ground and click Use';
     if (this.isResearchStationToolSelected()) text = 'Research station - aim at ground and click Use';
     if (this.isFurnaceToolSelected()) text = 'Furnace tool - aim at ground and click Use';
+    if (this.isBuildToolSelected()) {
+      const preview = this.buildPlacementPreview;
+      const itemName = this.game.systems.materials.getDisplayName(preview?.itemId || this.game.systems.building.getSelectedBuildItem(this)?.itemId);
+      const mode = preview?.mode === 'backgroundWall' ? 'wall' : 'block';
+      text = `${itemName} ${mode} - hold Use to paint, R toggles walls`;
+      if (preview && !preview.valid && preview.reason) text = `${itemName} ${mode} - ${preview.reason}`;
+    }
     if (this.crashStart && !this.getStoryState().thrustersRepaired) text = this.getCrashObjectiveText();
     const interactLabel = this.getInteractControlLabel();
     const nearbyWorkbench = this.getNearbyWorkbench(this.islandPlayer);
@@ -6602,7 +6631,9 @@ export class MiningScene {
   }
 
   drawAtmosphereOverlay(ctx, width, height) {
-    const island = this.atmosphereIsland || this.activeIsland;
+    const island = this.islandMode === 'flight'
+      ? (this.atmosphereIsland || this.landingIsland || this.activeIsland)
+      : (this.activeIsland || this.landingIsland || this.atmosphereIsland);
     const strength = clamp01(this.islandMode === 'flight' ? (this.atmosphereStrength || 0) : (island ? 1 : 0));
     if (!island || strength <= 0.015) return;
     const palette = this.getAtmospherePalette(island.biome);
@@ -6614,44 +6645,75 @@ export class MiningScene {
     const topColor = lerpColor(palette.nightTop, palette.dayTop, day);
     const midColor = lerpColor(palette.nightMid, palette.dayMid, day);
     const horizonColor = lerpColor(palette.horizon, palette.sunset, dusk * 0.72);
+    const planetScreen = this.cameraView.worldToScreen(island.x, island.y);
+    const horizonAngle = this.getAtmosphereHorizonAngle(island, planetScreen);
+    const diagonal = Math.hypot(width, height) * 1.45;
+    const horizonLocalY = horizonY - height * 0.5;
+    const cos = Math.cos(-horizonAngle);
+    const sin = Math.sin(-horizonAngle);
+    const dx = planetScreen.x - width * 0.5;
+    const dy = planetScreen.y - height * 0.5;
+    const localPlanetX = dx * cos - dy * sin;
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    ctx.translate(width * 0.5, height * 0.5);
+    ctx.rotate(horizonAngle);
+    const sky = ctx.createLinearGradient(0, -diagonal * 0.52, 0, diagonal * 0.52);
     sky.addColorStop(0, topColor);
     sky.addColorStop(0.56, midColor);
     sky.addColorStop(1, horizonColor);
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(-diagonal, -diagonal, diagonal * 2, diagonal * 2);
 
-    const planetScreen = this.cameraView.worldToScreen(island.x, island.y);
     const glow = ctx.createRadialGradient(
-      planetScreen.x,
-      horizonY + height * 0.08,
+      localPlanetX,
+      horizonLocalY + height * 0.08,
       10,
-      planetScreen.x,
-      horizonY + height * 0.08,
+      localPlanetX,
+      horizonLocalY + height * 0.08,
       width * (0.28 + strength * 0.42),
     );
     glow.addColorStop(0, `${palette.haze}${Math.round((0.28 + strength * 0.22) * 255).toString(16).padStart(2, '0')}`);
     glow.addColorStop(1, `${palette.haze}00`);
     ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(-diagonal, -diagonal, diagonal * 2, diagonal * 2);
 
     ctx.globalAlpha = Math.min(0.9, 0.18 + strength * 0.58);
-    const horizon = ctx.createLinearGradient(0, horizonY - 60, 0, horizonY + 90);
+    const horizon = ctx.createLinearGradient(0, horizonLocalY - 60, 0, horizonLocalY + 90);
     horizon.addColorStop(0, `${palette.haze}00`);
     horizon.addColorStop(0.52, `${palette.haze}88`);
     horizon.addColorStop(1, `${palette.ground}00`);
     ctx.fillStyle = horizon;
-    ctx.fillRect(0, horizonY - 80, width, 180);
+    ctx.fillRect(-diagonal, horizonLocalY - 80, diagonal * 2, 180);
     ctx.strokeStyle = `${palette.haze}${Math.round((0.22 + strength * 0.46) * 255).toString(16).padStart(2, '0')}`;
     ctx.lineWidth = 1.5 + strength * 2.4;
     ctx.beginPath();
-    ctx.moveTo(-40, horizonY + Math.sin(this.time * 0.06) * 5);
-    ctx.quadraticCurveTo(width * 0.5, horizonY - 42 * strength, width + 40, horizonY + Math.cos(this.time * 0.05) * 6);
+    ctx.moveTo(-diagonal * 0.58, horizonLocalY + Math.sin(this.time * 0.06) * 5);
+    ctx.quadraticCurveTo(0, horizonLocalY - 42 * strength, diagonal * 0.58, horizonLocalY + Math.cos(this.time * 0.05) * 6);
     ctx.stroke();
     ctx.restore();
+  }
+
+  getAtmosphereHorizonAngle(island, planetScreen = null) {
+    if (!island) return 0;
+    if (island === this.activeIsland && this.islandMode !== 'flight') {
+      return this.getIslandViewRotation();
+    }
+    const reference = this.ship || this.camera || { x: island.x, y: island.y - 1 };
+    const planet = planetScreen || this.cameraView.worldToScreen(island.x, island.y);
+    const referenceScreen = this.cameraView.worldToScreen(reference.x, reference.y);
+    const dx = referenceScreen.x - planet.x;
+    const dy = referenceScreen.y - planet.y;
+    if (Math.abs(dx) + Math.abs(dy) > 0.001) {
+      return normalizeAngle(Math.atan2(dy, dx) + Math.PI * 0.5);
+    }
+    const local = island.worldToLocal?.(reference.x, reference.y);
+    const center = island.getCenterLocal?.() || { x: island.width * 0.5, y: island.height * 0.5 };
+    if (local) {
+      return normalizeAngle(Math.atan2(local.y - center.y, local.x - center.x) + Math.PI * 0.5);
+    }
+    return 0;
   }
 
   getAtmospherePalette(biome = 'scrap') {
@@ -6838,11 +6900,13 @@ export class MiningScene {
     const furnacePlacementMode = this.isFurnaceToolSelected();
     const craftingStationPlacementMode = this.isCraftingStationToolSelected();
     const researchStationPlacementMode = this.isResearchStationToolSelected();
+    const buildPlacementMode = this.isBuildToolSelected();
     const placementMode = flagPlacementMode
       || torchPlacementMode
       || furnacePlacementMode
       || craftingStationPlacementMode
-      || researchStationPlacementMode;
+      || researchStationPlacementMode
+      || buildPlacementMode;
     const terrainToolMode = this.isMinerToolSelected() || placementMode || Boolean(this.islandMiningBeam);
     const state = placementMode
       ? (
@@ -6851,10 +6915,12 @@ export class MiningScene {
           : torchPlacementMode
             ? (this.torchPlacementPreview || this.getTorchPlacementPreview())
             : furnacePlacementMode
-              ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
-              : craftingStationPlacementMode
-                ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
-                : (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
+            ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
+            : craftingStationPlacementMode
+              ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
+              : researchStationPlacementMode
+                ? (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
+                : (this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this))
       )
       : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
@@ -6866,12 +6932,13 @@ export class MiningScene {
         active: Boolean(this.islandMiningBeam),
         time: this.time,
       });
-      if (!this.islandMiningBeam) this.drawIslandTerrainTargetGlow(ctx, state);
+      if (!this.islandMiningBeam && !buildPlacementMode) this.drawIslandTerrainTargetGlow(ctx, state);
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
       if (researchStationPlacementMode) this.drawResearchStationPlacementPreview(ctx, state);
+      if (buildPlacementMode) this.game.systems.building?.drawPreview?.(ctx, state, this.time);
     }
     this.drawControllerIslandAimIndicator(ctx);
     if (this.islandMiningHitFeedback) {
@@ -7383,6 +7450,7 @@ export class MiningScene {
     if (this.isTorchToolSelected()) return this.torchPlacementPreview || this.getTorchPlacementPreview();
     if (this.isFurnaceToolSelected()) return this.furnacePlacementPreview || this.getFurnacePlacementPreview();
     if (this.isCraftingStationToolSelected()) return this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview();
+    if (this.isBuildToolSelected()) return this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this);
     return null;
   }
 

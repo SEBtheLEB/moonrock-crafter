@@ -12,6 +12,8 @@ export const TERRAIN_MATERIALS = {
   7: { id: 'crystallizedStone', name: 'Crystallized Stone', color: '#445262', edge: '#9ed7ff', hardness: 14.6, yield: 1, materialId: 'crystallizedStone', miningPowerRequired: 1.15 },
   8: { id: 'redCrystal', name: 'Red Crystal', color: '#a9213c', edge: '#ff6f7d', hardness: 9.4, yield: 1, materialId: 'redCrystal', miningPowerRequired: 1.15 },
   9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 0, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
+  10: { id: 'facilityIron', name: 'Facility Iron', color: '#465462', edge: '#9fafbd', hardness: 12.2, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
+  11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
 };
 
 const TERRAIN_SAVE_VERSION = 20;
@@ -1410,16 +1412,24 @@ export class TerrainGrid {
   setCell(col, row, value) {
     if (!this.isInside(col, row)) return;
     const index = this.index(col, row);
-    if (this.cells[index] === value) return;
-    this.cells[index] = value;
-    if (value > 0 && TERRAIN_WALLS.enabled && !this.wallCells[index]) {
-      this.wallCells[index] = this.getWallTypeForTile(col, row, value);
+    const previousValue = this.cells[index];
+    const nextValue = Math.max(0, Number(value) || 0);
+    if (previousValue === nextValue) return;
+    this.cells[index] = nextValue;
+    if (nextValue > 0 && TERRAIN_WALLS.enabled && !this.wallCells[index]) {
+      this.wallCells[index] = this.getWallTypeForTile(col, row, nextValue);
     }
     this.damage[index] = 0;
     this.damagedCells.delete(index);
     this.invalidateTerrainGeometry({ keepSurfacePath: true });
+    if ((previousValue > 0) !== (nextValue > 0)) {
+      this.airExposureDirty = true;
+      this.surfaceRadiusLookupCache?.clear();
+    }
     this.renderDirty = true;
-    if (this.renderCanvas && !this.fullRenderDirty) this.markDirtyCell(col, row);
+    if (this.renderCanvas && !this.fullRenderDirty) {
+      this.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(previousValue, nextValue));
+    }
     else this.fullRenderDirty = true;
   }
 
@@ -1443,16 +1453,38 @@ export class TerrainGrid {
     return clamp01(this.damage[this.index(col, row)] / data.hardness);
   }
 
-  markDirtyCell(col, row, padding = 2) {
+  getMaterialLightRadiusPixels(materialId) {
+    const light = this.getMaterialLight?.(materialId);
+    if (!light) return 0;
+    return Math.max(this.cellSize * 1.5, (light.radius || 0) * this.cellSize);
+  }
+
+  getLocalRedrawPaddingPixels(...materialIds) {
+    const roughPadding = this.roughnessRenderEnabled ? this.cellSize * 5.5 : this.cellSize * 4;
+    const blurPadding = (Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0) * 3) + this.cellSize * 3;
+    const lightPadding = materialIds.reduce((max, materialId) => (
+      Math.max(max, this.getMaterialLightRadiusPixels(materialId))
+    ), 0) + Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0) * 2;
+    return Math.ceil(Math.max(roughPadding, blurPadding, lightPadding));
+  }
+
+  getDirtyPaddingCellsForMaterialChange(previousMaterial = 0, nextMaterial = 0) {
+    return Math.max(3, Math.ceil(this.getLocalRedrawPaddingPixels(previousMaterial, nextMaterial) / Math.max(1, this.cellSize)));
+  }
+
+  markDirtyCell(col, row, padding = null) {
+    const resolvedPadding = Number.isFinite(padding)
+      ? Math.max(1, Math.ceil(padding))
+      : this.getDirtyPaddingCellsForMaterialChange(this.getCell(col, row), this.getCell(col, row));
     const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
     const chunkCol = Math.floor(col / chunkSize);
     const chunkRow = Math.floor(row / chunkSize);
     this.dirtyChunks.add(`${chunkCol},${chunkRow}`);
     const bounds = {
-      minCol: clamp(col - padding, 0, this.cols - 1),
-      maxCol: clamp(col + padding, 0, this.cols - 1),
-      minRow: clamp(row - padding, 0, this.rows - 1),
-      maxRow: clamp(row + padding, 0, this.rows - 1),
+      minCol: clamp(col - resolvedPadding, 0, this.cols - 1),
+      maxCol: clamp(col + resolvedPadding, 0, this.cols - 1),
+      minRow: clamp(row - resolvedPadding, 0, this.rows - 1),
+      maxRow: clamp(row + resolvedPadding, 0, this.rows - 1),
     };
     if (!this.dirtyBounds) {
       this.dirtyBounds = bounds;
@@ -1471,6 +1503,21 @@ export class TerrainGrid {
   getWallCell(col, row) {
     if (!this.isInside(col, row)) return 0;
     return this.wallCells?.[this.index(col, row)] || 0;
+  }
+
+  setWallCell(col, row, value) {
+    if (!this.isInside(col, row) || !this.wallCells) return false;
+    const index = this.index(col, row);
+    const nextValue = Math.max(0, Number(value) || 0);
+    if (this.wallCells[index] === nextValue) return false;
+    this.wallCells[index] = nextValue;
+    this.contourCache?.clear();
+    this.renderDirty = true;
+    if (this.renderCanvas && !this.fullRenderDirty) {
+      this.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(nextValue, nextValue));
+    }
+    else this.fullRenderDirty = true;
+    return true;
   }
 
   isWallCell(col, row) {
@@ -2480,7 +2527,7 @@ export class TerrainGrid {
   }
 
   redrawTerrainRegion(ctx, bounds) {
-    const clearPadding = Math.max(this.cellSize * 2.25, this.roughnessRenderEnabled ? this.cellSize * 2.8 : this.cellSize * 2.2);
+    const clearPadding = this.getLocalRedrawPaddingPixels();
     const cellPadding = Math.max(1, Math.ceil(clearPadding / this.cellSize));
     const paintBounds = {
       minCol: clamp(bounds.minCol - cellPadding, 0, this.cols - 1),
@@ -2495,18 +2542,18 @@ export class TerrainGrid {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds);
+    this.drawTerrainLayers(ctx, paintBounds, { lightingBounds: bounds });
     ctx.restore();
   }
 
-  drawTerrainLayers(ctx, bounds = null) {
+  drawTerrainLayers(ctx, bounds = null, { lightingBounds = bounds } = {}) {
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds);
     this.drawOreVeins(ctx, bounds);
     if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds);
     else this.drawEdgeContours(ctx, bounds);
-    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.drawDepthLightingOverlay(ctx, bounds);
+    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.drawDepthLightingOverlay(ctx, lightingBounds);
   }
 
   getLightingCanvas(width, height) {
@@ -2734,9 +2781,10 @@ export class TerrainGrid {
 
   getLightingDrawRect(bounds = null) {
     const maxRadius = this.getMaxMaterialLightRadius() + this.cellSize * 1.5;
+    const blurPadding = Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0) * 2 + this.cellSize * 1.5;
     const padding = bounds
-      ? Math.max(this.cellSize * 2, Math.min(maxRadius, this.cellSize * 4))
-      : Math.max(this.cellSize * 2, maxRadius);
+      ? Math.max(this.cellSize * 3, maxRadius, blurPadding)
+      : Math.max(this.cellSize * 2, maxRadius, blurPadding);
     return this.getDrawRect(bounds, padding);
   }
 
@@ -2819,8 +2867,8 @@ export class TerrainGrid {
 
   drawDepthDarknessGrid(ctx, rect, isLocalUpdate = false) {
     const baseScale = TERRAIN_LIGHTING.darknessFieldScale ?? 0.26;
-    const localScale = TERRAIN_LIGHTING.dirtyDarknessFieldScale ?? Math.min(baseScale, 0.18);
-    const scale = clamp(isLocalUpdate ? localScale : baseScale, 0.08, 0.72);
+    const localScale = TERRAIN_LIGHTING.dirtyDarknessFieldScale ?? baseScale;
+    const scale = clamp(isLocalUpdate ? Math.max(baseScale, localScale) : baseScale, 0.12, 0.72);
     const fieldWidth = Math.max(2, Math.ceil(rect.width * scale));
     const fieldHeight = Math.max(2, Math.ceil(rect.height * scale));
     const fieldCanvas = this.getLightingFieldCanvas(fieldWidth, fieldHeight);

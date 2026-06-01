@@ -26,6 +26,8 @@ const KEY_BINDINGS = {
   F: 'primaryUse',
   g: 'stabilize',
   G: 'stabilize',
+  r: 'buildModeToggle',
+  R: 'buildModeToggle',
   i: 'inventory',
   I: 'inventory',
   c: 'crafting',
@@ -151,6 +153,9 @@ export class InputManager {
       placeFurnace: false,
       placeCraftingStation: false,
       placeResearchStation: false,
+      build: false,
+      buildModeToggle: false,
+      buildWallModifier: false,
       inventory: false,
       crafting: false,
       hotbarNext: false,
@@ -741,6 +746,7 @@ export class InputManager {
       actions.add('cancel');
     }
     if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) actions.add('primaryUse');
+    if (buttonHeld(GAMEPAD_BUTTONS.leftTrigger)) actions.add('buildWallModifier');
     if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) actions.add('stabilize');
     if (buttonHeld(GAMEPAD_BUTTONS.hotbarPrevious)) actions.add('hotbarPrevious');
     if (buttonHeld(GAMEPAD_BUTTONS.hotbarNext)) actions.add('hotbarNext');

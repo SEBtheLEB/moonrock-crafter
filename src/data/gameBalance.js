@@ -274,6 +274,8 @@ export const gameBalance = {
         redCrystal: { edgeNoiseStrength: 1.8, chipChance: 0.36, crackChance: 0.55, edgeShadowStrength: 0.3 },
         moonCrystalOre: { edgeNoiseStrength: 2.1, chipChance: 0.34, crackChance: 0.5, edgeShadowStrength: 0.32 },
         fireCore: { edgeNoiseStrength: 1.4, chipChance: 0.18, crackChance: 0.2, edgeShadowStrength: 0.2 },
+        facilityIron: { edgeNoiseStrength: 0.72, chipChance: 0.08, crackChance: 0.1, edgeShadowStrength: 0.18, pebbleChance: 0.03 },
+        reinforcedIron: { edgeNoiseStrength: 0.46, chipChance: 0.05, crackChance: 0.06, edgeShadowStrength: 0.16, pebbleChance: 0.02 },
       },
     },
   },

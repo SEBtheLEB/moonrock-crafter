@@ -76,6 +76,13 @@ export class Hotbar {
       crafting: '#76f3ff',
       research: '#b794ff',
       furnace: '#ff9f43',
+      stone: '#a7adb4',
+      metal: '#c2a889',
+      copper: '#d9824a',
+      glass: '#8ee8ff',
+      fire: '#ff9f43',
+      redCrystal: '#ff6f7d',
+      crystal: '#a988ff',
       empty: '#6d7480',
     }[tone] || '#d98642';
   }

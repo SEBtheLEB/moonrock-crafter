@@ -12,6 +12,16 @@ export class BaseLab {
     height = LAB_DEFAULT_HEIGHT,
     rotation = 0,
     doorSide = 'left',
+    cellSize = 25,
+    leftCol = null,
+    rightCol = null,
+    floorRow = null,
+    ceilingRow = null,
+    interiorHeightCells = null,
+    buildVersion = 1,
+    window = null,
+    supportCols = [],
+    doorCells = null,
   } = {}) {
     this.id = id;
     this.x = x;
@@ -20,6 +30,16 @@ export class BaseLab {
     this.height = height;
     this.rotation = rotation;
     this.doorSide = doorSide;
+    this.cellSize = cellSize;
+    this.leftCol = leftCol;
+    this.rightCol = rightCol;
+    this.floorRow = floorRow;
+    this.ceilingRow = ceilingRow;
+    this.interiorHeightCells = interiorHeightCells;
+    this.buildVersion = buildVersion;
+    this.window = window;
+    this.supportCols = supportCols;
+    this.doorCells = doorCells;
     this.doorOpen = 0;
     this.doorTarget = 0;
   }
@@ -37,6 +57,16 @@ export class BaseLab {
       height: Math.round(this.height),
       rotation: Math.round(this.rotation * 10000) / 10000,
       doorSide: this.doorSide,
+      cellSize: this.cellSize,
+      leftCol: this.leftCol,
+      rightCol: this.rightCol,
+      floorRow: this.floorRow,
+      ceilingRow: this.ceilingRow,
+      interiorHeightCells: this.interiorHeightCells,
+      buildVersion: this.buildVersion,
+      window: this.window,
+      supportCols: this.supportCols,
+      doorCells: this.doorCells,
     };
   }
 
@@ -57,6 +87,13 @@ export class BaseLab {
   }
 
   getCraftingStationPoint() {
+    if (Number.isFinite(this.leftCol) && this.cellSize) {
+      return {
+        x: (this.leftCol + 7.5) * this.cellSize,
+        y: this.y,
+        rotation: this.rotation,
+      };
+    }
     return {
       x: this.x - this.width * 0.22,
       y: this.y - 8,
@@ -65,6 +102,13 @@ export class BaseLab {
   }
 
   getResearchStationPoint() {
+    if (Number.isFinite(this.leftCol) && this.cellSize) {
+      return {
+        x: (this.leftCol + 26.5) * this.cellSize,
+        y: this.y,
+        rotation: this.rotation,
+      };
+    }
     return {
       x: this.x + this.width * 0.22,
       y: this.y - 8,
@@ -73,6 +117,12 @@ export class BaseLab {
   }
 
   getSpawnPoint(playerSize = { width: 30, height: 60 }) {
+    if (Number.isFinite(this.leftCol) && this.cellSize) {
+      return {
+        x: (this.leftCol + 3.2) * this.cellSize - playerSize.width * 0.5,
+        y: this.y - playerSize.height - this.cellSize * 0.35,
+      };
+    }
     return {
       x: this.x - playerSize.width * 0.5,
       y: this.y - playerSize.height - 12,
@@ -99,89 +149,112 @@ export class BaseLab {
   draw(ctx, { time = 0 } = {}) {
     const w = this.width;
     const h = this.height;
-    const block = 22;
-    const doorW = 58;
-    const doorH = 92;
-    const doorX = this.doorSide === 'right' ? w * 0.5 - doorW - 18 : -w * 0.5 + 18;
-    const doorSlide = this.doorOpen * (doorW + 6);
+    const block = this.cellSize || 25;
+    const doorW = block * 2.1;
+    const doorH = block * 4;
+    const doorX = this.doorSide === 'right' ? w * 0.5 - doorW : -w * 0.5;
+    const doorSlide = this.doorOpen * (doorW * 0.74);
 
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rotation);
 
-    ctx.fillStyle = 'rgba(2, 7, 12, 0.3)';
+    ctx.fillStyle = 'rgba(2, 7, 12, 0.22)';
     ctx.beginPath();
-    ctx.ellipse(0, 13, w * 0.58, 16, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, block * 0.68, w * 0.54, block * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.fillStyle = '#1d2a33';
-    ctx.strokeStyle = 'rgba(3, 9, 15, 0.82)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(-w * 0.5, -h, w, h, 10);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#263846';
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.5 - 8, -h + 22);
-    ctx.lineTo(-w * 0.42, -h - 18);
-    ctx.lineTo(w * 0.42, -h - 18);
-    ctx.lineTo(w * 0.5 + 8, -h + 22);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
 
     ctx.save();
     ctx.globalAlpha = 0.52;
-    for (let x = -w * 0.5 + 12; x < w * 0.5 - 8; x += block) {
-      for (let y = -h + 18; y < -12; y += block) {
-        const shade = ((Math.floor((x + 999) / block) + Math.floor((y + 999) / block)) % 2) * 10;
-        ctx.fillStyle = `rgb(${43 + shade}, ${57 + shade}, ${68 + shade})`;
-        ctx.fillRect(x, y, block - 3, block - 3);
-      }
+    ctx.strokeStyle = 'rgba(161, 181, 199, 0.22)';
+    ctx.lineWidth = 1.2;
+    for (let x = -w * 0.5 + block; x < w * 0.5; x += block) {
+      ctx.beginPath();
+      ctx.moveTo(x, -h + block * 0.9);
+      ctx.lineTo(x, -block * 0.45);
+      ctx.stroke();
+    }
+    for (let y = -h + block; y < -block * 0.5; y += block) {
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.5 + block * 0.8, y);
+      ctx.lineTo(w * 0.5 - block * 0.8, y);
+      ctx.stroke();
     }
     ctx.restore();
 
-    ctx.fillStyle = '#101b24';
-    ctx.strokeStyle = 'rgba(2, 8, 14, 0.74)';
+    const glow = 0.55 + Math.sin(time * 2.4) * 0.12;
+    const windowX = this.window
+      ? (this.window.col * block - this.x)
+      : -w * 0.36;
+    const windowY = this.window
+      ? (this.window.row * block - this.y)
+      : -h + block * 2;
+    const windowW = this.window ? this.window.width * block : block * 5;
+    const windowH = this.window ? this.window.height * block : block * 2;
+    ctx.fillStyle = 'rgba(5, 13, 22, 0.72)';
+    ctx.strokeStyle = 'rgba(9, 18, 30, 0.82)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(-w * 0.33, -h + 42, 86, 54, 8);
+    ctx.roundRect(windowX, windowY, windowW, windowH, block * 0.16);
     ctx.fill();
     ctx.stroke();
-
-    const glow = 0.55 + Math.sin(time * 2.4) * 0.12;
-    ctx.fillStyle = `rgba(112, 225, 255, ${0.28 + glow * 0.12})`;
+    ctx.fillStyle = `rgba(112, 225, 255, ${0.22 + glow * 0.1})`;
     ctx.beginPath();
-    ctx.roundRect(-w * 0.33 + 8, -h + 50, 70, 38, 6);
+    ctx.roundRect(windowX + block * 0.22, windowY + block * 0.2, windowW - block * 0.44, windowH - block * 0.4, block * 0.12);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(118, 243, 255, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(windowX + windowW * 0.5, windowY + block * 0.22);
+    ctx.lineTo(windowX + windowW * 0.5, windowY + windowH - block * 0.22);
+    ctx.stroke();
 
-    ctx.fillStyle = '#c28d58';
+    ctx.fillStyle = '#26313d';
     ctx.strokeStyle = 'rgba(3, 9, 15, 0.84)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(doorX, -doorH, doorW, doorH, 8);
+    ctx.roundRect(doorX, -doorH, doorW, doorH, block * 0.12);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#293a46';
+    ctx.fillStyle = '#566879';
     ctx.beginPath();
-    ctx.roundRect(doorX + (this.doorSide === 'right' ? doorSlide : -doorSlide), -doorH + 7, doorW - 10, doorH - 14, 7);
+    ctx.roundRect(
+      doorX + block * 0.14 + (this.doorSide === 'right' ? doorSlide : -doorSlide),
+      -doorH + block * 0.22,
+      doorW - block * 0.28,
+      doorH - block * 0.44,
+      block * 0.1,
+    );
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#75e9ff';
     ctx.globalAlpha = 0.82;
     ctx.beginPath();
-    ctx.arc(doorX + doorW * 0.5, -doorH * 0.55, 5 + Math.sin(time * 5) * 0.35, 0, Math.PI * 2);
+    ctx.arc(doorX + doorW * 0.5, -doorH * 0.58, block * 0.19 + Math.sin(time * 5) * 0.35, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    this.drawConsoleHint(ctx, this.getCraftingStationPoint(), '#76f3ff', '#ffd36b');
-    this.drawConsoleHint(ctx, this.getResearchStationPoint(), '#b794ff', '#76f3ff');
+    this.drawCeilingSignals(ctx, block, time);
 
     ctx.restore();
+  }
+
+  drawCeilingSignals(ctx, block, time) {
+    const top = -this.height + block * 0.35;
+    const blink = 0.45 + Math.sin(time * 3.4) * 0.18;
+    const lights = [-this.width * 0.23, 0, this.width * 0.23];
+    lights.forEach((x, index) => {
+      ctx.save();
+      ctx.translate(x, top);
+      ctx.fillStyle = index === 1 ? `rgba(118, 243, 255, ${blink})` : `rgba(255, 211, 107, ${blink * 0.88})`;
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.roundRect(-block * 0.38, -block * 0.08, block * 0.76, block * 0.16, block * 0.08);
+      ctx.fill();
+      ctx.restore();
+    });
   }
 
   drawConsoleHint(ctx, point, color, accent) {
