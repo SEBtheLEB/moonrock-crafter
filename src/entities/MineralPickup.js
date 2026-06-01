@@ -15,6 +15,7 @@ export class MineralPickup {
     this.vy = Math.sin(seed * 18.9) * 42;
     this.radius = chip?.size ? Math.max(11, chip.size * 0.58) : 12;
     this.age = 0;
+    this.surfaceCheckTimer = 0;
     this.active = true;
     return this;
   }

@@ -1447,10 +1447,10 @@ export class TerrainGrid {
     const chunkRow = Math.floor(row / chunkSize);
     this.dirtyChunks.add(`${chunkCol},${chunkRow}`);
     const bounds = {
-      minCol: clamp(Math.floor((col - padding) / chunkSize) * chunkSize, 0, this.cols - 1),
-      maxCol: clamp(Math.ceil((col + padding + 1) / chunkSize) * chunkSize - 1, 0, this.cols - 1),
-      minRow: clamp(Math.floor((row - padding) / chunkSize) * chunkSize, 0, this.rows - 1),
-      maxRow: clamp(Math.ceil((row + padding + 1) / chunkSize) * chunkSize - 1, 0, this.rows - 1),
+      minCol: clamp(col - padding, 0, this.cols - 1),
+      maxCol: clamp(col + padding, 0, this.cols - 1),
+      minRow: clamp(row - padding, 0, this.rows - 1),
+      maxRow: clamp(row + padding, 0, this.rows - 1),
     };
     if (!this.dirtyBounds) {
       this.dirtyBounds = bounds;
@@ -2662,7 +2662,10 @@ export class TerrainGrid {
   }
 
   getLightingDrawRect(bounds = null) {
-    const padding = Math.max(this.cellSize * 2, this.getMaxMaterialLightRadius() + this.cellSize * 1.5);
+    const maxRadius = this.getMaxMaterialLightRadius() + this.cellSize * 1.5;
+    const padding = bounds
+      ? Math.max(this.cellSize * 2, Math.min(maxRadius, this.cellSize * 4))
+      : Math.max(this.cellSize * 2, maxRadius);
     return this.getDrawRect(bounds, padding);
   }
 
@@ -2707,7 +2710,7 @@ export class TerrainGrid {
     const canvas = this.getLightingCanvas(rect.width, rect.height);
     const lightCtx = this.lightingCtx;
     lightCtx.clearRect(0, 0, canvas.width, canvas.height);
-    this.drawDepthDarknessGrid(lightCtx, rect);
+    this.drawDepthDarknessGrid(lightCtx, rect, Boolean(bounds));
     const sources = this.lightingRenderEnabled ? this.collectLightSources(bounds) : [];
     if (sources.length) this.eraseLightFromOverlay(lightCtx, rect, sources);
     ctx.save();
@@ -2717,8 +2720,10 @@ export class TerrainGrid {
     if (this.lightingDebugEnabled) this.drawLightingDebug(ctx, rect, sources);
   }
 
-  drawDepthDarknessGrid(ctx, rect) {
-    const scale = clamp(TERRAIN_LIGHTING.darknessFieldScale ?? 0.26, 0.08, 0.72);
+  drawDepthDarknessGrid(ctx, rect, isLocalUpdate = false) {
+    const baseScale = TERRAIN_LIGHTING.darknessFieldScale ?? 0.26;
+    const localScale = TERRAIN_LIGHTING.dirtyDarknessFieldScale ?? Math.min(baseScale, 0.18);
+    const scale = clamp(isLocalUpdate ? localScale : baseScale, 0.08, 0.72);
     const fieldWidth = Math.max(2, Math.ceil(rect.width * scale));
     const fieldHeight = Math.max(2, Math.ceil(rect.height * scale));
     const fieldCanvas = this.getLightingFieldCanvas(fieldWidth, fieldHeight);
@@ -3001,6 +3006,12 @@ export class TerrainGrid {
     this.surfaceRadiusLookupCache?.clear();
   }
 
+  prewarmForGameplay() {
+    if (typeof document === 'undefined') return;
+    if (!this.renderCanvas || this.renderDirty) this.redrawTerrainCache();
+    this.ensureAirExposureMap();
+  }
+
   drawBackgroundWalls(ctx, bounds = null) {
     if (!TERRAIN_WALLS.enabled || !this.wallCells?.length) return;
     const wallMaterials = Object.keys(TERRAIN_MATERIALS)
@@ -3047,6 +3058,19 @@ export class TerrainGrid {
     for (let row = minRow; row <= maxRow; row += 1) {
       for (let col = minCol; col <= maxCol; col += 1) {
         if (this.getWallCell(col, row) === material) return true;
+      }
+    }
+    return false;
+  }
+
+  hasMaterialInBounds(material, bounds = null, padding = 2) {
+    const minCol = bounds ? clamp(bounds.minCol - padding, 0, this.cols - 1) : 0;
+    const maxCol = bounds ? clamp(bounds.maxCol + padding, 0, this.cols - 1) : this.cols - 1;
+    const minRow = bounds ? clamp(bounds.minRow - padding, 0, this.rows - 1) : 0;
+    const maxRow = bounds ? clamp(bounds.maxRow + padding, 0, this.rows - 1) : this.rows - 1;
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        if (this.getCell(col, row) === material) return true;
       }
     }
     return false;
@@ -3410,7 +3434,7 @@ export class TerrainGrid {
   drawOreVeins(ctx, bounds = null) {
     const oreMaterials = Object.keys(TERRAIN_MATERIALS)
       .map(Number)
-      .filter((material) => material > 1)
+      .filter((material) => material > 1 && this.hasMaterialInBounds(material, bounds, 3))
       .sort((a, b) => a - b);
     for (const material of oreMaterials) {
       const data = TERRAIN_MATERIALS[material];

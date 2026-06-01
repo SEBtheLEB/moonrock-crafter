@@ -430,6 +430,7 @@ export class MiningScene {
     this.loadCrashFurnace();
     this.enemySystem.setActiveIsland(island);
     this.suspendSpaceObjectsForIsland(island);
+    this.prewarmIslandTerrain(island);
     this.updateCamera(1);
     this.updateHud();
     this.showCrashIntro();
@@ -2187,6 +2188,7 @@ export class MiningScene {
     this.ship.vx = 0;
     this.ship.vy = 0;
     this.suspendSpaceObjectsForIsland(island);
+    this.prewarmIslandTerrain(island);
     this.stopLaserAudio();
     this.game.audio.playLandShip?.();
     this.game.systems.navigation.discoverLocation(island.id, { notify: false });
@@ -2194,6 +2196,23 @@ export class MiningScene {
     this.game.state.islands.visited ||= {};
     this.game.state.islands.visited[island.id] = true;
     this.game.ui.showToast(`Landing on ${island.name}`, 'success', 1400);
+  }
+
+  prewarmIslandTerrain(island) {
+    const terrain = island?.terrain;
+    if (!terrain?.prewarmForGameplay || terrain.prewarmQueued) return;
+    terrain.prewarmQueued = true;
+    const run = () => {
+      terrain.prewarmQueued = false;
+      terrain.prewarmForGameplay();
+    };
+    if (typeof window !== 'undefined' && window.requestIdleCallback) {
+      window.requestIdleCallback(run, { timeout: 800 });
+    } else if (typeof window !== 'undefined') {
+      window.setTimeout(run, 0);
+    } else {
+      run();
+    }
   }
 
   localToActiveIslandWorld(localX, localY, viewRotation = this.getIslandViewRotation()) {
@@ -2315,6 +2334,7 @@ export class MiningScene {
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
     this.islandMode = 'onIsland';
+    this.prewarmIslandTerrain(this.activeIsland);
     this.shipSmoke?.clear();
     this.game.audio.playExitShip?.();
     this.game.ui.showToast('Landed. Press E/A near the ship to board.', 'success', 1800);
@@ -4721,7 +4741,7 @@ export class MiningScene {
     let index = 0;
     for (const [materialId, entry] of grouped.entries()) {
       const material = this.game.systems.materials.getMaterial(materialId);
-      const spawn = this.activeIsland.terrain.getClosestTerrainSurfacePoint?.(entry.x, entry.y, 14) || entry;
+      const spawn = this.getIslandPickupSpawnPoint(entry, index);
       this.islandPickups.push(this.acquireIslandPickup({
         materialId,
         amount: entry.amount,
@@ -4733,6 +4753,30 @@ export class MiningScene {
       }));
       index += 1;
     }
+  }
+
+  getIslandPickupSpawnPoint(entry, index = 0) {
+    const island = this.activeIsland;
+    const terrain = island?.terrain;
+    if (!island || !terrain) return entry;
+    const center = island.getCenterLocal();
+    const dx = entry.x - center.x;
+    const dy = entry.y - center.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const outward = { x: dx / distance, y: dy / distance };
+    const tangent = { x: -outward.y, y: outward.x };
+    const push = Math.max(terrain.cellSize * 0.18, 5);
+    const wobble = (index - 0.5) * terrain.cellSize * 0.24;
+    const candidates = [
+      { x: entry.x, y: entry.y },
+      { x: entry.x + outward.x * push, y: entry.y + outward.y * push },
+      { x: entry.x + tangent.x * wobble, y: entry.y + tangent.y * wobble },
+      { x: entry.x + outward.x * push + tangent.x * wobble, y: entry.y + outward.y * push + tangent.y * wobble },
+    ];
+    for (const candidate of candidates) {
+      if (!terrain.containsCollisionPoint?.(candidate.x, candidate.y)) return candidate;
+    }
+    return candidates[0];
   }
 
   acquireIslandPickup(options) {
@@ -4777,9 +4821,13 @@ export class MiningScene {
     pickup.update(delta);
     const terrain = this.activeIsland?.terrain;
     if (!terrain?.getClosestTerrainSurfacePoint) return;
+    pickup.surfaceCheckTimer = Math.max(0, (pickup.surfaceCheckTimer || 0) - delta);
+    if (pickup.surfaceCheckTimer > 0) return;
+    pickup.surfaceCheckTimer = 0.12 + (pickup.seed % 0.07);
+    const inside = terrain.containsCollisionPoint?.(pickup.x, pickup.y);
+    if (!inside) return;
     const surface = terrain.getClosestTerrainSurfacePoint(pickup.x, pickup.y, pickup.radius + 4);
     if (!surface) return;
-    const inside = terrain.containsCollisionPoint?.(pickup.x, pickup.y);
     const dx = pickup.x - surface.surfaceX;
     const dy = pickup.y - surface.surfaceY;
     const normalDistance = dx * surface.normal.x + dy * surface.normal.y;
