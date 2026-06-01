@@ -1,4 +1,6 @@
 export const gameBalance = {
+  stationEnabled: false,
+  tutorialDialogueEnabled: false,
   startingCredits: 0,
   startingResearchPoints: 0,
   startingInventory: {
@@ -7,6 +9,7 @@ export const gameBalance = {
     gravityStabilizer: 1,
     markerFlag: 1,
     craftingStationKit: 1,
+    researchStationKit: 0,
     torch: 20,
   },
   miningFuelCost: 12,
@@ -348,8 +351,8 @@ export const gameBalance = {
         reward: { credits: 8 },
       },
       {
-        id: 'returnToStation',
-        label: 'Return to the station',
+        id: 'returnToBase',
+        label: 'Return to your base',
         description: 'Dock safely and transfer your first cargo.',
         condition: { type: 'docked', amount: 1 },
         reward: { credits: 5 },
@@ -370,7 +373,7 @@ export const gameBalance = {
       },
       {
         id: 'reachCrystalRim',
-        label: 'Reach 20000m from station',
+        label: 'Reach 20000m from origin',
         description: 'Push past the inner blue ring toward crystal-heavy space.',
         condition: { type: 'distanceReached', amount: 20000 },
         reward: { credits: 18 },
@@ -384,7 +387,7 @@ export const gameBalance = {
       },
       {
         id: 'reachEmberPreview',
-        label: 'Reach 40000m from station',
+        label: 'Reach 40000m from origin',
         description: 'Reach the Ember Shelf and get home.',
         condition: { type: 'distanceReached', amount: 40000 },
         reward: { credits: 18 },
@@ -405,7 +408,7 @@ export const gameBalance = {
       },
       {
         id: 'reachFarPlanetSignal',
-        label: 'Reach 100000m from station',
+        label: 'Reach 100000m from origin',
         description: 'Fly toward the faraway planet signal beyond the Starless Deep.',
         condition: { type: 'distanceReached', amount: 100000 },
         reward: { credits: 80, researchPoints: 2 },

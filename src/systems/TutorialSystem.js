@@ -1,3 +1,5 @@
+import { gameBalance } from '../data/gameBalance.js?v=115';
+
 const SPARKS = {
   name: 'Sparks',
   portraitStyle: {
@@ -18,8 +20,12 @@ export class TutorialSystem {
     return this.game.state.tutorial;
   }
 
+  isDisabled() {
+    return gameBalance.tutorialDialogueEnabled === false;
+  }
+
   isComplete() {
-    return Boolean(this.state.completed);
+    return this.isDisabled() || Boolean(this.state.completed);
   }
 
   has(step) {
@@ -149,6 +155,10 @@ export class TutorialSystem {
   }
 
   startSparks(key, { highlight = null, label = '', placement = 'auto', onComplete = null, enqueue = false } = {}) {
+    if (this.isDisabled()) {
+      onComplete?.();
+      return null;
+    }
     const lines = this.game.systems.dialogue.getLines('sparksTutorial', key);
     return this.game.systems.dialogue.start({
       speaker: SPARKS.name,
@@ -163,6 +173,10 @@ export class TutorialSystem {
   }
 
   queueSparks(entries = [], { onAllComplete = null } = {}) {
+    if (this.isDisabled()) {
+      onAllComplete?.();
+      return null;
+    }
     const normalized = entries.map((entry, index) => ({
       speaker: SPARKS.name,
       portraitStyle: SPARKS.portraitStyle,

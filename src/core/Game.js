@@ -99,6 +99,9 @@ export class Game {
         furnaces: [],
         craftingStationPlaced: false,
         craftingStation: null,
+        researchStationPlaced: false,
+        researchStation: null,
+        baseLab: null,
         stationRouteUnlocked: false,
       },
       settings: {
@@ -136,6 +139,12 @@ export class Game {
         discoveredLocations: {},
         selectedDestinationId: null,
         scannerUpgrades: {},
+      },
+      base: {
+        established: false,
+        islandId: null,
+        flagId: null,
+        local: null,
       },
       islands: {
         visited: {},
@@ -185,6 +194,12 @@ export class Game {
         craftingStation: savedState.story?.craftingStation
           ? { ...defaultState.story.craftingStation, ...savedState.story.craftingStation }
           : defaultState.story.craftingStation,
+        researchStation: savedState.story?.researchStation
+          ? { ...defaultState.story.researchStation, ...savedState.story.researchStation }
+          : defaultState.story.researchStation,
+        baseLab: savedState.story?.baseLab
+          ? { ...defaultState.story.baseLab, ...savedState.story.baseLab }
+          : defaultState.story.baseLab,
       },
       tutorial: { ...defaultState.tutorial, ...savedState.tutorial },
       progression: {
@@ -216,6 +231,13 @@ export class Game {
           ...(savedState.navigation?.scannerUpgrades || {}),
         },
       },
+      base: {
+        ...defaultState.base,
+        ...savedState.base,
+        local: savedState.base?.local
+          ? { ...(defaultState.base.local || {}), ...savedState.base.local }
+          : defaultState.base.local,
+      },
       islands: {
         ...defaultState.islands,
         ...savedState.islands,
@@ -236,6 +258,7 @@ export class Game {
     };
     if (merged.story?.furnaceBuilt) delete merged.inventory.fireCore;
     if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
+    if (merged.story?.researchStationPlaced) delete merged.inventory.researchStationKit;
     if (!savedState.progression?.toolInventoryMigrated) {
       ['minerTool', 'swordWeapon', 'gravityStabilizer', 'markerFlag'].forEach((itemId) => {
         if ((merged.inventory[itemId] || 0) <= 0) merged.inventory[itemId] = 1;
@@ -459,14 +482,27 @@ export class Game {
     this.setTouchControlsEnabled(!this.state.settings?.touchControlsEnabled);
   }
 
-  returnToStation() {
+  returnToBase() {
     this.paused = false;
     this.ui.hidePauseMenu();
-    if (!this.state.story?.thrustersRepaired && this.sceneManager.currentName !== 'station') {
-      this.ui.showToast('Repair the ship before returning to the station.', 'danger', 1800);
+    this.state.navigation.gpsUnlocked = true;
+    this.state.navigation.scannerLevel = Math.max(1, this.state.navigation.scannerLevel || 0);
+    this.state.navigation.selectedDestinationId = 'base';
+    this.systems.navigation.refreshLocations?.();
+    this.saveGame();
+    if (!this.state.base?.established) {
+      this.ui.showToast('No base flag is active yet.', 'danger', 1600);
       return;
     }
-    this.sceneManager.switchTo('station');
+    if (this.sceneManager.currentName !== 'mining') {
+      this.sceneManager.switchTo('mining', { startAtBase: true });
+      return;
+    }
+    this.ui.showToast('Base GPS selected.', 'success', 1200);
+  }
+
+  returnToStation() {
+    this.returnToBase();
   }
 
   screenShake(amount = 0.35) {
@@ -531,7 +567,7 @@ export class Game {
     this.saveGame();
     this.audio.playDockSuccess();
     this.audio.playShipDock();
-    this.sceneManager.switchTo('station', { miningSummary: summary });
+    this.sceneManager.switchTo('mining', { startAtBase: true, miningSummary: summary });
   }
 
   saveGame() {
@@ -734,6 +770,7 @@ export class Game {
       'placeTorch',
       'placeFurnace',
       'placeCraftingStation',
+      'placeResearchStation',
       'crafting',
       'inventory',
     ].forEach((actionName) => {

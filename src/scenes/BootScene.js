@@ -11,11 +11,10 @@ export class BootScene {
       body: 'Charging expedition systems...',
       className: 'boot-panel',
     });
-    if (!this.game.state.story?.thrustersRepaired) {
-      this.game.sceneManager.switchTo('mining', { crashStart: true });
-      return;
-    }
-    this.game.sceneManager.switchTo('station');
+    this.game.sceneManager.switchTo('mining', {
+      crashStart: !this.game.state.story?.thrustersRepaired,
+      startAtBase: true,
+    });
   }
 
   update(delta) {

@@ -74,6 +74,7 @@ export class Hotbar {
       flag: '#ffd36b',
       torch: '#ffb45f',
       crafting: '#76f3ff',
+      research: '#b794ff',
       furnace: '#ff9f43',
       empty: '#6d7480',
     }[tone] || '#d98642';

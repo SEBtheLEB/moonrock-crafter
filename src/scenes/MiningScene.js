@@ -11,6 +11,8 @@ import { PlacedFlag } from '../entities/PlacedFlag.js?v=115';
 import { PlacedTorch } from '../entities/PlacedTorch.js?v=115';
 import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=115';
 import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=115';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=115';
+import { BaseLab } from '../entities/BaseLab.js?v=115';
 import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=115';
 import { EnemySystem } from '../systems/EnemySystem.js?v=115';
 import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=115';
@@ -187,6 +189,7 @@ export class MiningScene {
     this.game = game;
     this.payload = payload;
     this.game.systems.upgrades.applyUpgrades();
+    this.startAtBase = Boolean(payload.startAtBase);
     this.crashStart = Boolean(payload.crashStart) || !game.state.story?.thrustersRepaired;
     this.ship = new Ship(game.state.ship);
     this.combatDrone = new CompanionDrone({ cooldown: 0.48, damage: 18, targetRange: 920 });
@@ -288,6 +291,9 @@ export class MiningScene {
     this.placedFurnaces = [];
     this.placedCraftingStation = null;
     this.craftingStationPlacementPreview = null;
+    this.placedResearchStation = null;
+    this.researchStationPlacementPreview = null;
+    this.baseLab = null;
     this.survivalModal = null;
     this.activeFurnaceId = '';
     this.voxelCraftState = null;
@@ -398,6 +404,7 @@ export class MiningScene {
     runtimeIsland.placedFlags = [];
     runtimeIsland.placedTorches = [];
     runtimeIsland.terrain = this.game.systems.islands.createTerrain(islandData, this.createIslandWorld(islandData));
+    if (islandData.id === this.getStoryState().starterPlanetId) this.ensureStarterBaseCamp(runtimeIsland);
     if (this.activeIsland?.id === runtimeIsland.id) {
       this.activeIsland = runtimeIsland;
       this.landingIsland = runtimeIsland;
@@ -419,7 +426,9 @@ export class MiningScene {
     this.runCargoWeight = 0;
     this.stats.cargo = 0;
 
-    const island = this.rockIslands.find((entry) => entry.id === story.starterPlanetId) || this.rockIslands[0];
+    const island = this.rockIslands.find((entry) => entry.id === story.starterPlanetId)
+      || this.rockIslands.find((entry) => entry.kind === 'story')
+      || this.rockIslands[0];
     if (!island) {
       this.seedAsteroidField();
       return;
@@ -441,7 +450,7 @@ export class MiningScene {
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
     island.landingAngle = -Math.PI / 2;
-    island.landingSurfaceLocal = null;
+    this.ensureStarterBaseCamp(island);
 
     const shipLocal = island.getShipParkLocal();
     const shipWorld = island.localToWorldRotated(shipLocal.x, shipLocal.y, 0);
@@ -452,9 +461,10 @@ export class MiningScene {
     this.ship.angle = island.landingAngle;
     this.distanceFromStation = this.getDistanceFromStation();
 
-    const exit = island.getPlayerExitLocal();
+    const exit = this.baseLab?.getSpawnPoint?.() || island.getPlayerExitLocal();
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
-    this.seedPlanetPlayer(island, this.islandPlayer);
+    if (!this.baseLab) this.seedPlanetPlayer(island, this.islandPlayer);
+    else this.initializePlanetPlayerFeel(this.islandPlayer);
     this.loadCrashFurnace();
     this.enemySystem.setActiveIsland(island);
     this.suspendSpaceObjectsForIsland(island);
@@ -471,7 +481,99 @@ export class MiningScene {
     this.game.state.story.furnaceInventory ||= [];
     this.game.state.story.furnaces ||= [];
     this.game.state.story.craftingStation ||= null;
+    this.game.state.story.researchStationPlaced ||= false;
+    this.game.state.story.researchStation ||= null;
+    this.game.state.story.baseLab ||= null;
     return this.game.state.story;
+  }
+
+  ensureStarterBaseCamp(island) {
+    if (!island?.terrain) return null;
+    const story = this.getStoryState();
+    const shouldCreate = !story.baseLab || story.baseLab.islandId !== island.id;
+    if (shouldCreate) {
+      const surface = island.getSurfaceLocalAtAngle(-Math.PI / 2, 0);
+      const labPad = island.terrain.createPlacementPad(surface.x - 185, surface.y, {
+        viewRotation: 0,
+        width: 430,
+        clearance: 190,
+        depth: 86,
+        material: 1,
+      });
+      const shipPad = island.terrain.createPlacementPad(surface.x + 230, surface.y, {
+        viewRotation: 0,
+        width: 250,
+        clearance: 150,
+        depth: 70,
+        material: 1,
+      });
+      island.setLandingTargetLocal({ x: shipPad.x, y: shipPad.y });
+      const lab = new BaseLab({
+        x: labPad.x,
+        y: labPad.y - 2,
+        width: 390,
+        height: 176,
+      });
+      story.baseLab = {
+        ...lab.serialize(),
+        islandId: island.id,
+        landingSurfaceLocal: { x: shipPad.x, y: shipPad.y },
+      };
+      const craftPoint = lab.getCraftingStationPoint();
+      const researchPoint = lab.getResearchStationPoint();
+      const crafting = new PlacedCraftingStation({
+        x: craftPoint.x,
+        y: craftPoint.y,
+        rotation: craftPoint.rotation,
+        compact: true,
+      });
+      const research = new PlacedResearchStation({
+        x: researchPoint.x,
+        y: researchPoint.y,
+        rotation: researchPoint.rotation,
+        compact: true,
+      });
+      story.craftingStationPlaced = true;
+      story.craftingStation = { ...crafting.serialize(), islandId: island.id };
+      story.researchStationPlaced = true;
+      story.researchStation = { ...research.serialize(), islandId: island.id };
+      this.game.systems.inventory.remove('craftingStationKit', 1, { skipSave: true });
+      this.game.systems.inventory.remove('researchStationKit', 1, { skipSave: true });
+      this.game.state.base = {
+        established: true,
+        islandId: island.id,
+        flagId: null,
+        local: { x: lab.x, y: lab.y - 78 },
+      };
+      this.game.state.navigation.gpsUnlocked = true;
+      this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+      this.game.state.navigation.selectedDestinationId = 'base';
+      this.game.systems.islands.saveTerrain(island.id, island.terrain);
+      this.game.systems.navigation?.refreshLocations?.();
+      this.game.saveGame();
+    } else if (story.baseLab?.landingSurfaceLocal) {
+      island.setLandingTargetLocal(story.baseLab.landingSurfaceLocal);
+    }
+
+    this.baseLab = story.baseLab?.islandId === island.id ? BaseLab.deserialize(story.baseLab) : null;
+    if (this.baseLab && !this.game.state.base?.established) {
+      this.game.state.base = {
+        established: true,
+        islandId: island.id,
+        flagId: null,
+        local: { x: this.baseLab.x, y: this.baseLab.y - 78 },
+      };
+      this.game.state.navigation.gpsUnlocked = true;
+      this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+      this.game.state.navigation.selectedDestinationId = 'base';
+      this.game.systems.navigation?.refreshLocations?.();
+      this.game.saveGame();
+    } else if (this.game.state.base?.established && !this.game.state.navigation?.selectedDestinationId) {
+      this.game.state.navigation.selectedDestinationId = 'base';
+      this.game.systems.navigation?.refreshLocations?.();
+      this.game.saveGame();
+    }
+    return this.baseLab;
   }
 
   loadCrashFurnace() {
@@ -490,14 +592,23 @@ export class MiningScene {
       story.furnaceInventory = [this.createDefaultFurnaceBlueprint()];
       this.game.systems.inventory.add('starterFurnace', 1, { skipSave: true });
     }
-    this.placedFurnaces = (story.furnaces || []).map((furnace) => PlacedFurnace.deserialize(furnace));
+    const activeIslandId = this.activeIsland?.id || story.starterPlanetId;
+    this.placedFurnaces = (story.furnaces || [])
+      .filter((furnace) => !furnace.islandId || furnace.islandId === activeIslandId)
+      .map((furnace) => PlacedFurnace.deserialize(furnace));
     this.placedFurnace = this.placedFurnaces[0] || null;
-    this.placedCraftingStation = story.craftingStationPlaced && story.craftingStation
+    const craftingOnActiveIsland = !story.craftingStation?.islandId || story.craftingStation.islandId === activeIslandId;
+    const researchOnActiveIsland = !story.researchStation?.islandId || story.researchStation.islandId === activeIslandId;
+    this.placedCraftingStation = story.craftingStationPlaced && story.craftingStation && craftingOnActiveIsland
       ? PlacedCraftingStation.deserialize(story.craftingStation)
+      : null;
+    this.placedResearchStation = story.researchStationPlaced && story.researchStation && researchOnActiveIsland
+      ? PlacedResearchStation.deserialize(story.researchStation)
       : null;
   }
 
   showCrashIntro() {
+    if (gameBalance.tutorialDialogueEnabled === false) return;
     const story = this.getStoryState();
     if (story.crashIntroSeen) return;
     story.crashIntroSeen = true;
@@ -537,7 +648,7 @@ export class MiningScene {
     this.game.ui.setScreen('mining-screen');
     this.mountHud();
     this.mountControls();
-    if (this.crashStart) {
+    if (this.crashStart || this.startAtBase) {
       this.startCrashPlanet();
       return;
     }
@@ -886,8 +997,9 @@ export class MiningScene {
   }
 
   jumpToStation() {
-    this.ship.x = 0;
-    this.ship.y = 0;
+    const base = this.game.systems.navigation.getLocation('base');
+    this.ship.x = base?.worldPosition?.x ?? 0;
+    this.ship.y = base?.worldPosition?.y ?? 0;
     this.ship.vx = 0;
     this.ship.vy = 0;
     this.shipSmoke?.clear();
@@ -957,6 +1069,7 @@ export class MiningScene {
   }
 
   tryAutoCargoDump() {
+    if (gameBalance.stationEnabled === false) return;
     if (this.cargoDumping || this.ending || this.cargoDumpCooldown > 0 || this.runCargoCount <= 0) return;
     if (this.distanceFromStation * this.distanceFromStation > DOCK_RADIUS_SQ) return;
     this.beginCargoDump({ returnToStation: false });
@@ -2338,6 +2451,7 @@ export class MiningScene {
   }
 
   updateDockInput() {
+    if (gameBalance.stationEnabled === false) return;
     if (this.cargoDumping || this.ending) return;
     if (this.distanceFromStation * this.distanceFromStation > DOCK_RADIUS_SQ) return;
     const actions = this.game.input.actions;
@@ -2349,7 +2463,7 @@ export class MiningScene {
       this.stats.fuel = this.stats.maxFuel;
       return false;
     }
-    if (this.stats.fuel > 0 || this.ending || this.outOfFuelReturnQueued) return false;
+    if (this.stats.fuel > 0 || this.ending || this.outOfFuelReturnQueued || gameBalance.stationEnabled === false) return false;
     if (this.distanceFromStation * this.distanceFromStation <= DOCK_RADIUS_SQ && this.runCargoCount > 0) {
       this.outOfFuelReturnQueued = true;
       this.game.ui.showToast('Out of fuel. Docking after cargo drop...', 'danger', 2400);
@@ -2465,6 +2579,8 @@ export class MiningScene {
       else if (this.islandMode === 'boarding') this.updateIslandBoarding(delta);
       this.updateIslandPlacedFlags(delta);
       this.updatePlacedCraftingStation(delta);
+      this.updatePlacedResearchStation(delta);
+      this.baseLab?.update?.(delta, this.islandMode === 'onIsland' ? this.islandPlayer : null);
       this.updatePlacedFurnace(delta);
       if (this.islandMode === 'onIsland') this.updateIslandEnemies(delta);
       if (this.islandMode === 'onIsland') this.updateIslandPickups(delta);
@@ -2532,6 +2648,9 @@ export class MiningScene {
     const exit = this.activeIsland.getPlayerExitLocal();
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
     this.seedPlanetPlayer(this.activeIsland, this.islandPlayer);
+    const story = this.getStoryState();
+    this.baseLab = story.baseLab?.islandId === this.activeIsland.id ? BaseLab.deserialize(story.baseLab) : null;
+    this.loadCrashFurnace();
     this.enemySystem.setActiveIsland(this.activeIsland);
     this.islandRotationTarget = this.islandViewRotation;
     this.islandRotationSettling = false;
@@ -2566,18 +2685,25 @@ export class MiningScene {
     this.torchPlacementPreview = this.isTorchToolSelected() ? this.getTorchPlacementPreview() : null;
     this.furnacePlacementPreview = this.isFurnaceToolSelected() ? this.getFurnacePlacementPreview() : null;
     this.craftingStationPlacementPreview = this.isCraftingStationToolSelected() ? this.getCraftingStationPlacementPreview() : null;
+    this.researchStationPlacementPreview = this.isResearchStationToolSelected() ? this.getResearchStationPlacementPreview() : null;
     if (actions.justPressed.placeFlag) this.placeFlagOnIsland(this.flagPlacementPreview);
     if (actions.justPressed.placeTorch) this.placeTorchOnIsland(this.torchPlacementPreview);
     if (actions.justPressed.placeFurnace) this.placeFurnaceOnIsland(this.furnacePlacementPreview);
     if (actions.justPressed.placeCraftingStation) this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
+    if (actions.justPressed.placeResearchStation) this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
     if (actions.mine) this.updateIslandTerrainMining(delta, this.islandAimPreview);
     else this.stopIslandTerrainLaser();
     if (actions.justPressed.interact || actions.justPressed.confirm) {
       const nearbyFurnace = this.getNearbyFurnace(player);
-      if (this.placedCraftingStation?.overlapsPlayer(player)) {
+      const nearbyWorkbench = this.getNearbyWorkbench(player);
+      if (nearbyWorkbench?.type === 'crafting') {
         this.showCraftingModal();
+      } else if (nearbyWorkbench?.type === 'research') {
+        this.showResearchStationModal();
       } else if (nearbyFurnace) {
         this.showFurnaceModal(nearbyFurnace.id);
+      } else if (this.getNearbyFlag(player)) {
+        this.packUpNearbyFlag();
       } else if (island.isPlayerNearShip(player)) {
         this.handleShipInteract();
       }
@@ -2675,13 +2801,18 @@ export class MiningScene {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'miner';
   }
 
+  isResearchStationToolSelected() {
+    return this.game.input.getSelectedHotbarSlot?.()?.id === 'researchStation';
+  }
+
   isTerrainToolSelected() {
     const selectedId = this.game.input.getSelectedHotbarSlot?.()?.id;
     return selectedId === 'miner'
       || selectedId === 'flag'
       || selectedId === 'torch'
       || selectedId === 'furnace'
-      || selectedId === 'craftingStation';
+      || selectedId === 'craftingStation'
+      || selectedId === 'researchStation';
   }
 
   getControllerToolAimRange(context = 'island') {
@@ -2706,7 +2837,7 @@ export class MiningScene {
     if (!preview) return null;
     return {
       ...preview,
-      canPlace: Boolean(preview.hit),
+      canPlace: Boolean(preview.hit && this.game.systems.inventory.getStoredAmount('markerFlag') > 0),
     };
   }
 
@@ -2719,6 +2850,11 @@ export class MiningScene {
     if (!target?.hit) {
       this.game.audio.playError?.();
       this.game.ui.showToast('Aim the flag at solid ground', 'danger', 1100);
+      return;
+    }
+    if (this.game.systems.inventory.getStoredAmount('markerFlag') <= 0) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('No marker flag in inventory', 'danger', 1200);
       return;
     }
 
@@ -2741,6 +2877,7 @@ export class MiningScene {
       accent: material.edge || '#66d8e8',
     });
     flags.push(flag);
+    this.game.systems.inventory.remove('markerFlag', 1, { skipSave: true });
     this.flagPlacementPreview = null;
     this.islandTerrainDirty = this.islandTerrainDirty || pad.changed;
     if (this.islandTerrainDirty) {
@@ -2748,9 +2885,20 @@ export class MiningScene {
       this.islandTerrainDirty = false;
     }
     this.game.systems.islands.saveFlags(island.id, flags);
+    this.game.state.base = {
+      established: true,
+      islandId: island.id,
+      flagId: flag.id,
+      local: { x: flag.x, y: flag.y },
+    };
+    this.game.state.navigation.gpsUnlocked = true;
+    this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+    this.game.state.navigation.selectedDestinationId = 'base';
+    this.game.systems.navigation?.refreshLocations?.();
+    this.refreshHotbar(true);
     const world = island.localToWorldRotated(pad.x, pad.y, this.getIslandViewRotation());
     this.spawnBurst(world.x, world.y, '#ffd36b', 14, 95);
-    this.addFloatingText(world.x, world.y - 24, 'Flag placed', { color: '#ffd36b', rarity: 'common' });
+    this.addFloatingText(world.x, world.y - 24, 'Base marked', { color: '#ffd36b', rarity: 'common' });
     this.game.audio.playSuccess?.();
   }
 
@@ -2858,9 +3006,10 @@ export class MiningScene {
       x: pad.x,
       y: pad.y,
       rotation: -this.getIslandViewRotation(),
+      compact: true,
     });
     story.craftingStationPlaced = true;
-    story.craftingStation = this.placedCraftingStation.serialize();
+    story.craftingStation = { ...this.placedCraftingStation.serialize(), islandId: island.id };
     this.craftingStationPlacementPreview = null;
     this.islandTerrainDirty = this.islandTerrainDirty || pad.changed;
     if (this.islandTerrainDirty) {
@@ -2873,6 +3022,71 @@ export class MiningScene {
     this.addFloatingText(world.x, world.y - 24, 'Crafting station placed', { color: '#76f3ff', rarity: 'common' });
     this.game.audio.playSuccess?.();
     this.startCrashTutorialHint('furnaceHint');
+  }
+
+  getResearchStationPlacementPreview() {
+    if (!this.activeIsland || !this.islandPlayer) return null;
+    const preview = this.getIslandTerrainPreview({ updateFacing: false });
+    if (!preview?.hit) return preview ? { ...preview, canPlace: false } : null;
+    const story = this.getStoryState();
+    return {
+      ...preview,
+      canPlace: Boolean(!story.researchStationPlaced && this.game.systems.inventory.getStoredAmount('researchStationKit') > 0),
+    };
+  }
+
+  placeResearchStationOnIsland(preview = null) {
+    if (this.game.ui.modalLayer?.children.length) return;
+    const island = this.activeIsland;
+    const player = this.islandPlayer;
+    if (!island || !player || this.islandMode !== 'onIsland') return;
+    const story = this.getStoryState();
+    if (story.researchStationPlaced || this.placedResearchStation) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Research station is already placed', 'default', 1200);
+      return;
+    }
+    if (this.game.systems.inventory.getStoredAmount('researchStationKit') <= 0) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('No research station in inventory', 'danger', 1200);
+      return;
+    }
+    const target = preview || this.getResearchStationPlacementPreview();
+    if (!target?.hit) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Aim the research station at solid ground', 'danger', 1200);
+      return;
+    }
+
+    this.updateIslandPlayerFacingFromAim(target.rawAimPoint);
+    const pad = island.terrain.createPlacementPad(target.hit.x, target.hit.y, {
+      viewRotation: this.getIslandViewRotation(),
+      width: 128,
+      clearance: 92,
+      depth: 48,
+      material: target.hit.material,
+    });
+    this.game.systems.inventory.remove('researchStationKit', 1, { skipSave: true });
+    this.placedResearchStation = new PlacedResearchStation({
+      x: pad.x,
+      y: pad.y,
+      rotation: -this.getIslandViewRotation(),
+      compact: true,
+    });
+    story.researchStationPlaced = true;
+    story.researchStation = { ...this.placedResearchStation.serialize(), islandId: island.id };
+    this.researchStationPlacementPreview = null;
+    this.islandTerrainDirty = this.islandTerrainDirty || pad.changed;
+    if (this.islandTerrainDirty) {
+      this.game.systems.islands.saveTerrain(island.id, island.terrain);
+      this.islandTerrainDirty = false;
+    }
+    this.game.saveGame();
+    this.refreshHotbar(true);
+    const world = island.localToWorldRotated(pad.x, pad.y, this.getIslandViewRotation());
+    this.spawnBurst(world.x, world.y, '#b794ff', 16, 105);
+    this.addFloatingText(world.x, world.y - 24, 'Research station placed', { color: '#b794ff', rarity: 'uncommon' });
+    this.game.audio.playSuccess?.();
   }
 
   getFurnacePlacementPreview() {
@@ -2927,6 +3141,7 @@ export class MiningScene {
     story.furnaces ||= [];
     story.furnaces.push({
       ...placed.serialize(),
+      islandId: island.id,
       blueprintId: blueprint.id,
       name: blueprint.name || 'Starter Furnace',
       active: null,
@@ -2965,7 +3180,7 @@ export class MiningScene {
 
   createDefaultFurnaceBlueprint() {
     const recipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
-    const tileSize = this.activeIsland?.terrain?.cellSize || 22;
+    const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
     const cells = [];
     [
       [4, 6], [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
@@ -2985,7 +3200,7 @@ export class MiningScene {
   }
 
   updatePlacedFurnace(delta) {
-    if (!this.crashStart || !this.placedFurnaces.length) return;
+    if (!this.placedFurnaces.length) return;
     const story = this.getStoryState();
     story.furnaces ||= [];
     this.placedFurnaces.forEach((placed) => {
@@ -3005,6 +3220,11 @@ export class MiningScene {
   updatePlacedCraftingStation(delta) {
     if (!this.placedCraftingStation) return;
     this.placedCraftingStation.update(delta);
+  }
+
+  updatePlacedResearchStation(delta) {
+    if (!this.placedResearchStation) return;
+    this.placedResearchStation.update(delta);
   }
 
   tickCrashFurnace(delta, furnace, placedFurnace = this.placedFurnace) {
@@ -3080,7 +3300,25 @@ export class MiningScene {
     return this.placedFurnaces.find((furnace) => furnace.overlapsPlayer(player)) || null;
   }
 
+  getNearbyWorkbench(player = this.islandPlayer) {
+    if (!player) return null;
+    const candidates = [];
+    if (this.placedCraftingStation?.overlapsPlayer(player)) {
+      const dx = player.centerX - this.placedCraftingStation.x;
+      const dy = player.centerY - this.placedCraftingStation.y;
+      candidates.push({ type: 'crafting', station: this.placedCraftingStation, distanceSq: dx * dx + dy * dy });
+    }
+    if (this.placedResearchStation?.overlapsPlayer(player)) {
+      const dx = player.centerX - this.placedResearchStation.x;
+      const dy = player.centerY - this.placedResearchStation.y;
+      candidates.push({ type: 'research', station: this.placedResearchStation, distanceSq: dx * dx + dy * dy });
+    }
+    candidates.sort((a, b) => a.distanceSq - b.distanceSq);
+    return candidates[0] || null;
+  }
+
   startCrashTutorialHint(key) {
+    if (gameBalance.tutorialDialogueEnabled === false) return;
     if (!this.crashStart || this.crashTutorialHints[key]) return;
     this.crashTutorialHints[key] = true;
     this.game.systems.dialogue.startSet('sparksTutorial', key, {
@@ -4107,7 +4345,7 @@ export class MiningScene {
     const story = this.getStoryState();
     const sculptGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
     const cells = this.getVoxelCraftCells(recipe, sculptGrid);
-    const tileSize = this.activeIsland?.terrain?.cellSize || 22;
+    const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
     if (recipe.outputItemId !== 'starterFurnace') {
       this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
       this.autoAssignItemToHotbar(recipe.outputItemId);
@@ -4152,10 +4390,66 @@ export class MiningScene {
     story.craftingStation = null;
     this.placedCraftingStation = null;
     this.game.systems.inventory.add('craftingStationKit', 1, { skipSave: true });
+    this.autoAssignItemToHotbar('craftingStationKit');
     this.game.saveGame();
     this.game.audio.playSuccess?.();
     this.closeSurvivalModal();
     this.game.ui.showToast('Crafting station packed into inventory', 'success', 1300);
+  }
+
+  packUpResearchStation() {
+    const story = this.getStoryState();
+    if (!this.placedResearchStation) return;
+    story.researchStationPlaced = false;
+    story.researchStation = null;
+    this.placedResearchStation = null;
+    this.game.systems.inventory.add('researchStationKit', 1, { skipSave: true });
+    this.autoAssignItemToHotbar('researchStationKit');
+    this.game.saveGame();
+    this.game.audio.playSuccess?.();
+    this.closeSurvivalModal();
+    this.game.ui.showToast('Research station packed into inventory', 'success', 1300);
+  }
+
+  showResearchStationModal() {
+    if (!this.placedResearchStation) return;
+    const content = document.createElement('div');
+    content.className = 'survival-item-detail';
+    const base = this.game.state.base || {};
+    const planet = this.activeIsland?.tag || this.activeIsland?.planetTag || 'P??';
+    content.innerHTML = `
+      <div class="survival-item-detail-icon" style="--item-color: #b794ff">RS</div>
+      <div>
+        <h2>Research Station</h2>
+        <p>Scanner logs, base routing, and escape research are parked here for now.</p>
+        <dl>
+          <div><dt>Current Planet</dt><dd>${planet}</dd></div>
+          <div><dt>Base Beacon</dt><dd>${base.established ? 'Online' : 'Not marked'}</dd></div>
+          <div><dt>Research</dt><dd>${this.game.state.researchPoints || 0}</dd></div>
+          <div><dt>Status</dt><dd>Prototype analyzer</dd></div>
+        </dl>
+      </div>
+    `;
+    const modal = this.createSurvivalModal({
+      title: 'Research Station',
+      subtitle: 'Compact field analyzer. Deeper research UI will plug in here.',
+      className: 'research-survival-modal',
+      content,
+      actions: [
+        new Button('Set Base GPS', () => {
+          this.game.state.navigation.gpsUnlocked = true;
+          this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+          this.game.state.navigation.selectedDestinationId = 'base';
+          this.game.saveGame();
+          this.game.ui.showToast('Base GPS selected', 'success', 1200);
+        }, { icon: 'B', variant: 'metal' }).element,
+        new Button('Pack Up', () => this.packUpResearchStation(), { icon: '<', variant: 'metal' }).element,
+        new Button('Close', () => this.closeSurvivalModal(), { icon: 'x', variant: 'metal' }).element,
+      ],
+    });
+    this.survivalModal = modal;
+    this.survivalModalKind = 'research';
+    this.game.ui.showModal(modal);
   }
 
   showFurnaceModal(furnaceId = '') {
@@ -4280,6 +4574,32 @@ export class MiningScene {
       flag.update(delta);
       if (this.islandMode === 'onIsland' && this.islandPlayer) flag.bumpFromPlayer(this.islandPlayer);
     });
+  }
+
+  getNearbyFlag(player = this.islandPlayer) {
+    const flags = this.activeIsland?.placedFlags || [];
+    return flags.find((flag) => flag.overlapsPlayer(player)) || null;
+  }
+
+  packUpNearbyFlag() {
+    const island = this.activeIsland;
+    const flag = this.getNearbyFlag();
+    if (!island || !flag) return false;
+    island.placedFlags = (island.placedFlags || []).filter((entry) => entry.id !== flag.id);
+    this.game.systems.inventory.add('markerFlag', 1, { skipSave: true });
+    this.autoAssignItemToHotbar('markerFlag');
+    if (this.game.state.base?.flagId === flag.id) {
+      this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
+      this.game.state.navigation.selectedDestinationId = null;
+      this.game.ui.showToast('Base flag packed. Place it to mark a new base.', 'success', 1800);
+    } else {
+      this.game.ui.showToast('Flag packed into inventory', 'success', 1200);
+    }
+    this.game.systems.islands.saveFlags(island.id, island.placedFlags);
+    this.refreshHotbar(true);
+    this.game.audio.playSuccess?.();
+    this.game.saveGame();
+    return true;
   }
 
   seedPlanetPlayer(island, player) {
@@ -5125,20 +5445,22 @@ export class MiningScene {
       this.game.systems.inventory.remove(itemId, amount, { skipSave: true });
     });
     story.thrustersRepaired = true;
-    story.stationRouteUnlocked = true;
     this.game.state.navigation.gpsUnlocked = true;
     this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
-    this.game.state.navigation.selectedDestinationId = 'station';
-    this.game.systems.navigation.discoverLocation('station', { notify: true, save: false });
+    this.game.state.navigation.selectedDestinationId = 'base';
+    this.game.systems.navigation.refreshLocations?.();
+    this.game.systems.navigation.discoverLocation('base', { notify: false, save: false });
     this.game.saveGame();
     this.game.audio.playSuccess?.();
     this.spawnBurst(this.ship.x, this.ship.y, '#76f3ff', 28, 160);
-    this.game.ui.showToast('Thrusters repaired. Board the ship and follow the station cursor.', 'success', 2800);
-    this.game.systems.dialogue.startSet('sparksTutorial', 'repaired', {
-      speaker: 'Sparks',
-      portraitStyle: { tone: 'forge', shape: 'drone' },
-      enqueue: true,
-    });
+    this.game.ui.showToast('Thrusters repaired. Your base GPS is online.', 'success', 2800);
+    if (gameBalance.tutorialDialogueEnabled !== false) {
+      this.game.systems.dialogue.startSet('sparksTutorial', 'repaired', {
+        speaker: 'Sparks',
+        portraitStyle: { tone: 'forge', shape: 'drone' },
+        enqueue: true,
+      });
+    }
     this.crashStart = false;
   }
 
@@ -5210,10 +5532,14 @@ export class MiningScene {
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
     if (this.isCraftingStationToolSelected()) text = 'Crafting station - aim at ground and click Use';
+    if (this.isResearchStationToolSelected()) text = 'Research station - aim at ground and click Use';
     if (this.isFurnaceToolSelected()) text = 'Furnace tool - aim at ground and click Use';
     if (this.crashStart && !this.getStoryState().thrustersRepaired) text = this.getCrashObjectiveText();
     const interactLabel = this.getInteractControlLabel();
-    if (this.placedCraftingStation?.overlapsPlayer(this.islandPlayer)) text = `Press ${interactLabel} to open crafting station`;
+    const nearbyWorkbench = this.getNearbyWorkbench(this.islandPlayer);
+    if (nearbyWorkbench?.type === 'crafting') text = `Press ${interactLabel} to open crafting station`;
+    if (nearbyWorkbench?.type === 'research') text = `Press ${interactLabel} to open research station`;
+    if (this.getNearbyFlag(this.islandPlayer)) text = `Press ${interactLabel} to pack base flag`;
     const nearbyFurnace = this.getNearbyFurnace(this.islandPlayer);
     if (nearbyFurnace) text = `Press ${interactLabel} to open furnace`;
     if (this.activeIsland.isPlayerNearShip(this.islandPlayer)) {
@@ -5840,6 +6166,7 @@ export class MiningScene {
   }
 
   dock() {
+    if (gameBalance.stationEnabled === false) return;
     if (this.getDistanceFromStation() > DOCK_RADIUS || this.ending) return;
     if (this.runCargoCount > 0) {
       this.beginCargoDump({ returnToStation: true });
@@ -5859,7 +6186,7 @@ export class MiningScene {
     this.addScreenShake(0.45);
     this.spawnBurst(this.ship.x, this.ship.y, '#ff756f', 18, 120);
     this.addFloatingText(this.ship.x, this.ship.y - 34, 'Out of Fuel', { color: '#ff756f', rarity: 'rare' });
-    this.game.ui.showToast('Out of fuel. Station tow engaged.', 'danger', 2400);
+    this.game.ui.showToast('Out of fuel. Base recovery engaged.', 'danger', 2400);
     this.game.audio.playLowFuelWarning();
     this.game.audio.playSceneTransition();
     const summary = this.createSummary('outOfFuel', this.runCargo);
@@ -5936,9 +6263,12 @@ export class MiningScene {
       this.setHudText('planetTag', this.hud.planetTag, planetVisor.tag, force);
       this.setHudText('planetStatus', this.hud.planetStatus, planetVisor.status, force);
     }
-    const angleToStation = Math.atan2(-this.ship.y, -this.ship.x);
-    this.hud.stationArrow.style.transform = `rotate(${angleToStation + Math.PI / 2}rad)`;
-    const dockVisible = distance * distance <= DOCK_RADIUS_SQ && !this.cargoDumping;
+    const baseDestination = this.game.systems.navigation.getLocation('base');
+    const beaconX = baseDestination?.worldPosition?.x ?? 0;
+    const beaconY = baseDestination?.worldPosition?.y ?? 0;
+    const angleToBeacon = Math.atan2(beaconY - this.ship.y, beaconX - this.ship.x);
+    this.hud.stationArrow.style.transform = `rotate(${angleToBeacon + Math.PI / 2}rad)`;
+    const dockVisible = gameBalance.stationEnabled !== false && distance * distance <= DOCK_RADIUS_SQ && !this.cargoDumping;
     this.setHudClass('dockVisible', this.dockButton, 'is-hidden', !dockVisible, force);
     if (dockVisible && this.runCargoCount > 0) this.game.systems.tutorial.onDockAvailable();
     this.setHudClass(
@@ -6036,7 +6366,7 @@ export class MiningScene {
     ctx.save();
     this.applyWorldScale(ctx, width, height);
     this.drawDistanceRings(ctx);
-    this.drawStation(ctx);
+    if (gameBalance.stationEnabled !== false) this.drawStation(ctx);
     const camera = this.cameraView;
     for (const island of this.rockIslands) {
       if (!this.shouldRenderIsland(island)) continue;
@@ -6063,7 +6393,9 @@ export class MiningScene {
         anchorWorld: island === this.activeIsland && this.islandLandingAnchor?.island === island ? this.islandLandingAnchor.world : null,
         placedFlags: island.placedFlags || [],
         placedTorches: island.placedTorches || [],
+        baseLab: island === this.activeIsland && this.baseLab?.id ? this.baseLab : null,
         placedCraftingStations: island === this.activeIsland && this.placedCraftingStation ? [this.placedCraftingStation] : [],
+        placedResearchStations: island === this.activeIsland && this.placedResearchStation ? [this.placedResearchStation] : [],
         placedFurnaces: island === this.activeIsland ? this.placedFurnaces : [],
         enemies: island === this.activeIsland ? this.enemySystem?.getDrawableEnemies() : [],
         materialPickups: island === this.activeIsland ? this.islandPickups : [],
@@ -6505,7 +6837,12 @@ export class MiningScene {
     const torchPlacementMode = this.isTorchToolSelected();
     const furnacePlacementMode = this.isFurnaceToolSelected();
     const craftingStationPlacementMode = this.isCraftingStationToolSelected();
-    const placementMode = flagPlacementMode || torchPlacementMode || furnacePlacementMode || craftingStationPlacementMode;
+    const researchStationPlacementMode = this.isResearchStationToolSelected();
+    const placementMode = flagPlacementMode
+      || torchPlacementMode
+      || furnacePlacementMode
+      || craftingStationPlacementMode
+      || researchStationPlacementMode;
     const terrainToolMode = this.isMinerToolSelected() || placementMode || Boolean(this.islandMiningBeam);
     const state = placementMode
       ? (
@@ -6515,7 +6852,9 @@ export class MiningScene {
             ? (this.torchPlacementPreview || this.getTorchPlacementPreview())
             : furnacePlacementMode
               ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
-              : (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
+              : craftingStationPlacementMode
+                ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
+                : (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
       )
       : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
@@ -6532,6 +6871,7 @@ export class MiningScene {
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
+      if (researchStationPlacementMode) this.drawResearchStationPlacementPreview(ctx, state);
     }
     this.drawControllerIslandAimIndicator(ctx);
     if (this.islandMiningHitFeedback) {
@@ -6933,7 +7273,7 @@ export class MiningScene {
       color: ready ? '#ff9f43' : '#ff756f',
       accent: ready ? '#ffd36b' : '#fff2cf',
       shape: blueprint.shape,
-      tileSize: this.activeIsland.terrain?.cellSize || 22,
+      tileSize: blueprint.shape?.tileSize || Math.max(7, Math.round((this.activeIsland.terrain?.cellSize || 22) / 3)),
     });
   }
 
@@ -6964,9 +7304,44 @@ export class MiningScene {
       x: stationX,
       y: stationY,
       viewRotation,
+      compact: true,
       time: this.time,
       color: ready ? '#76f3ff' : '#ff756f',
       accent: '#ffd36b',
+    });
+  }
+
+  drawResearchStationPlacementPreview(ctx, state) {
+    if (!state?.hit || !this.activeIsland?.terrain) return;
+    const story = this.getStoryState();
+    const viewRotation = this.getIslandViewRotation();
+    const outwardAngle = -Math.PI / 2 - viewRotation;
+    const outward = { x: Math.cos(outwardAngle), y: Math.sin(outwardAngle) };
+    const tangent = { x: -outward.y, y: outward.x };
+    const stationX = state.hit.x + outward.x * 4;
+    const stationY = state.hit.y + outward.y * 4;
+    const ready = Boolean(!story.researchStationPlaced && this.game.systems.inventory.getStoredAmount('researchStationKit') > 0);
+    ctx.save();
+    ctx.globalAlpha = ready ? 0.78 : 0.42;
+    ctx.strokeStyle = ready ? 'rgba(183, 148, 255, 0.96)' : 'rgba(255, 117, 111, 0.82)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([13, 10]);
+    ctx.lineDashOffset = -this.time * 22;
+    ctx.beginPath();
+    ctx.moveTo(state.hit.x - tangent.x * 118 * 0.5, state.hit.y - tangent.y * 118 * 0.5);
+    ctx.lineTo(state.hit.x + tangent.x * 118 * 0.5, state.hit.y + tangent.y * 118 * 0.5);
+    ctx.stroke();
+    ctx.restore();
+
+    PlacedResearchStation.drawGhost(ctx, {
+      x: stationX,
+      y: stationY,
+      viewRotation,
+      compact: true,
+      time: this.time,
+      color: ready ? '#b794ff' : '#ff756f',
+      accent: '#76f3ff',
     });
   }
 

@@ -150,6 +150,7 @@ export class InputManager {
       placeTorch: false,
       placeFurnace: false,
       placeCraftingStation: false,
+      placeResearchStation: false,
       inventory: false,
       crafting: false,
       hotbarNext: false,

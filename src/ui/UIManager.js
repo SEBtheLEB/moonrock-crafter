@@ -225,7 +225,7 @@ export class UIManager {
     game.blockControllerUiActivationUntilRelease?.();
     const modal = new Modal({
       title: 'Paused',
-      body: 'Tune the station, then jump back in.',
+      body: 'Tune the expedition kit, then jump back in.',
       className: 'pause-modal',
       children: [
         new Button('Resume', () => game.togglePause(false), { icon: '>', variant: 'success' }).element,
@@ -237,7 +237,7 @@ export class UIManager {
         new Button('Manual Save', () => game.manualSave(), { icon: 'S', variant: 'metal' }).element,
         new Button('Refresh App', () => game.refreshApp(), { icon: 'R', variant: 'metal' }).element,
         new Button('Exit Fullscreen', () => game.exitFullscreen(), { icon: '[]', variant: 'metal' }).element,
-        new Button('Return to Station', () => game.returnToStation(), { icon: '<' }).element,
+        new Button('Set Base GPS', () => game.returnToBase(), { icon: '<' }).element,
         new Button('Reset Save', () => game.resetSave(), { icon: '!', variant: 'danger' }).element,
         new Button(mutedLabel, () => {
           const isMuted = game.audio.toggleMuted();

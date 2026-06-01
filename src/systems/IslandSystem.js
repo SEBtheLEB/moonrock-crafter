@@ -2,7 +2,7 @@ import { islands } from '../data/islands.js?v=115';
 import { TerrainGrid } from './TerrainGrid.js?v=115';
 import { gameBalance } from '../data/gameBalance.js?v=115';
 
-const ISLAND_LAYOUT_VERSION = 6;
+const ISLAND_LAYOUT_VERSION = 7;
 const PLANET_TAG_PREFIX = 'P';
 
 export class IslandSystem {
@@ -114,6 +114,10 @@ export class IslandSystem {
       if (this.assignPlanetTags(layout)) this.game.saveGame();
       return layout;
     }
+    this.game.state.islands.terrain = {};
+    this.game.state.islands.flags = {};
+    this.game.state.islands.torches = {};
+    this.game.state.islands.shipAnchors = {};
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
     this.game.state.islands.layout = layout;
@@ -163,6 +167,18 @@ export class IslandSystem {
     if (clearFlags && this.game.state.islands.flags) delete this.game.state.islands.flags[island.id];
     if (clearTorches && this.game.state.islands.torches) delete this.game.state.islands.torches[island.id];
     if (this.game.state.islands.shipAnchors) delete this.game.state.islands.shipAnchors[island.id];
+    if (this.game.state.base?.islandId === island.id) {
+      this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
+    }
+    if (this.game.state.story?.starterPlanetId === island.id) {
+      this.game.state.story.baseLab = null;
+      this.game.state.story.craftingStationPlaced = false;
+      this.game.state.story.craftingStation = null;
+      this.game.state.story.researchStationPlaced = false;
+      this.game.state.story.researchStation = null;
+      this.game.systems.inventory?.add?.('craftingStationKit', 1, { skipSave: true });
+      this.game.systems.inventory?.add?.('researchStationKit', 1, { skipSave: true });
+    }
     this.game.saveGame();
     this.game.systems.navigation?.refreshLocations?.();
     return island;
@@ -180,17 +196,19 @@ export class IslandSystem {
     this.game.state.islands.seed = layoutSeed;
     const random = this.createSeededRandom(layoutSeed);
     const layout = [];
+    const ringSize = gameBalance.mining?.ringSize || 20000;
     layout.push({
       id: 'crashPlanet',
       name: 'Menderfall',
       type: 'crashPlanet',
       biome: 'scrap',
       kind: 'story',
-      worldPosition: { x: -7600, y: 2400 },
+      worldPosition: this.positionInRing(random, 0, ringSize, 5200, Math.min(9800, ringSize - 7200), layout),
       size: { width: 3400, height: 3400 },
       discovered: true,
       dangerLevel: 1,
       landingZoneRadius: 720,
+      baseCamp: true,
       resources: ['stoneOre', 'ironDust', 'copperShards', 'moonCrystal', 'crystallizedStone', 'redCrystal'],
       animals: [],
       layoutId: 'crashPlanet',
@@ -198,7 +216,6 @@ export class IslandSystem {
       description: 'The chunky starter planet where the ship crashed. Stone, iron, copper, and sealed crystal rooms are buried under the surface.',
     });
 
-    const ringSize = gameBalance.mining?.ringSize || 20000;
     const starter = islands[0];
     layout.push({
       ...starter,

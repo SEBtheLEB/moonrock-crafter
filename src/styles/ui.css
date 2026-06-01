@@ -1290,6 +1290,32 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   transform: rotate(-45deg);
 }
 
+.icon-research::before {
+  left: 4px;
+  top: 5px;
+  width: 17px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  box-shadow: 0 0 12px color-mix(in srgb, currentColor 42%, transparent);
+}
+
+.icon-research::after {
+  left: 8px;
+  top: 9px;
+  width: 9px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.icon-research i {
+  left: 4px;
+  bottom: 2px;
+  width: 17px;
+  border-top: 2px solid currentColor;
+}
+
 .icon-furnace::before {
   left: 5px;
   top: 6px;

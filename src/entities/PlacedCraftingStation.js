@@ -8,6 +8,7 @@ export class PlacedCraftingStation {
     x = 0,
     y = 0,
     rotation = 0,
+    compact = false,
     color = '#76f3ff',
     accent = '#ffd36b',
   } = {}) {
@@ -15,6 +16,7 @@ export class PlacedCraftingStation {
     this.x = x;
     this.y = y;
     this.rotation = rotation;
+    this.compact = compact;
     this.color = color;
     this.accent = accent;
     this.pulse = 0;
@@ -30,6 +32,7 @@ export class PlacedCraftingStation {
       x: Math.round(this.x * 10) / 10,
       y: Math.round(this.y * 10) / 10,
       rotation: Math.round(this.rotation * 10000) / 10000,
+      compact: this.compact,
       color: this.color,
       accent: this.accent,
     };
@@ -41,9 +44,11 @@ export class PlacedCraftingStation {
 
   overlapsPlayer(player) {
     if (!player) return false;
+    const scale = this.compact ? 0.68 : 1;
     const dx = player.centerX - this.x;
-    const dy = player.centerY - (this.y - STATION_HEIGHT * 0.45);
-    return dx * dx + dy * dy < STATION_TOUCH_RADIUS * STATION_TOUCH_RADIUS;
+    const dy = player.centerY - (this.y - STATION_HEIGHT * 0.45 * scale);
+    const radius = this.compact ? STATION_TOUCH_RADIUS * 1.08 : STATION_TOUCH_RADIUS;
+    return dx * dx + dy * dy < radius * radius;
   }
 
   draw(ctx, { time = 0, ghost = false } = {}) {
@@ -51,6 +56,7 @@ export class PlacedCraftingStation {
       x: this.x,
       y: this.y,
       rotation: this.rotation,
+      compact: this.compact,
       time,
       ghost,
       color: this.color,
@@ -58,14 +64,15 @@ export class PlacedCraftingStation {
     });
   }
 
-  static drawGhost(ctx, { x, y, viewRotation = 0, rotation = -viewRotation, time = 0, color = '#76f3ff', accent = '#ffd36b' } = {}) {
-    PlacedCraftingStation.drawShape(ctx, { x, y, rotation, time, ghost: true, color, accent });
+  static drawGhost(ctx, { x, y, viewRotation = 0, rotation = -viewRotation, compact = false, time = 0, color = '#76f3ff', accent = '#ffd36b' } = {}) {
+    PlacedCraftingStation.drawShape(ctx, { x, y, rotation, compact, time, ghost: true, color, accent });
   }
 
   static drawShape(ctx, {
     x,
     y,
     rotation = 0,
+    compact = false,
     time = 0,
     ghost = false,
     color = '#76f3ff',
@@ -74,6 +81,7 @@ export class PlacedCraftingStation {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rotation);
+    if (compact) ctx.scale(0.68, 0.68);
     ctx.globalAlpha *= ghost ? 0.56 : 1;
 
     ctx.fillStyle = ghost ? 'rgba(118, 243, 255, 0.14)' : 'rgba(3, 9, 16, 0.3)';

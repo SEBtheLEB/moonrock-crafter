@@ -1,5 +1,6 @@
 import { locations } from '../data/locations.js?v=115';
 import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=115';
+import { gameBalance } from '../data/gameBalance.js?v=115';
 
 export class NavigationSystem {
   constructor(game, islandSystem = null) {
@@ -15,7 +16,11 @@ export class NavigationSystem {
   }
 
   createLocations() {
-    const merged = new Map(locations.map((location) => [location.id, { ...location }]));
+    const merged = new Map(
+      locations
+        .filter((location) => location.id !== 'station' || gameBalance.stationEnabled !== false)
+        .map((location) => [location.id, { ...location }]),
+    );
     const islands = this.islandSystem?.getAllIslands?.() || [];
     islands.forEach((island) => {
       if (!island?.id || island.id === 'crashPlanet') return;
@@ -39,7 +44,41 @@ export class NavigationSystem {
         canSetDestination: true,
       });
     });
+    const baseLocation = this.getBaseLocationFromIslands(islands);
+    if (baseLocation) merged.set(baseLocation.id, baseLocation);
     return [...merged.values()];
+  }
+
+  getBaseLocationFromIslands(islands = this.islandSystem?.getAllIslands?.() || []) {
+    const base = this.game.state.base || {};
+    if (!base.established || !base.islandId) return null;
+    const island = islands.find((entry) => entry.id === base.islandId);
+    if (!island) return null;
+    const local = base.local || null;
+    const size = island.size || { width: 0, height: 0 };
+    const worldPosition = local
+      ? {
+        x: island.worldPosition.x - size.width / 2 + local.x,
+        y: island.worldPosition.y - size.height / 2 + local.y,
+      }
+      : { ...island.worldPosition };
+    return {
+      id: 'base',
+      name: `${island.tag || island.planetTag || 'Base'} Field Base`,
+      type: 'base',
+      tag: 'BASE',
+      planetTag: island.tag || island.planetTag || '',
+      worldPosition,
+      discovered: true,
+      dangerLevel: island.dangerLevel || 1,
+      recommendedFuel: 0,
+      description: 'Your current flagged field base. Move the flag to make another planet home.',
+      resources: island.resources || [],
+      icon: 'B',
+      requiredScannerLevel: 0,
+      biome: island.biome || 'scrap',
+      canSetDestination: true,
+    };
   }
 
   get state() {
@@ -114,6 +153,7 @@ export class NavigationSystem {
       if (tab === 'islands') return location.type === 'island';
       if (tab === 'wrecks') return location.type === 'wreck';
       if (tab === 'story') return location.type === 'story';
+      if (tab === 'base') return location.type === 'base';
       return true;
     });
   }
@@ -136,6 +176,10 @@ export class NavigationSystem {
   }
 
   getLocation(locationId) {
+    if (locationId === 'base') {
+      const base = this.getBaseLocationFromIslands();
+      if (base) return base;
+    }
     return this.locations.find((location) => location.id === locationId) || null;
   }
 

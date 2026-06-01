@@ -95,6 +95,17 @@ export const materials = [
     zoneAvailability: ['starter'],
   },
   {
+    id: 'researchStationKit',
+    name: 'Research Station',
+    rarity: 'common',
+    icon: 'RS',
+    color: '#b794ff',
+    baseValue: 0,
+    weight: 0,
+    description: 'A compact analyzer bench for reading strange matter and plotting a way out.',
+    zoneAvailability: ['starter'],
+  },
+  {
     id: 'starterFurnace',
     name: 'Starter Furnace',
     rarity: 'common',

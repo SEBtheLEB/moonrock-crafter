@@ -90,6 +90,17 @@ export const hotbarSlotCatalog = [
     description: 'Place the starter crafting station on voxel terrain.',
   },
   {
+    id: 'researchStation',
+    inventoryItemId: 'researchStationKit',
+    label: 'Research Station',
+    shortLabel: 'Research',
+    icon: 'RS',
+    iconHtml: '<span class="tool-icon-shape icon-research"><i></i></span>',
+    action: 'placeResearchStation',
+    tone: 'research',
+    description: 'Place the compact field research station on voxel terrain.',
+  },
+  {
     id: 'furnace',
     inventoryItemId: 'starterFurnace',
     label: 'Furnace',

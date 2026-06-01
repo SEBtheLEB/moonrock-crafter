@@ -266,7 +266,9 @@ export class SpaceIsland {
     anchorWorld = null,
     placedFlags = this.placedFlags,
     placedTorches = this.placedTorches,
+    baseLab = null,
     placedCraftingStations = [],
+    placedResearchStations = [],
     placedFurnaces = [],
     enemies = [],
     materialPickups = [],
@@ -302,8 +304,10 @@ export class SpaceIsland {
     this.terrain.draw(ctx, { x: 0, y: 0 }, this.width, this.height, terrainDebug);
     this.terrain.drawDebug?.(ctx, terrainDebug);
     this.drawEmbeddedLights(ctx, time, discovered);
+    baseLab?.draw?.(ctx, { time });
     (placedCraftingStations || []).forEach((station) => station.draw(ctx, { time }));
-    (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time, tileSize: this.terrain?.cellSize }));
+    (placedResearchStations || []).forEach((station) => station.draw(ctx, { time }));
+    (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time }));
     (placedFlags || []).forEach((flag) => flag.draw(ctx, { time }));
     torches.forEach((torch) => torch.draw?.(ctx, { time }));
     (materialPickups || []).forEach((pickup) => pickup.drawLocal?.(ctx));
@@ -432,7 +436,30 @@ export class SpaceIsland {
 
   drawParkedShip(ctx, ship, time, { broken = false } = {}) {
     const landing = this.getShipParkLocal();
+    const base = this.getLandingBaseLocal();
     const bob = Math.sin(time * 2.2) * 1.5;
+    ctx.save();
+    ctx.translate(base.x, base.y + 4);
+    ctx.rotate(this.landingAngle + Math.PI / 2);
+    ctx.fillStyle = 'rgba(2, 7, 13, 0.32)';
+    ctx.beginPath();
+    ctx.ellipse(0, 12, 112, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#263846';
+    ctx.strokeStyle = 'rgba(3, 9, 15, 0.82)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-105, -10, 210, 18, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(118, 243, 255, 0.38)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([14, 10]);
+    ctx.beginPath();
+    ctx.moveTo(-86, -1);
+    ctx.lineTo(86, -1);
+    ctx.stroke();
+    ctx.restore();
     if (ship?.drawAt) {
       ship.drawAt(
         ctx,
