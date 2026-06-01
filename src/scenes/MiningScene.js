@@ -82,13 +82,8 @@ const PLANET_PLAYER_FEEL = {
   fallGravityMultiplier: 1.32,
   lowJumpGravityMultiplier: 1.52,
   maxFallSpeed: 860,
-  groundSnapDistance: 23,
   maxStepHeight: 18,
-  groundNormalSmoothing: 0.24,
-  footPlantOffset: 2.5,
-  minGroundNormalDot: 0.34,
   groundedGravityScale: 0.16,
-  postGroundFriction: 28,
   landingImpactThreshold: 520,
   hardLandingShakeStrength: 0.2,
   landingDustAmount: 8,
@@ -3715,16 +3710,7 @@ export class MiningScene {
 
     const rawBasis = this.getIslandGravityBasis(island);
     const wasGrounded = Boolean(player.onGround);
-    const contactBefore = this.getPlanetGroundContact(
-      player,
-      island,
-      rawBasis,
-      player.x,
-      player.y,
-      PLANET_PLAYER_FEEL.groundSnapDistance,
-    );
-    const collisionGrounded = this.isPlanetPlayerGrounded(player, island, rawBasis);
-    const groundedBeforeRecovery = Boolean(contactBefore || collisionGrounded);
+    const groundedBeforeRecovery = this.isPlanetPlayerGrounded(player, island, rawBasis);
     player.coyoteTimer = Math.max(0, (player.coyoteTimer || 0) - dt);
     player.jumpBufferTimer = Math.max(0, (player.jumpBufferTimer || 0) - dt);
     player.groundGraceTimer = Math.max(0, (player.groundGraceTimer || 0) - dt);
@@ -3737,15 +3723,7 @@ export class MiningScene {
     this.updateIslandGravityRecoveryState(island, player);
 
     const basis = this.getIslandGravityBasis(island);
-    const activeContact = contactBefore || this.getPlanetGroundContact(
-      player,
-      island,
-      basis,
-      player.x,
-      player.y,
-      PLANET_PLAYER_FEEL.groundSnapDistance,
-    );
-    const groundedNow = Boolean(activeContact) || groundedBeforeRecovery || this.isPlanetPlayerGrounded(player, island, basis);
+    const groundedNow = groundedBeforeRecovery || this.isPlanetPlayerGrounded(player, island, basis);
     if (groundedNow) {
       if (!player.onGround) player.pendingLandingSpeed = player.vx * basis.inward.x + player.vy * basis.inward.y;
       player.onGround = true;
@@ -3753,20 +3731,11 @@ export class MiningScene {
       player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
     }
 
-    const groundNormal = activeContact?.normal || player.groundNormal || basis.outward;
-    player.groundNormal = this.smoothDirection(player.groundNormal || groundNormal, groundNormal, PLANET_PLAYER_FEEL.groundNormalSmoothing);
-    const groundTangent = activeContact?.tangent || {
-      x: -player.groundNormal.y,
-      y: player.groundNormal.x,
-    };
-    if (groundTangent.x * basis.tangent.x + groundTangent.y * basis.tangent.y < 0) {
-      groundTangent.x *= -1;
-      groundTangent.y *= -1;
-    }
+    player.groundNormal = basis.outward;
 
     const startedOnGround = Boolean(player.onGround);
     const moveX = Math.max(-1, Math.min(1, input.moveX || 0));
-    const tangent = startedOnGround ? groundTangent : basis.tangent;
+    const tangent = basis.tangent;
     const maxSpeed = startedOnGround ? PLANET_PLAYER_FEEL.maxGroundSpeed : PLANET_PLAYER_FEEL.maxAirSpeed;
     const attackSlowdown = this.sword?.active?.beat === 3 ? SWORD_COMBAT.heavySlashMoveSlowdown : 1;
     const targetTangent = moveX * maxSpeed * attackSlowdown;
@@ -3844,18 +3813,9 @@ export class MiningScene {
     });
     this.resolvePlanetPlayerOverlap(player, island);
     const nextBasis = this.getIslandGravityBasis(island);
-    const landingContact = !didJump
-      ? this.getPlanetGroundContact(player, island, nextBasis, player.x, player.y, PLANET_PLAYER_FEEL.groundSnapDistance)
-      : null;
-    if (landingContact && this.snapPlanetPlayerToGround(player, island, landingContact, nextBasis)) {
+    if (!didJump && this.isPlanetPlayerGrounded(player, island, nextBasis)) {
       const landSpeed = Math.max(player.pendingLandingSpeed || 0, inwardSpeed);
-      if (!wasGrounded && landSpeed > PLANET_PLAYER_FEEL.landingImpactThreshold) this.playPlanetLandingFeedback(player, island, landingContact, landSpeed);
-      player.onGround = true;
-      player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
-      player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
-      this.removePlanetPlayerNormalVelocity(player, nextBasis, Math.max(1, inwardSpeed));
-      this.clampPlanetPlayerTangentSpeed(player, nextBasis, PLANET_PLAYER_FEEL.maxGroundSpeed);
-    } else if (this.isPlanetPlayerGrounded(player, island, nextBasis)) {
+      if (!wasGrounded && landSpeed > PLANET_PLAYER_FEEL.landingImpactThreshold) this.playPlanetLandingFeedback(player, island, null, landSpeed);
       player.onGround = true;
       player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
       player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
@@ -3867,7 +3827,7 @@ export class MiningScene {
       this.clampPlanetPlayerTangentSpeed(player, nextBasis, PLANET_PLAYER_FEEL.maxGroundSpeed);
     }
     if (player.onGround && !didJump) {
-      this.applyPlanetGroundFriction(player, nextBasis, landingContact, moveX, dt);
+      this.applyPlanetGroundFriction(player, nextBasis, moveX, dt);
     }
     player.animationState = this.getPlanetPlayerAnimationState(player, moveX);
     player.landingCompression = Math.max(0, (player.landingCompression || 0) - dt * 5.5);
@@ -3888,90 +3848,9 @@ export class MiningScene {
     player.pendingLandingSpeed = 0;
   }
 
-  smoothDirection(previous, next, amount = 0.25) {
-    const blend = clamp01(amount);
-    const x = previous.x + (next.x - previous.x) * blend;
-    const y = previous.y + (next.y - previous.y) * blend;
-    const length = Math.hypot(x, y) || 1;
-    return { x: x / length, y: y / length };
-  }
-
-  getPlanetGroundContact(player, island, basis, x = player.x, y = player.y, snapDistance = PLANET_PLAYER_FEEL.groundSnapDistance) {
-    const terrain = island?.terrain;
-    if (!terrain?.raycast) return null;
-    const frame = this.getPlanetPlayerCollisionFrame(player, island, x, y);
-    const sideOffsets = [
-      -PLANET_PLAYER_HALF_WIDTH * 0.8,
-      0,
-      PLANET_PLAYER_HALF_WIDTH * 0.8,
-    ];
-    let best = null;
-    for (const side of sideOffsets) {
-      const footX = frame.centerX + basis.tangent.x * side + basis.inward.x * (PLANET_PLAYER_FOOT_OFFSET - 5);
-      const footY = frame.centerY + basis.tangent.y * side + basis.inward.y * (PLANET_PLAYER_FOOT_OFFSET - 5);
-      const startX = footX + basis.outward.x * 7;
-      const startY = footY + basis.outward.y * 7;
-      const endX = footX + basis.inward.x * (snapDistance + 14);
-      const endY = footY + basis.inward.y * (snapDistance + 14);
-      const hit = terrain.raycastCollision?.(startX, startY, endX, endY)
-        || terrain.raycast(startX, startY, endX, endY);
-      if (!hit) continue;
-      const distanceSq = (hit.x - startX) ** 2 + (hit.y - startY) ** 2;
-      if (best && distanceSq >= best.distanceSq) continue;
-      const surface = (terrain.getClosestCollisionSurfacePoint || terrain.getClosestTerrainSurfacePoint)?.call(
-        terrain,
-        hit.x + basis.outward.x * 3,
-        hit.y + basis.outward.y * 3,
-        0,
-      );
-      let normal = surface?.normal || basis.outward;
-      if (normal.x * basis.outward.x + normal.y * basis.outward.y < 0) {
-        normal = { x: -normal.x, y: -normal.y };
-      }
-      if (normal.x * basis.outward.x + normal.y * basis.outward.y < PLANET_PLAYER_FEEL.minGroundNormalDot) continue;
-      let tangent = surface?.tangent || { x: -normal.y, y: normal.x };
-      if (tangent.x * basis.tangent.x + tangent.y * basis.tangent.y < 0) {
-        tangent = { x: -tangent.x, y: -tangent.y };
-      }
-      best = {
-        ...hit,
-        distanceSq,
-        normal,
-        tangent,
-        surfaceX: surface?.surfaceX ?? hit.x,
-        surfaceY: surface?.surfaceY ?? hit.y,
-      };
-    }
-    return best;
-  }
-
-  snapPlanetPlayerToGround(player, island, contact, basis) {
-    if (!contact) return false;
-    const baseOffset = PLANET_PLAYER_FOOT_OFFSET + PLANET_PLAYER_FEEL.footPlantOffset;
-    const centerX = contact.surfaceX + contact.normal.x * baseOffset;
-    const centerY = contact.surfaceY + contact.normal.y * baseOffset;
-    const currentNormalGap = (centerX - player.centerX) * basis.outward.x + (centerY - player.centerY) * basis.outward.y;
-    if (Math.abs(currentNormalGap) > PLANET_PLAYER_FEEL.groundSnapDistance + PLANET_PLAYER_FEEL.maxStepHeight) return false;
-    for (let nudge = 0; nudge <= 8; nudge += 2) {
-      const candidateCenterX = contact.surfaceX + contact.normal.x * (baseOffset + nudge);
-      const candidateCenterY = contact.surfaceY + contact.normal.y * (baseOffset + nudge);
-      const nextX = candidateCenterX - player.width * 0.5;
-      const nextY = candidateCenterY - player.height * 0.5;
-      if (this.planetPlayerCollidesAt(player, island, nextX, nextY)) continue;
-      player.x = nextX;
-      player.y = nextY;
-      player.groundNormal = this.smoothDirection(player.groundNormal || contact.normal, contact.normal, 0.55);
-      return true;
-    }
-    return false;
-  }
-
-  applyPlanetGroundFriction(player, basis, contact, moveX, dt) {
-    const normal = contact?.normal || player.groundNormal || basis.outward;
-    let tangent = contact?.tangent || { x: -normal.y, y: normal.x };
-    if (tangent.x * basis.tangent.x + tangent.y * basis.tangent.y < 0) {
-      tangent = { x: -tangent.x, y: -tangent.y };
-    }
+  applyPlanetGroundFriction(player, basis, moveX, dt) {
+    const normal = basis.outward;
+    const tangent = basis.tangent;
     const normalSpeed = player.vx * normal.x + player.vy * normal.y;
     if (normalSpeed < 0) {
       player.vx -= normal.x * normalSpeed;
@@ -3979,7 +3858,7 @@ export class MiningScene {
     }
     if (Math.abs(moveX) > 0.05) return;
     const tangentSpeed = player.vx * tangent.x + player.vy * tangent.y;
-    const nextTangent = approachValue(tangentSpeed, 0, PLANET_PLAYER_FEEL.postGroundFriction * PLANET_PLAYER_FEEL.groundDeceleration * dt);
+    const nextTangent = approachValue(tangentSpeed, 0, PLANET_PLAYER_FEEL.groundDeceleration * dt);
     const delta = nextTangent - tangentSpeed;
     player.vx += tangent.x * delta;
     player.vy += tangent.y * delta;
@@ -3988,7 +3867,10 @@ export class MiningScene {
   playPlanetLandingFeedback(player, island, contact, landSpeed = 0) {
     const compression = clamp01((landSpeed - PLANET_PLAYER_FEEL.landingImpactThreshold) / 460);
     player.landingCompression = Math.max(player.landingCompression || 0, 0.25 + compression * 0.35);
-    const world = island.localToWorldRotated(contact.surfaceX, contact.surfaceY, this.getIslandViewRotation());
+    const basis = this.getIslandGravityBasis(island);
+    const localX = contact?.surfaceX ?? player.centerX + basis.inward.x * PLANET_PLAYER_FOOT_OFFSET;
+    const localY = contact?.surfaceY ?? player.centerY + basis.inward.y * PLANET_PLAYER_FOOT_OFFSET;
+    const world = island.localToWorldRotated(localX, localY, this.getIslandViewRotation());
     this.spawnBurst(
       world.x,
       world.y,
@@ -4226,15 +4108,13 @@ export class MiningScene {
 
   isPlanetPlayerGrounded(player, island, basis = this.getIslandGravityBasis(island), x = player.x, y = player.y) {
     if (this.planetPlayerCollidesAt(player, island, x, y)) return false;
-    const contact = this.getPlanetGroundContact(
+    const probeDistance = Math.min(4, Math.max(2, PLANET_PLAYER_GROUND_PROBE * 0.35));
+    return this.planetPlayerCollidesAt(
       player,
       island,
-      basis,
-      x,
-      y,
-      Math.max(PLANET_PLAYER_GROUND_PROBE, PLANET_PLAYER_FEEL.groundSnapDistance * 0.55),
+      x + basis.inward.x * probeDistance,
+      y + basis.inward.y * probeDistance,
     );
-    return Boolean(contact);
   }
 
   planetPlayerCollidesAt(player, island, x, y) {
@@ -5982,7 +5862,9 @@ export class MiningScene {
     if (!debug.showGroundProbes && !debug.showTerrainNormal && !debug.showVelocity && !debug.showGroundedState && !debug.showSurfaceTangent && !debug.showHitboxes) return;
     const player = this.islandPlayer;
     const basis = this.getIslandGravityBasis(this.activeIsland);
-    const contact = this.getPlanetGroundContact(player, this.activeIsland, basis, player.x, player.y, PLANET_PLAYER_FEEL.groundSnapDistance);
+    const groundedProbe = this.isPlanetPlayerGrounded(player, this.activeIsland, basis);
+    const footX = player.centerX + basis.inward.x * PLANET_PLAYER_FOOT_OFFSET;
+    const footY = player.centerY + basis.inward.y * PLANET_PLAYER_FOOT_OFFSET;
     ctx.save();
     if (debug.showHitboxes) {
       const shape = this.getPlanetPlayerCollisionShape(player, this.activeIsland);
@@ -6004,26 +5886,26 @@ export class MiningScene {
         ctx.fill();
       }
     }
-    if (contact && (debug.showTerrainNormal || debug.showSurfaceTangent || debug.showGroundedState)) {
+    if (debug.showTerrainNormal || debug.showSurfaceTangent || debug.showGroundedState) {
       ctx.lineWidth = 2;
       if (debug.showTerrainNormal) {
         ctx.strokeStyle = 'rgba(126, 227, 109, 0.95)';
         ctx.beginPath();
-        ctx.moveTo(contact.surfaceX, contact.surfaceY);
-        ctx.lineTo(contact.surfaceX + contact.normal.x * 42, contact.surfaceY + contact.normal.y * 42);
+        ctx.moveTo(footX, footY);
+        ctx.lineTo(footX + basis.outward.x * 42, footY + basis.outward.y * 42);
         ctx.stroke();
       }
       if (debug.showSurfaceTangent) {
         ctx.strokeStyle = 'rgba(142, 232, 255, 0.95)';
         ctx.beginPath();
-        ctx.moveTo(contact.surfaceX - contact.tangent.x * 32, contact.surfaceY - contact.tangent.y * 32);
-        ctx.lineTo(contact.surfaceX + contact.tangent.x * 32, contact.surfaceY + contact.tangent.y * 32);
+        ctx.moveTo(footX - basis.tangent.x * 32, footY - basis.tangent.y * 32);
+        ctx.lineTo(footX + basis.tangent.x * 32, footY + basis.tangent.y * 32);
         ctx.stroke();
       }
       if (debug.showGroundedState) {
-        ctx.fillStyle = player.onGround ? 'rgba(126, 227, 109, 0.9)' : 'rgba(255, 117, 111, 0.85)';
+        ctx.fillStyle = groundedProbe ? 'rgba(126, 227, 109, 0.9)' : 'rgba(255, 117, 111, 0.85)';
         ctx.beginPath();
-        ctx.arc(contact.surfaceX, contact.surfaceY, 5, 0, Math.PI * 2);
+        ctx.arc(footX, footY, 5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
