@@ -2384,14 +2384,16 @@ export class TerrainGrid {
       ctx.shadowColor = edgeColor;
       ctx.shadowBlur = blocked ? 8 : 5 + ratio * 13;
     }
-    ctx.globalAlpha = blocked ? 0.72 : 0.46 + ratio * 0.32;
-    ctx.fillStyle = withAlpha(fillColor, blocked ? 0.24 : 0.12 + ratio * 0.2);
-    ctx.strokeStyle = withAlpha(edgeColor, blocked ? 0.9 : 0.58 + ratio * 0.34);
-    ctx.lineWidth = Math.max(1.4, size * 0.09);
-    ctx.beginPath();
-    this.traceCellShape(ctx, col, row, { scale: 1 + ratio * 0.035 });
-    ctx.fill();
-    ctx.stroke();
+    if (blocked) {
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = withAlpha(fillColor, 0.24);
+      ctx.strokeStyle = withAlpha(edgeColor, 0.9);
+      ctx.lineWidth = Math.max(1.4, size * 0.09);
+      ctx.beginPath();
+      this.traceCellShape(ctx, col, row, { scale: 1 + ratio * 0.035 });
+      ctx.fill();
+      ctx.stroke();
+    }
     if (ratio > 0.1 || blocked) this.drawCellCracks(ctx, col, row, ratio, { time, blocked });
     ctx.restore();
   }

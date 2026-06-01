@@ -49,6 +49,7 @@ const RING_COLORS = ['#2f5e89', '#284d82', '#c7602c', '#8d66e8', '#dfe7ff'];
 const ASTEROID_CHIP_BRUSH_RADIUS = gameBalance.mining.asteroidMiningBrushRadius || 20;
 const GOD_MODE_MINING_MULTIPLIER = 18;
 const TERRAIN_LASER_RANGE = 390;
+const TERRAIN_MINER_RANGE = 132;
 const TERRAIN_MINING_BRUSH_RADIUS = gameBalance.terrain?.miningBrushRadius || 22;
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
@@ -2600,14 +2601,6 @@ export class MiningScene {
       || selectedId === 'craftingStation';
   }
 
-  getCurrentSwordAimRange() {
-    const pattern = SWORD_COMBAT.comboPattern || [];
-    const combo = pattern.length
-      ? pattern[(this.sword?.comboIndex || 0) % pattern.length]
-      : null;
-    return SWORD_COMBAT.slashRange * (combo?.range || 1);
-  }
-
   getControllerToolAimRange(context = 'island') {
     const slot = this.game.input.getSelectedHotbarSlot?.();
     const id = slot?.id || '';
@@ -2615,10 +2608,10 @@ export class MiningScene {
     if (id === 'miner') {
       return context === 'ship'
         ? (this.stats?.miningRange || 420)
-        : TERRAIN_LASER_RANGE;
+        : TERRAIN_MINER_RANGE;
     }
     if (id === 'laserGun') return context === 'island' ? 150 : 170;
-    if ((id === 'weapon' || action === 'attack') && context === 'island') return this.getCurrentSwordAimRange();
+    if ((id === 'weapon' || action === 'attack') && context === 'island') return SWORD_COMBAT.slashRange;
     if (id === 'weapon' || id.includes('gun') || id.includes('blaster') || id.includes('drone') || action === 'shoot' || action === 'attack') return 150;
     if (this.isTerrainToolSelected()) return TERRAIN_LASER_RANGE;
     return context === 'ship' ? 150 : 120;
@@ -5527,7 +5520,8 @@ export class MiningScene {
     const directionX = dx / distance;
     const directionY = dy / distance;
     if (updateFacing) this.updateIslandPlayerFacingFromAim(aimPoint);
-    const length = Math.min(distance, TERRAIN_LASER_RANGE);
+    const range = this.isMinerToolSelected() ? TERRAIN_MINER_RANGE : TERRAIN_LASER_RANGE;
+    const length = Math.min(distance, range);
     const end = {
       x: start.x + directionX * length,
       y: start.y + directionY * length,
@@ -5538,8 +5532,8 @@ export class MiningScene {
       origin: start,
       aimPoint: end,
       rawAimPoint: aimPoint,
-      range: TERRAIN_LASER_RANGE,
-      rangeRatio: TERRAIN_LASER_RANGE > 0 ? length / TERRAIN_LASER_RANGE : 0,
+      range,
+      rangeRatio: range > 0 ? length / range : 0,
       length,
     };
   }
@@ -6310,7 +6304,7 @@ export class MiningScene {
         active: Boolean(this.islandMiningBeam),
         time: this.time,
       });
-      this.drawIslandTerrainTargetGlow(ctx, state);
+      if (!this.islandMiningBeam) this.drawIslandTerrainTargetGlow(ctx, state);
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
