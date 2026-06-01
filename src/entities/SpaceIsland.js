@@ -1,6 +1,6 @@
-import { PlacedFlag } from './PlacedFlag.js?v=116';
-import { PlacedTorch } from './PlacedTorch.js?v=116';
-import { gameBalance } from '../data/gameBalance.js?v=116';
+import { PlacedFlag } from './PlacedFlag.js?v=121';
+import { PlacedTorch } from './PlacedTorch.js?v=121';
+import { gameBalance } from '../data/gameBalance.js?v=121';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothStep = (value) => {
@@ -173,9 +173,12 @@ export class SpaceIsland {
     return this.getLandingLocal(96);
   }
 
-  getPlayerExitLocal() {
+  getPlayerExitLocal(playerSize = { width: 30, height: 60 }) {
     const local = this.getLandingLocal(36);
-    return { x: local.x - 17, y: local.y - 29 };
+    return {
+      x: local.x - (playerSize.width || 30) * 0.5,
+      y: local.y - (playerSize.height || 60) * 0.48,
+    };
   }
 
   getLandingBaseLocal() {

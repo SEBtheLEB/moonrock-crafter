@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=116';
-import { gameBalance } from '../data/gameBalance.js?v=116';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=121';
+import { gameBalance } from '../data/gameBalance.js?v=121';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -16,7 +16,9 @@ export const TERRAIN_MATERIALS = {
   11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
 };
 
-const TERRAIN_SAVE_VERSION = 21;
+const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
+
+const TERRAIN_SAVE_VERSION = 23;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -1439,23 +1441,36 @@ export class TerrainGrid {
     return this.cells[this.index(col, row)];
   }
 
-  setCell(col, row, value) {
+  isConstructedMaterial(materialId) {
+    return CONSTRUCTED_MATERIAL_IDS.has(Number(materialId) || 0);
+  }
+
+  isConstructedCell(col, row) {
+    return this.isConstructedMaterial(this.getCell(col, row));
+  }
+
+  isNaturalSolidCell(col, row) {
+    const material = this.getCell(col, row);
+    return material > 0 && !this.isConstructedMaterial(material);
+  }
+
+  setCell(col, row, value, { autoWall = true } = {}) {
     if (!this.isInside(col, row)) return;
     const index = this.index(col, row);
     const previousValue = this.cells[index];
     const nextValue = Math.max(0, Number(value) || 0);
     if (previousValue === nextValue) return;
     this.cells[index] = nextValue;
-    if (nextValue > 0 && TERRAIN_WALLS.enabled && !this.wallCells[index]) {
+    let wallChanged = false;
+    if (autoWall && nextValue > 0 && TERRAIN_WALLS.enabled && !this.wallCells[index]) {
       this.wallCells[index] = this.getWallTypeForTile(col, row, nextValue);
+      wallChanged = true;
     }
     this.damage[index] = 0;
     this.damagedCells.delete(index);
     this.invalidateTerrainGeometry({ keepSurfacePath: true });
-    if ((previousValue > 0) !== (nextValue > 0)) {
-      this.markAirExposureDirty({ defer: true });
-      this.invalidateSurfaceRadiusLookupNear(col, row);
-    }
+    if (wallChanged) this.markAirExposureDirty({ defer: true });
+    if ((previousValue > 0) !== (nextValue > 0)) this.invalidateSurfaceRadiusLookupNear(col, row);
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) {
       this.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(previousValue, nextValue));
@@ -1542,6 +1557,7 @@ export class TerrainGrid {
     if (this.wallCells[index] === nextValue) return false;
     this.wallCells[index] = nextValue;
     this.contourCache?.clear();
+    this.markAirExposureDirty({ defer: false });
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) {
       this.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(nextValue, nextValue));
@@ -1600,6 +1616,7 @@ export class TerrainGrid {
       }
     }
     this.contourCache?.clear();
+    this.markAirExposureDirty({ defer: false });
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -2293,7 +2310,6 @@ export class TerrainGrid {
     }
     if (broken.length) {
       this.invalidateTerrainGeometry({ keepSurfacePath: true });
-      this.markAirExposureDirty({ defer: true });
       for (const cell of broken) {
         this.invalidateSurfaceRadiusLookupNear(cell.col, cell.row);
         if (this.renderCanvas && !this.fullRenderDirty) {
@@ -2595,6 +2611,7 @@ export class TerrainGrid {
     this.drawOreVeins(ctx, bounds);
     if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds);
     else this.drawEdgeContours(ctx, bounds);
+    this.drawConstructedMaterials(ctx, bounds);
     if (this.lightingRenderEnabled || this.depthDebugEnabled) this.drawDepthLightingOverlay(ctx, lightingBounds);
   }
 
@@ -2644,6 +2661,12 @@ export class TerrainGrid {
     return surfaceRadius - distance;
   }
 
+  getStablePlanetDepthAt(x, y) {
+    const dx = x - this.planetCenterX;
+    const dy = y - this.planetCenterY;
+    return this.planetRadius - Math.hypot(dx, dy);
+  }
+
   getBaseDarknessAtDepth(depth) {
     if (depth <= 0) return 0;
     const start = (TERRAIN_LIGHTING.darknessStartDepth ?? 3) * this.cellSize;
@@ -2654,6 +2677,17 @@ export class TerrainGrid {
     const bleedDepth = Math.max(this.cellSize, (TERRAIN_LIGHTING.surfaceLightBleedDepth ?? 4) * this.cellSize);
     const surfaceBleed = 1 - (1 - clamp01(depth / bleedDepth)) * clamp01(TERRAIN_LIGHTING.ambientSurfaceLight ?? 0.08);
     return clamp01(Math.pow(t, falloff) * maxOpacity * surfaceBleed);
+  }
+
+  getBaseWallDarknessAtDistance(distance) {
+    if (distance <= 0) return 0;
+    const start = (TERRAIN_LIGHTING.wallDarknessStartDepth ?? 0.25) * this.cellSize;
+    const full = Math.max(start + this.cellSize, (TERRAIN_LIGHTING.wallFullDarkDepth ?? 7.5) * this.cellSize);
+    const t = smoothStep((distance - start) / Math.max(1, full - start));
+    const falloff = Math.max(0.2, TERRAIN_LIGHTING.darknessFalloffPower ?? 1.4);
+    const maxOpacity = clamp01(TERRAIN_LIGHTING.maxDarknessOpacity ?? 0.88);
+    const strength = Math.max(0, TERRAIN_LIGHTING.wallDarknessStrength ?? 1);
+    return clamp01(Math.pow(t, falloff) * maxOpacity * strength);
   }
 
   ensureAirExposureMap() {
@@ -2668,23 +2702,17 @@ export class TerrainGrid {
     const total = this.cols * this.rows;
     const distances = new Float32Array(total);
     const infinity = 1e6;
-    const sourceDepth = (TERRAIN_LIGHTING.surfaceExposureSourceDepth ?? 0.75) * this.cellSize;
-
     for (let row = 0; row < this.rows; row += 1) {
       for (let col = 0; col < this.cols; col += 1) {
         const index = this.index(col, row);
-        const x = col * this.cellSize + this.cellSize * 0.5;
-        const y = row * this.cellSize + this.cellSize * 0.5;
-        distances[index] = this.getCell(col, row) === 0 && this.getTerrainDepthAt(x, y) <= sourceDepth
-          ? 0
-          : infinity;
+        distances[index] = this.isWallCell(col, row) ? infinity : 0;
       }
     }
 
     const airCost = Math.max(0.2, TERRAIN_LIGHTING.airExposureCost ?? 0.72);
     const solidCost = Math.max(0.2, TERRAIN_LIGHTING.solidExposureCost ?? 1.22);
     const costFor = (col, row, diagonal = false) => {
-      const base = this.getCell(col, row) > 0 ? solidCost : airCost;
+      const base = this.isWallCell(col, row) ? solidCost : airCost;
       return diagonal ? base * 1.4142 : base;
     };
 
@@ -2738,18 +2766,38 @@ export class TerrainGrid {
     return (top + (bottom - top) * ty) * this.cellSize;
   }
 
+  getWallCoverageAt(x, y) {
+    const fx = clamp(x / this.cellSize - 0.5, 0, this.cols - 1);
+    const fy = clamp(y / this.cellSize - 0.5, 0, this.rows - 1);
+    const col = Math.floor(fx);
+    const row = Math.floor(fy);
+    const tx = fx - col;
+    const ty = fy - row;
+    const col1 = Math.min(this.cols - 1, col + 1);
+    const row1 = Math.min(this.rows - 1, row + 1);
+    const sample = (xCol, yRow) => (this.isWallCell(xCol, yRow) ? 1 : 0);
+    const a = sample(col, row);
+    const b = sample(col1, row);
+    const c = sample(col, row1);
+    const d = sample(col1, row1);
+    const top = a + (b - a) * tx;
+    const bottom = c + (d - c) * tx;
+    return clamp01(top + (bottom - top) * ty);
+  }
+
   getSmoothDarknessAt(x, y) {
-    const radialDepth = this.getTerrainDepthAt(x, y);
-    if (radialDepth <= 0) return 0;
-    const radialDarkness = this.getBaseDarknessAtDepth(radialDepth);
+    const wallCoverage = this.getWallCoverageAt(x, y);
+    if (wallCoverage <= 0.015) return 0;
+    const radialDepth = this.getStablePlanetDepthAt(x, y);
     const exposureDistance = this.getAirExposureDistanceAt(x, y);
-    const exposureDarkness = this.getBaseDarknessAtDepth(exposureDistance);
+    const wallDarkness = this.getBaseWallDarknessAtDistance(exposureDistance);
+    const radialDarkness = radialDepth > 0 ? this.getBaseDarknessAtDepth(radialDepth) : 0;
     const exposureBoost = Math.max(0.5, TERRAIN_LIGHTING.exposureDarknessBoost ?? 1.08);
-    const exposedDarkness = Math.min(radialDarkness, exposureDarkness * exposureBoost);
     const centerInfluence = clamp01(TERRAIN_LIGHTING.centerDepthInfluence ?? 0.58);
     const centerBlend = clamp01(TERRAIN_LIGHTING.centerDepthBlend ?? 0.28);
     const centerDarknessFloor = radialDarkness * centerInfluence;
-    return clamp01(Math.max(centerDarknessFloor, exposedDarkness + radialDarkness * centerBlend));
+    const enclosedDarkness = Math.max(wallDarkness * exposureBoost, centerDarknessFloor, wallDarkness + radialDarkness * centerBlend);
+    return clamp01(enclosedDarkness * smoothStep(wallCoverage));
   }
 
   getMaterialLight(materialId) {
@@ -2933,7 +2981,7 @@ export class TerrainGrid {
       const worldY = rect.y + (y + 0.5) * invScale;
       for (let x = 0; x < fieldWidth; x += 1) {
         const worldX = rect.x + (x + 0.5) * invScale;
-        const depth = this.getTerrainDepthAt(worldX, worldY);
+        const depth = this.getStablePlanetDepthAt(worldX, worldY);
         const darkness = this.getSmoothDarknessAt(worldX, worldY);
         if (darkness <= 0.006) continue;
         const offset = (y * fieldWidth + x) * 4;
@@ -3220,7 +3268,7 @@ export class TerrainGrid {
     ctx.save();
     for (const material of wallMaterials) {
       const style = this.getWallStyleForMaterial(material);
-      const predicate = (col, row) => this.getWallCell(col, row) === material;
+      const predicate = (col, row) => this.getWallCell(col, row) === material && !this.isSolidCell(col, row);
       this.drawPatternInMask(
         ctx,
         predicate,
@@ -3370,7 +3418,7 @@ export class TerrainGrid {
     gradient.addColorStop(0.48, palette.body);
     gradient.addColorStop(1, palette.deep);
     ctx.fillStyle = gradient;
-    this.fillMarchingPath(ctx, (col, row) => this.isSolidCell(col, row), bounds, 'solid');
+    this.fillMarchingPath(ctx, (col, row) => this.isNaturalSolidCell(col, row), bounds, 'natural-solid');
   }
 
   fillMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
@@ -3381,6 +3429,10 @@ export class TerrainGrid {
 
   clipSolidMass(ctx, bounds = null) {
     this.clipMarchingPath(ctx, (col, row) => this.isSolidCell(col, row), bounds, 'solid');
+  }
+
+  clipNaturalMass(ctx, bounds = null) {
+    this.clipMarchingPath(ctx, (col, row) => this.isNaturalSolidCell(col, row), bounds, 'natural-solid');
   }
 
   clipMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
@@ -3632,7 +3684,7 @@ export class TerrainGrid {
   drawOreVeins(ctx, bounds = null) {
     const oreMaterials = Object.keys(TERRAIN_MATERIALS)
       .map(Number)
-      .filter((material) => material > 1 && this.hasMaterialInBounds(material, bounds, 3))
+      .filter((material) => material > 1 && !this.isConstructedMaterial(material) && this.hasMaterialInBounds(material, bounds, 3))
       .sort((a, b) => a - b);
     for (const material of oreMaterials) {
       const data = TERRAIN_MATERIALS[material];
@@ -3692,16 +3744,113 @@ export class TerrainGrid {
     ctx.restore();
   }
 
+  drawConstructedMaterials(ctx, bounds = null) {
+    for (const material of CONSTRUCTED_MATERIAL_IDS) {
+      if (!this.hasMaterialInBounds(material, bounds, 1)) continue;
+      this.drawConstructedMaterial(ctx, material, bounds);
+    }
+  }
+
+  drawConstructedMaterial(ctx, materialId, bounds = null) {
+    const data = TERRAIN_MATERIALS[materialId] || TERRAIN_MATERIALS[10];
+    const size = this.cellSize;
+    const scan = this.getRoughnessBounds(bounds, 1);
+    const base = data.color || '#465462';
+    const top = mixHex(base, '#ffffff', 0.18);
+    const bottom = mixHex(base, '#05070b', 0.18);
+    const edge = data.edge || '#9fafbd';
+    const shadow = mixHex(base, '#000000', 0.55);
+    const rect = this.getDrawRect(scan, size * 0.5);
+
+    ctx.save();
+    ctx.beginPath();
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        if (this.getCell(col, row) !== materialId) continue;
+        const x = col * size;
+        const y = row * size;
+        ctx.rect(x, y, size, size);
+      }
+    }
+    const gradient = ctx.createLinearGradient(0, rect.y, 0, rect.y + rect.height);
+    gradient.addColorStop(0, top);
+    gradient.addColorStop(0.52, base);
+    gradient.addColorStop(1, bottom);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.save();
+    ctx.clip();
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = withAlpha(mixHex(edge, '#ffffff', 0.12), 0.18);
+    ctx.lineWidth = Math.max(0.7, size * 0.035);
+    const spacing = size * 2.35;
+    const diagonalReach = rect.width + rect.height + spacing * 2;
+    for (let offset = -rect.height - spacing; offset < rect.width + spacing; offset += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(rect.x + offset, rect.y + rect.height + size * 0.3);
+      ctx.lineTo(rect.x + offset + diagonalReach, rect.y - size * 0.3);
+      ctx.stroke();
+    }
+
+    const speckStep = Math.max(1, Math.floor(size * 0.9));
+    ctx.fillStyle = withAlpha(mixHex(edge, '#ffffff', 0.18), 0.1);
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        if (this.getCell(col, row) !== materialId) continue;
+        if (hash2D(col, row, this.seed, materialId * 79) <= 0.7) continue;
+        const x = col * size + size * (0.18 + hash2D(row, col, this.seed, materialId * 83) * 0.44);
+        const y = row * size + size * (0.18 + hash2D(col, row, this.seed, materialId * 89) * 0.44);
+        ctx.fillRect(x, y, Math.max(1, speckStep * 0.12), Math.max(1, speckStep * 0.12));
+      }
+    }
+    ctx.restore();
+
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+    ctx.miterLimit = 2;
+    for (let pass = 0; pass < 2; pass += 1) {
+      ctx.strokeStyle = pass === 0 ? withAlpha(shadow, 0.82) : withAlpha(edge, 0.68);
+      ctx.lineWidth = pass === 0 ? Math.max(2, size * 0.13) : Math.max(1, size * 0.055);
+      ctx.beginPath();
+      for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+        for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+          if (this.getCell(col, row) !== materialId) continue;
+          const x = col * size;
+          const y = row * size;
+          if (this.getCell(col, row - 1) !== materialId) {
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + size, y);
+          }
+          if (this.getCell(col + 1, row) !== materialId) {
+            ctx.moveTo(x + size, y);
+            ctx.lineTo(x + size, y + size);
+          }
+          if (this.getCell(col, row + 1) !== materialId) {
+            ctx.moveTo(x + size, y + size);
+            ctx.lineTo(x, y + size);
+          }
+          if (this.getCell(col - 1, row) !== materialId) {
+            ctx.moveTo(x, y + size);
+            ctx.lineTo(x, y);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   drawRockTexture(ctx, bounds = null) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     this.drawPatternInMask(
       ctx,
-      (col, row) => this.isSolidCell(col, row),
+      (col, row) => this.isNaturalSolidCell(col, row),
       `stone:${this.seed}:${this.biome}`,
       (tileCtx, width, height) => this.drawStoneTextureTile(tileCtx, width, height, palette),
       bounds,
       1,
-      'solid',
+      'natural-solid',
     );
     this.drawStoneCracks(ctx, palette, bounds);
   }
@@ -3815,7 +3964,7 @@ export class TerrainGrid {
     const random = createRandom(hashString(`${this.seed}:${this.biome}:cracks:${rect.x}:${rect.y}:${rect.width}:${rect.height}`));
     const count = Math.min(110, Math.max(10, Math.floor((rect.width * rect.height) / 22000)));
     ctx.save();
-    this.clipSolidMass(ctx, bounds);
+    this.clipNaturalMass(ctx, bounds);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (let i = 0; i < count; i += 1) {
@@ -3867,10 +4016,10 @@ export class TerrainGrid {
 
   getExposedEdges(col, row) {
     const material = this.getCell(col, row);
-    if (material <= 0) return [];
+    if (material <= 0 || this.isConstructedMaterial(material)) return [];
     return EDGE_DIRECTION_NAMES.filter((directionName) => {
       const direction = EDGE_DIRECTIONS[directionName];
-      return !this.isSolidCell(col + direction.dx, row + direction.dy);
+      return !this.isNaturalSolidCell(col + direction.dx, row + direction.dy);
     });
   }
 
@@ -3879,7 +4028,7 @@ export class TerrainGrid {
     for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
       for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
         const material = this.getCell(col, row);
-        if (material <= 0) continue;
+        if (material <= 0 || this.isConstructedMaterial(material)) continue;
         const edges = this.getExposedEdges(col, row);
         if (!edges.length) continue;
         callback({ col, row, material, edges });
@@ -3966,7 +4115,7 @@ export class TerrainGrid {
 
   isVisualSolidAt(x, y) {
     return this.samplePredicateDensity(
-      (col, row) => this.isSolidCell(col, row),
+      (col, row) => this.isNaturalSolidCell(col, row),
       x,
       y,
       VISUAL_CONTOUR_OPTIONS,
@@ -4002,9 +4151,9 @@ export class TerrainGrid {
   }
 
   getRoughContourLoops(bounds = null) {
-    const cacheKey = 'solid-rough-contours';
+    const cacheKey = 'natural-rough-contours';
     if (this.roughContourCache.has(cacheKey)) return this.roughContourCache.get(cacheKey);
-    const sourceLoops = this.getContourLoops((col, row) => this.isSolidCell(col, row), 'solid', VISUAL_CONTOUR_OPTIONS);
+    const sourceLoops = this.getContourLoops((col, row) => this.isNaturalSolidCell(col, row), 'natural-solid', VISUAL_CONTOUR_OPTIONS);
     const roughLoops = this.createRoughContourLoopsFromSource(sourceLoops);
     this.roughContourCache.set(cacheKey, roughLoops);
     return roughLoops;
@@ -4168,7 +4317,7 @@ export class TerrainGrid {
     const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
     const clipBounds = this.getContourClipBounds(bounds);
     const sample = (col, row) => this.sampleContourNode(
-      (x, y) => this.isSolidCell(x, y),
+      (x, y) => this.isNaturalSolidCell(x, y),
       col,
       row,
       step,
@@ -4589,8 +4738,8 @@ export class TerrainGrid {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.strokeMarchingEdges(ctx, 'rgba(5, 11, 19, 0.5)', Math.max(4, this.cellSize * 0.28), bounds, (x, y) => this.isSolidCell(x, y), 'solid');
-    this.strokeMarchingEdges(ctx, withAlpha(palette.edge, 0.42), Math.max(1.4, this.cellSize * 0.11), bounds, (x, y) => this.isSolidCell(x, y), 'solid');
+    this.strokeMarchingEdges(ctx, 'rgba(5, 11, 19, 0.5)', Math.max(4, this.cellSize * 0.28), bounds, (x, y) => this.isNaturalSolidCell(x, y), 'natural-solid');
+    this.strokeMarchingEdges(ctx, withAlpha(palette.edge, 0.42), Math.max(1.4, this.cellSize * 0.11), bounds, (x, y) => this.isNaturalSolidCell(x, y), 'natural-solid');
     ctx.restore();
   }
 

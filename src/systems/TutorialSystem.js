@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=116';
+import { gameBalance } from '../data/gameBalance.js?v=121';
 
 const SPARKS = {
   name: 'Sparks',

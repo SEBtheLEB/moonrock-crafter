@@ -1,13 +1,20 @@
-const WIDTH = 30;
-const HEIGHT = 60;
-const COLLIDER_INSET_X = 3;
-const COLLIDER_INSET_TOP = 1;
-const COLLIDER_INSET_BOTTOM = 0;
-const MAX_STEP_HEIGHT = 22;
-const GROUND_SNAP_DISTANCE = 18;
-const FOOT_PROBE_INSET = 2;
+import { gameBalance } from '../data/gameBalance.js?v=121';
+
+const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
+const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);
+const HEIGHT = Math.round(PLAYER_GRID_SIZE * 2.86);
+const COLLIDER_INSET_X = Math.max(2, Math.round(PLAYER_GRID_SIZE * 0.16));
+const COLLIDER_INSET_TOP = Math.max(1, Math.round(PLAYER_GRID_SIZE * 0.08));
+const COLLIDER_INSET_BOTTOM = Math.max(0, Math.round(PLAYER_GRID_SIZE * 0.02));
+const MAX_STEP_HEIGHT = Math.round(PLAYER_GRID_SIZE * 1.2);
+const GROUND_SNAP_DISTANCE = Math.round(PLAYER_GRID_SIZE * 1.05);
+const FOOT_PROBE_INSET = Math.max(1, Math.round(PLAYER_GRID_SIZE * 0.12));
 
 export class IslandPlayer {
+  static getDefaultSize() {
+    return { width: WIDTH, height: HEIGHT, gridSize: PLAYER_GRID_SIZE };
+  }
+
   constructor({ x = 170, y = 0 } = {}) {
     this.x = x;
     this.y = y;
@@ -18,8 +25,8 @@ export class IslandPlayer {
     this.vy = 0;
     this.facing = 1;
     this.onGround = false;
-    this.health = 100;
-    this.maxHealth = 100;
+    this.health = 50;
+    this.maxHealth = 50;
     this.hitCooldown = 0;
     this.step = 0;
     this.groundGraceTimer = 0;
@@ -187,7 +194,7 @@ export class IslandPlayer {
 
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(this.width / 2, this.height + 4, 14, 3.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.width / 2, this.height + this.height * 0.07, this.width * 0.47, this.height * 0.064, 0, 0, Math.PI * 2);
     ctx.fill();
 
     const bodyGradient = ctx.createLinearGradient(0, 1, 0, this.height - 1);
@@ -196,37 +203,49 @@ export class IslandPlayer {
     bodyGradient.addColorStop(1, '#ae8554');
     ctx.fillStyle = bodyGradient;
     ctx.strokeStyle = 'rgba(6, 13, 22, 0.72)';
-    ctx.lineWidth = 1.25;
+    ctx.lineWidth = Math.max(1, this.width * 0.045);
     ctx.beginPath();
-    ctx.roundRect(3, 1, 24, 58, 8);
+    ctx.roundRect(this.width * 0.1, this.height * 0.02, this.width * 0.8, this.height * 0.96, this.width * 0.26);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = 'rgba(194, 111, 52, 0.36)';
     ctx.beginPath();
-    ctx.roundRect(6, 39, 18, 8, 3);
+    ctx.roundRect(this.width * 0.2, this.height * 0.65, this.width * 0.6, this.height * 0.13, this.width * 0.1);
     ctx.fill();
 
     ctx.fillStyle = '#101a24';
     ctx.beginPath();
-    ctx.roundRect(6, 12, 18, 12, 4);
+    ctx.roundRect(this.width * 0.2, this.height * 0.2, this.width * 0.6, this.height * 0.2, this.width * 0.13);
     ctx.fill();
 
-    const visorGradient = ctx.createLinearGradient(6, 12, 24, 24);
+    const visorGradient = ctx.createLinearGradient(this.width * 0.2, this.height * 0.2, this.width * 0.8, this.height * 0.4);
     visorGradient.addColorStop(0, 'rgba(102, 216, 232, 0.9)');
     visorGradient.addColorStop(1, 'rgba(102, 216, 232, 0.28)');
     ctx.fillStyle = visorGradient;
     ctx.beginPath();
-    ctx.roundRect(this.facing > 0 ? 14 : 7, 15, 8, 5, 2);
+    ctx.roundRect(
+      this.facing > 0 ? this.width * 0.47 : this.width * 0.24,
+      this.height * 0.25,
+      this.width * 0.27,
+      this.height * 0.085,
+      this.width * 0.07,
+    );
     ctx.fill();
 
     ctx.fillStyle = 'rgba(40, 36, 32, 0.45)';
-    ctx.fillRect(7, 54, 6, 4);
-    ctx.fillRect(17, 54, 6, 4);
+    ctx.fillRect(this.width * 0.23, this.height * 0.9, this.width * 0.2, this.height * 0.07);
+    ctx.fillRect(this.width * 0.57, this.height * 0.9, this.width * 0.2, this.height * 0.07);
 
     ctx.fillStyle = 'rgba(102, 216, 232, 0.5)';
     ctx.beginPath();
-    ctx.arc(this.facing > 0 ? 6 : 24, 8, 2.2 + Math.sin(time * 2.8) * 0.3, 0, Math.PI * 2);
+    ctx.arc(
+      this.facing > 0 ? this.width * 0.2 : this.width * 0.8,
+      this.height * 0.13,
+      this.width * 0.073 + Math.sin(time * 2.8) * this.width * 0.01,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.restore();
   }

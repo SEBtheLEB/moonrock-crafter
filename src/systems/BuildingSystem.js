@@ -1,4 +1,4 @@
-import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=116';
+import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=121';
 
 const DEFAULT_BUILD_RANGE = 178;
 const STARTER_BASE_WALL_MATERIAL = 10;
@@ -14,7 +14,15 @@ export const BUILDABLE_TERRAIN_ITEMS = {
   crystallizedStone: { itemId: 'crystallizedStone', label: 'Crystallized Stone', terrainMaterial: 7, wallMaterial: 7, edgeStyle: 'rough' },
   redCrystal: { itemId: 'redCrystal', label: 'Red Crystal', terrainMaterial: 8, wallMaterial: 8, edgeStyle: 'rough' },
   moonCrystal: { itemId: 'moonCrystal', label: 'Moon Crystal', terrainMaterial: 9, wallMaterial: 9, edgeStyle: 'rough' },
-  metalCaseWall: { itemId: 'metalCaseWall', label: 'Metal Case Wall', terrainMaterial: 10, wallMaterial: 10, edgeStyle: 'smooth' },
+  metalCaseWall: { itemId: 'metalCaseWall', label: 'Metal Case Block', terrainMaterial: 10, wallMaterial: 10, edgeStyle: 'smooth' },
+  metalCaseBackWall: {
+    itemId: 'metalCaseBackWall',
+    label: 'Metal Back Wall',
+    terrainMaterial: 0,
+    wallMaterial: 10,
+    edgeStyle: 'smooth',
+    backgroundOnly: true,
+  },
 };
 
 function clamp01(value) {
@@ -91,7 +99,8 @@ export class BuildingSystem {
   setActiveBuildItem(scene, itemId, { assignMode = 'foregroundBlock' } = {}) {
     if (!scene || !this.isBuildableItem(itemId)) return false;
     scene.activeBuildItemId = itemId;
-    scene.activeBuildMode ||= assignMode;
+    const buildable = this.getBuildableItem(itemId);
+    scene.activeBuildMode = buildable?.backgroundOnly ? 'backgroundWall' : (assignMode || 'foregroundBlock');
     return true;
   }
 
@@ -249,9 +258,7 @@ export class BuildingSystem {
     scene.activeBuildMode ||= 'foregroundBlock';
     const input = this.game.input;
     if (input?.actions?.justPressed?.buildModeToggle) {
-      scene.activeBuildMode = scene.activeBuildMode === 'backgroundWall' ? 'foregroundBlock' : 'backgroundWall';
-      const label = scene.activeBuildMode === 'backgroundWall' ? 'Wall paint' : 'Block paint';
-      this.game.ui.showToast(label, 'default', 850);
+      this.game.ui.showToast('Equip a wall item to place background walls', 'default', 1050);
       this.game.audio.playButtonClick?.();
     }
     if (input?.actions?.justPressed?.buildSnapToggle) {
@@ -263,11 +270,10 @@ export class BuildingSystem {
     }
   }
 
-  getEffectiveBuildMode(scene) {
-    const input = this.game.input;
-    if (input?.keys?.has('Shift') || input?.keys?.has('ShiftLeft') || input?.keys?.has('ShiftRight')) return 'backgroundWall';
-    if (input?.actions?.buildWallModifier) return 'backgroundWall';
-    return scene?.activeBuildMode || 'foregroundBlock';
+  getEffectiveBuildMode(scene, buildable = null) {
+    const item = buildable || this.getSelectedBuildItem(scene);
+    if (item?.backgroundOnly) return 'backgroundWall';
+    return 'foregroundBlock';
   }
 
   getAimState(scene) {
@@ -364,7 +370,7 @@ export class BuildingSystem {
 
     const aim = this.getAimState(scene);
     if (!aim) return null;
-    const mode = this.getEffectiveBuildMode(scene);
+    const mode = this.getEffectiveBuildMode(scene, buildable);
     const target = this.getTargetTile(terrain, aim, mode);
     const materialId = mode === 'backgroundWall' ? buildable.wallMaterial : buildable.terrainMaterial;
     const data = TERRAIN_MATERIALS[materialId] || TERRAIN_MATERIALS[1];
@@ -414,6 +420,7 @@ export class BuildingSystem {
     if (!inRange) return { ok: false, reason: 'Too far' };
     if (this.game.systems.inventory.getStoredAmount(itemId) <= 0) return { ok: false, reason: `No ${this.getItemName(itemId)}` };
     if (mode === 'backgroundWall') {
+      if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Clear foreground first' };
       if (terrain.getWallCell(col, row) === materialId) return { ok: false, reason: 'Wall already placed' };
       if (!this.hasWallSupport(terrain, col, row)) return { ok: false, reason: 'Needs support' };
       return { ok: true, reason: '' };
@@ -520,7 +527,7 @@ export class BuildingSystem {
       changed = terrain.setWallCell?.(target.col, target.row, materialId) !== false;
     } else {
       const before = terrain.getCell(target.col, target.row);
-      terrain.setCell(target.col, target.row, materialId);
+      terrain.setCell(target.col, target.row, materialId, { autoWall: false });
       changed = before !== terrain.getCell(target.col, target.row);
     }
     if (!changed) {
@@ -547,7 +554,12 @@ export class BuildingSystem {
     if (this.invalidToastCooldown > 0 || !preview?.reason || preview.reason === this.lastInvalidReason) return;
     this.invalidToastCooldown = 0.7;
     this.lastInvalidReason = preview.reason;
-    if (preview.reason === 'Too far' || preview.reason === 'Needs support' || preview.reason.startsWith('No ')) {
+    if (
+      preview.reason === 'Too far'
+      || preview.reason === 'Needs support'
+      || preview.reason === 'Clear foreground first'
+      || preview.reason.startsWith('No ')
+    ) {
       this.game.ui.showToast(preview.reason, 'danger', 850);
     }
   }
@@ -646,12 +658,15 @@ export class BuildingSystem {
     const x = col * size;
     const y = row * size;
     const edgeStyle = this.getBuildPreviewEdgeStyle(material, buildable);
+    const shapePulse = edgeStyle === 'smooth' ? 1 : pulse;
     ctx.globalAlpha = valid ? 0.58 : 0.42;
     ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${valid ? 0.34 : 0.22})`;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${valid ? 0.96 : 0.82})`;
     ctx.lineWidth = Math.max(1.5, terrain.cellSize * 0.09);
-    if (edgeStyle === 'smooth') this.traceSmoothGridTile(ctx, x, y, size, pulse);
-    else this.traceRoughGridTile(ctx, col, row, x, y, size, material, pulse);
+    ctx.lineJoin = edgeStyle === 'smooth' ? 'miter' : 'round';
+    ctx.lineCap = edgeStyle === 'smooth' ? 'butt' : 'round';
+    if (edgeStyle === 'smooth') this.traceSmoothGridTile(ctx, x, y, size, shapePulse);
+    else this.traceRoughGridTile(ctx, col, row, x, y, size, material, shapePulse);
     ctx.fill();
     ctx.stroke();
     ctx.globalAlpha = valid ? 0.28 : 0.18;

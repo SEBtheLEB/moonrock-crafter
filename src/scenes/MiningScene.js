@@ -1,30 +1,30 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=116';
-import { Ship } from '../entities/Ship.js?v=116';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=116';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=116';
-import { MineralPickup } from '../entities/MineralPickup.js?v=116';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=116';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=116';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=116';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=116';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=116';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=116';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=116';
-import { BaseLab } from '../entities/BaseLab.js?v=116';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=116';
-import { EnemySystem } from '../systems/EnemySystem.js?v=116';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=116';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=116';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=116';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=116';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=116';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=116';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=116';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=116';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=116';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=116';
+import { Hotbar } from '../ui/Hotbar.js?v=121';
+import { Ship } from '../entities/Ship.js?v=121';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=121';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=121';
+import { MineralPickup } from '../entities/MineralPickup.js?v=121';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=121';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=121';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=121';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=121';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=121';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=121';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=121';
+import { BaseLab } from '../entities/BaseLab.js?v=121';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=121';
+import { EnemySystem } from '../systems/EnemySystem.js?v=121';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=121';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=121';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=121';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=121';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=121';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=121';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=121';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=121';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=121';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=121';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -37,9 +37,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=116';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=116';
-import { gameBalance } from '../data/gameBalance.js?v=116';
+} from '../systems/MachineSculptingSystem.js?v=121';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=121';
+import { gameBalance } from '../data/gameBalance.js?v=121';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -474,7 +474,8 @@ export class MiningScene {
     this.ship.angle = island.landingAngle;
     this.distanceFromStation = this.getDistanceFromStation();
 
-    const exit = this.baseLab?.getSpawnPoint?.() || island.getPlayerExitLocal();
+    const playerSize = IslandPlayer.getDefaultSize();
+    const exit = this.baseLab?.getSpawnPoint?.(playerSize) || island.getPlayerExitLocal(playerSize);
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
     if (!this.baseLab) this.seedPlanetPlayer(island, this.islandPlayer);
     else this.initializePlanetPlayerFeel(this.islandPlayer);
@@ -701,6 +702,14 @@ export class MiningScene {
       ringSize: RING_SIZE,
       maxDistance: gameBalance.mining.miniMapMaxDistance || RING_SIZE * 5,
     });
+    const playerHealth = document.createElement('div');
+    playerHealth.className = 'player-health-hearts';
+    playerHealth.setAttribute('aria-label', 'Player health');
+    playerHealth.innerHTML = Array.from({ length: 5 }, (_, index) => `
+      <span class="meteor-heart" data-player-heart="${index}" aria-hidden="true">
+        <i></i>
+      </span>
+    `).join('');
     const vitals = document.createElement('div');
     vitals.className = 'mining-vitals';
     vitals.innerHTML = `
@@ -724,9 +733,11 @@ export class MiningScene {
     quickInventory.className = 'quick-inventory is-hidden';
     quickInventory.setAttribute('aria-label', 'Inventory');
     quickInventory.innerHTML = '<div class="quick-inventory-grid" data-quick-inventory-grid></div>';
-    mapStack.append(this.miniMap.element, vitals, quickInventory);
+    mapStack.append(this.miniMap.element, playerHealth, vitals, quickInventory);
     hud.append(mapStack);
     this.hud = {
+      playerHealth,
+      playerHearts: Array.from(playerHealth.querySelectorAll('[data-player-heart]')),
       hullText: vitals.querySelector('[data-hull-text]'),
       hullFill: vitals.querySelector('[data-hull-fill]'),
       fuelText: vitals.querySelector('[data-fuel-text]'),
@@ -2696,7 +2707,7 @@ export class MiningScene {
       landingSurfaceLocal: this.activeIsland.landingSurfaceLocal,
     }, { skipSave: true });
     this.game.saveGame();
-    const exit = this.activeIsland.getPlayerExitLocal();
+    const exit = this.activeIsland.getPlayerExitLocal(IslandPlayer.getDefaultSize());
     this.islandPlayer = new IslandPlayer({ x: exit.x, y: exit.y });
     this.seedPlanetPlayer(this.activeIsland, this.islandPlayer);
     const story = this.getStoryState();
@@ -6478,6 +6489,7 @@ export class MiningScene {
     this.setHudHeight('hullFill', this.hud.hullFill, Math.round(hullRatio * 100), force);
     this.setHudHeight('fuelFill', this.hud.fuelFill, Math.round(fuelRatio * 100), force);
     this.setHudHeight('cargoFill', this.hud.cargoFill, Math.round(cargoRatio * 100), force);
+    this.updatePlayerHealthHud(force);
 
     const distance = this.distanceFromStation;
     this.setHudText('distanceText', this.hud.distanceText, `${Math.round(distance)}m`, force);
@@ -6520,6 +6532,27 @@ export class MiningScene {
       distance,
       zone: this.currentZone,
     });
+  }
+
+  updatePlayerHealthHud(force = false) {
+    if (!this.hud?.playerHearts?.length) return;
+    const maxHealth = Math.max(1, this.islandPlayer?.maxHealth ?? 50);
+    const health = Math.max(0, Math.min(maxHealth, this.islandPlayer?.health ?? maxHealth));
+    const heartCount = this.hud.playerHearts.length;
+    const healthKey = `${Math.ceil(health)}/${Math.ceil(maxHealth)}`;
+    if (force || this.hudCache.playerHealth !== healthKey) {
+      this.hudCache.playerHealth = healthKey;
+      const healthPerHeart = maxHealth / heartCount;
+      this.hud.playerHearts.forEach((heart, index) => {
+        const fill = Math.max(0, Math.min(1, (health - index * healthPerHeart) / healthPerHeart));
+        heart.style.setProperty('--heart-fill', `${Math.round(fill * 100)}%`);
+        heart.classList.toggle('is-full', fill >= 0.98);
+        heart.classList.toggle('is-partial', fill > 0.02 && fill < 0.98);
+        heart.classList.toggle('is-empty', fill <= 0.02);
+      });
+      this.hud.playerHealth?.setAttribute('aria-label', `Player health ${Math.ceil(health)} of ${Math.ceil(maxHealth)}`);
+    }
+    this.setHudClass('playerHealthLow', this.hud.playerHealth, 'is-low', health / maxHealth <= 0.3, force);
   }
 
   getPlanetVisorState() {

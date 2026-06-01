@@ -1,4 +1,4 @@
-import { gameBalance } from './gameBalance.js?v=116';
+import { gameBalance } from './gameBalance.js?v=121';
 
 const earlyAsteroids = gameBalance.earlyGame.asteroids;
 

@@ -1,4 +1,4 @@
-import { getShapeState } from '../systems/MachineSculptingSystem.js?v=116';
+import { getShapeState } from '../systems/MachineSculptingSystem.js?v=121';
 
 const FURNACE_WIDTH = 112;
 const FURNACE_HEIGHT = 82;

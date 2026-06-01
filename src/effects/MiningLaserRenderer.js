@@ -1,4 +1,4 @@
-import { ElectricLaserRenderer } from './ElectricLaserRenderer.js?v=116';
+import { ElectricLaserRenderer } from './ElectricLaserRenderer.js?v=121';
 
 export class MiningLaserRenderer {
   constructor() {

@@ -1,30 +1,30 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=116';
+import { InputManager } from './InputManager.js?v=121';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=116';
+import { AudioManager } from './AudioManager.js?v=121';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=116';
+import { DebugPanel } from '../ui/DebugPanel.js?v=121';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=116';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=116';
-import { EconomySystem } from '../systems/EconomySystem.js?v=116';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=116';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=116';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=116';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=116';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=116';
-import { IslandSystem } from '../systems/IslandSystem.js?v=116';
-import { BuildingSystem } from '../systems/BuildingSystem.js?v=116';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=121';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=121';
+import { EconomySystem } from '../systems/EconomySystem.js?v=121';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=121';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=121';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=121';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=121';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=121';
+import { IslandSystem } from '../systems/IslandSystem.js?v=121';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=121';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=116';
-import { MiningScene } from '../scenes/MiningScene.js?v=116';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=116';
-import { StorageScene } from '../scenes/StorageScene.js?v=116';
-import { IslandScene } from '../scenes/IslandScene.js?v=116';
-import { gameBalance } from '../data/gameBalance.js?v=116';
-import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=116';
+import { StationScene } from '../scenes/StationScene.js?v=121';
+import { MiningScene } from '../scenes/MiningScene.js?v=121';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=121';
+import { StorageScene } from '../scenes/StorageScene.js?v=121';
+import { IslandScene } from '../scenes/IslandScene.js?v=121';
+import { gameBalance } from '../data/gameBalance.js?v=121';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=121';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -287,6 +287,18 @@ export class Game {
       }
       merged.progression ||= {};
       merged.progression.starterMetalCaseWallMigrated = true;
+    }
+    if (!savedState.progression?.starterMetalCaseBackWallMigrated) {
+      merged.inventory.metalCaseBackWall = Math.max(
+        merged.inventory.metalCaseBackWall || 0,
+        gameBalance.startingInventory.metalCaseBackWall || 100,
+      );
+      if (!merged.hotbar.includes('buildMetalCaseBackWall')) {
+        const emptyIndex = merged.hotbar.findIndex((slot) => !slot);
+        if (emptyIndex >= 0) merged.hotbar[emptyIndex] = 'buildMetalCaseBackWall';
+      }
+      merged.progression ||= {};
+      merged.progression.starterMetalCaseBackWallMigrated = true;
     }
     return merged;
   }
