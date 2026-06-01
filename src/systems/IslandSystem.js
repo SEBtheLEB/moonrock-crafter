@@ -3,6 +3,7 @@ import { TerrainGrid } from './TerrainGrid.js?v=115';
 import { gameBalance } from '../data/gameBalance.js?v=115';
 
 const ISLAND_LAYOUT_VERSION = 6;
+const PLANET_TAG_PREFIX = 'P';
 
 export class IslandSystem {
   constructor(game) {
@@ -16,6 +17,19 @@ export class IslandSystem {
 
   getIsland(id) {
     return this.islands.find((island) => island.id === id) || this.islands[0];
+  }
+
+  getIslandByTag(tagOrId) {
+    const normalized = this.normalizePlanetTag(tagOrId);
+    return this.islands.find((island) => (
+      island.id === tagOrId
+      || this.normalizePlanetTag(island.tag || island.planetTag) === normalized
+    )) || null;
+  }
+
+  getPlanetTag(islandOrId) {
+    const island = typeof islandOrId === 'string' ? this.getIslandByTag(islandOrId) || this.getIsland(islandOrId) : islandOrId;
+    return island?.tag || island?.planetTag || '';
   }
 
   createRuntime() {
@@ -59,12 +73,60 @@ export class IslandSystem {
       && Array.isArray(this.game.state.islands.layout)
       && this.game.state.islands.layout.length
     ) {
-      return this.game.state.islands.layout;
+      const layout = this.game.state.islands.layout;
+      if (this.assignPlanetTags(layout)) this.game.saveGame();
+      return layout;
     }
     const layout = this.createProceduralPois();
+    this.assignPlanetTags(layout);
     this.game.state.islands.layout = layout;
     this.game.state.islands.layoutVersion = ISLAND_LAYOUT_VERSION;
     return layout;
+  }
+
+  formatPlanetTag(index) {
+    return `${PLANET_TAG_PREFIX}${String(index + 1).padStart(2, '0')}`;
+  }
+
+  normalizePlanetTag(value = '') {
+    const text = String(value || '').trim().toUpperCase();
+    const match = text.match(/^P?(\d+)$/);
+    if (!match) return text;
+    return `${PLANET_TAG_PREFIX}${String(Number(match[1])).padStart(2, '0')}`;
+  }
+
+  assignPlanetTags(layout = []) {
+    const used = new Set();
+    let changed = false;
+    layout.forEach((island, index) => {
+      if (!island) return;
+      let tag = this.normalizePlanetTag(island.tag || island.planetTag);
+      if (!/^P\d{2,}$/.test(tag) || used.has(tag)) {
+        tag = this.formatPlanetTag(index);
+        while (used.has(tag)) tag = this.formatPlanetTag(used.size);
+      }
+      used.add(tag);
+      if (island.tag !== tag || island.planetTag !== tag) {
+        island.tag = tag;
+        island.planetTag = tag;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  regenerateIsland(tagOrId, { clearFlags = true } = {}) {
+    const island = this.getIslandByTag(tagOrId);
+    if (!island) return null;
+    const terrainSeed = Math.floor(Date.now() % 1_000_000_000);
+    island.terrainRevision = (island.terrainRevision || 0) + 1;
+    island.terrainSeed = terrainSeed;
+    this.game.state.islands ||= { visited: {}, terrain: {} };
+    if (this.game.state.islands.terrain) delete this.game.state.islands.terrain[island.id];
+    if (clearFlags && this.game.state.islands.flags) delete this.game.state.islands.flags[island.id];
+    this.game.saveGame();
+    this.game.systems.navigation?.refreshLocations?.();
+    return island;
   }
 
   createProceduralPois() {
@@ -90,7 +152,7 @@ export class IslandSystem {
       discovered: true,
       dangerLevel: 1,
       landingZoneRadius: 720,
-      resources: ['stoneOre', 'ironDust', 'copperShards', 'crystallizedStone', 'redCrystal'],
+      resources: ['stoneOre', 'ironDust', 'copperShards', 'moonCrystal', 'crystallizedStone', 'redCrystal'],
       animals: [],
       layoutId: 'crashPlanet',
       requiredScannerLevel: 1,

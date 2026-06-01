@@ -110,6 +110,16 @@ export class Game {
       debug: {
         invincible: false,
         godMode: false,
+        terrain: {
+          rawGrid: false,
+          visualMesh: false,
+          collision: false,
+          roughness: true,
+          roughnessDebug: false,
+          lighting: true,
+          lightingDebug: false,
+          depthDebug: false,
+        },
       },
       tutorial: {},
       progression: {},
@@ -146,7 +156,11 @@ export class Game {
       unlockedZones: { ...defaultState.unlockedZones, ...savedState.unlockedZones },
       settings: { ...defaultState.settings, ...savedState.settings },
       stats: { ...defaultState.stats, ...savedState.stats },
-      debug: { ...defaultState.debug, ...savedState.debug },
+      debug: {
+        ...defaultState.debug,
+        ...savedState.debug,
+        terrain: { ...defaultState.debug.terrain, ...savedState.debug?.terrain },
+      },
       story: {
         ...defaultState.story,
         ...savedState.story,

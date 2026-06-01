@@ -126,6 +126,47 @@
   text-align: center;
 }
 
+.planet-visor {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 58px);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 999px;
+  background: rgba(9, 17, 28, 0.58);
+  color: rgba(236, 231, 216, 0.9);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0;
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.planet-visor.is-hidden {
+  display: none;
+}
+
+.planet-visor span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(118, 243, 255, 0.14);
+  color: #76f3ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.planet-visor strong {
+  color: var(--forge-yellow);
+}
+
 .zone-banner {
   position: absolute;
   left: 50%;
@@ -842,6 +883,10 @@ html[data-layout-profile="pc"] .recall-button {
   transform: translateX(-50%);
 }
 
+.planet-visor {
+  top: calc(var(--safe-top) + 52px);
+}
+
 .mining-warning {
   position: absolute;
   right: calc(var(--safe-right) + 16px);
@@ -886,5 +931,12 @@ html[data-layout-profile="pc"] .recall-button {
   .zone-chip {
     min-height: 28px;
     font-size: 11px;
+  }
+
+  .planet-visor {
+    top: calc(var(--safe-top) + 48px);
+    min-height: 26px;
+    padding: 3px 8px;
+    font-size: 10px;
   }
 }

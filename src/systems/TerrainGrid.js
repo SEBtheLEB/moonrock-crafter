@@ -1,4 +1,5 @@
 import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=115';
+import { gameBalance } from '../data/gameBalance.js?v=115';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -10,30 +11,149 @@ export const TERRAIN_MATERIALS = {
   6: { id: 'fireCore', name: 'Fire Core', color: '#ff5d3d', edge: '#ffd36b', hardness: 11.2, yield: 1, materialId: 'fireCore', miningPowerRequired: 0 },
   7: { id: 'crystallizedStone', name: 'Crystallized Stone', color: '#445262', edge: '#9ed7ff', hardness: 14.6, yield: 1, materialId: 'crystallizedStone', miningPowerRequired: 1.15 },
   8: { id: 'redCrystal', name: 'Red Crystal', color: '#a9213c', edge: '#ff6f7d', hardness: 9.4, yield: 1, materialId: 'redCrystal', miningPowerRequired: 1.15 },
+  9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 0, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
 };
 
-const TERRAIN_SAVE_VERSION = 14;
-const DEFAULT_TERRAIN_CELL_SIZE = 16;
+const TERRAIN_SAVE_VERSION = 20;
+const TERRAIN_TUNING = gameBalance.terrain || {};
+const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
+const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
+const TERRAIN_VISUAL_SUBDIVISIONS = TERRAIN_TUNING.visualSubdivisions || 2;
+const TERRAIN_COLLISION_SUBDIVISIONS = TERRAIN_TUNING.collisionSubdivisions || TERRAIN_VISUAL_SUBDIVISIONS;
+const TERRAIN_VISUAL_DENSITY_RADIUS = TERRAIN_TUNING.visualDensityRadiusCells || 1.32;
+const TERRAIN_COLLISION_DENSITY_RADIUS = TERRAIN_TUNING.collisionDensityRadiusCells || TERRAIN_VISUAL_DENSITY_RADIUS;
+const TERRAIN_VISUAL_THRESHOLD = TERRAIN_TUNING.visualDensityThreshold || 0.42;
+const TERRAIN_COLLISION_THRESHOLD = TERRAIN_TUNING.collisionDensityThreshold || TERRAIN_VISUAL_THRESHOLD;
 
 const VISUAL_CONTOUR_OPTIONS = {
-  smoothingIterations: 1,
-  smoothingAmount: 0.11,
-  minSegmentLength: 2,
-  sharpAngleDegrees: 34,
-  sharpAngleAmount: 0.1,
-  gridSnapAmount: 0.66,
-  cornerRoundAmount: 0.09,
+  sampleSubdivisions: TERRAIN_VISUAL_SUBDIVISIONS,
+  densityRadiusCells: TERRAIN_VISUAL_DENSITY_RADIUS,
+  densityThreshold: TERRAIN_VISUAL_THRESHOLD,
+  smoothingIterations: TERRAIN_TUNING.visualSmoothingIterations ?? 2,
+  smoothingAmount: TERRAIN_TUNING.visualSmoothingAmount ?? 0.22,
+  minSegmentLength: TERRAIN_TUNING.visualMinSegmentLength ?? 2.6,
+  sharpAngleDegrees: TERRAIN_TUNING.visualSharpAngleDegrees ?? 42,
+  sharpAngleAmount: TERRAIN_TUNING.visualSharpAngleAmount ?? 0.24,
+  chamferAngleDegrees: TERRAIN_TUNING.visualChamferAngleDegrees ?? 34,
+  chamferLengthCells: TERRAIN_TUNING.visualChamferLengthCells ?? 0.52,
+  chamferMinLength: TERRAIN_TUNING.visualChamferMinLength ?? 4,
+  chamferMaxLength: TERRAIN_TUNING.visualChamferMaxLength ?? 16,
+  gridSnapAmount: TERRAIN_TUNING.visualGridSnapAmount ?? 0.22,
+  cornerRoundAmount: TERRAIN_TUNING.visualCornerRoundAmount ?? 0.18,
+  spikeAngleDegrees: TERRAIN_TUNING.visualSpikeAngleDegrees ?? 26,
+  spikeFlattenAmount: TERRAIN_TUNING.visualSpikeFlattenAmount ?? 0.58,
 };
 
 const COLLISION_CONTOUR_OPTIONS = {
-  smoothingIterations: 1,
-  smoothingAmount: 0.18,
-  minSegmentLength: 12,
-  sharpAngleDegrees: 58,
-  sharpAngleAmount: 0.34,
-  gridSnapAmount: 0.34,
-  cornerRoundAmount: 0.14,
+  sampleSubdivisions: TERRAIN_COLLISION_SUBDIVISIONS,
+  densityRadiusCells: TERRAIN_COLLISION_DENSITY_RADIUS,
+  densityThreshold: TERRAIN_COLLISION_THRESHOLD,
+  smoothingIterations: TERRAIN_TUNING.collisionSmoothingIterations ?? VISUAL_CONTOUR_OPTIONS.smoothingIterations,
+  smoothingAmount: TERRAIN_TUNING.collisionSmoothingAmount ?? VISUAL_CONTOUR_OPTIONS.smoothingAmount,
+  minSegmentLength: TERRAIN_TUNING.collisionMinSegmentLength ?? VISUAL_CONTOUR_OPTIONS.minSegmentLength,
+  sharpAngleDegrees: TERRAIN_TUNING.collisionSharpAngleDegrees ?? VISUAL_CONTOUR_OPTIONS.sharpAngleDegrees,
+  sharpAngleAmount: TERRAIN_TUNING.collisionSharpAngleAmount ?? VISUAL_CONTOUR_OPTIONS.sharpAngleAmount,
+  chamferAngleDegrees: TERRAIN_TUNING.collisionChamferAngleDegrees ?? VISUAL_CONTOUR_OPTIONS.chamferAngleDegrees,
+  chamferLengthCells: TERRAIN_TUNING.collisionChamferLengthCells ?? VISUAL_CONTOUR_OPTIONS.chamferLengthCells,
+  chamferMinLength: TERRAIN_TUNING.collisionChamferMinLength ?? VISUAL_CONTOUR_OPTIONS.chamferMinLength,
+  chamferMaxLength: TERRAIN_TUNING.collisionChamferMaxLength ?? VISUAL_CONTOUR_OPTIONS.chamferMaxLength,
+  gridSnapAmount: TERRAIN_TUNING.collisionGridSnapAmount ?? VISUAL_CONTOUR_OPTIONS.gridSnapAmount,
+  cornerRoundAmount: TERRAIN_TUNING.collisionCornerRoundAmount ?? VISUAL_CONTOUR_OPTIONS.cornerRoundAmount,
+  spikeAngleDegrees: TERRAIN_TUNING.collisionSpikeAngleDegrees ?? VISUAL_CONTOUR_OPTIONS.spikeAngleDegrees,
+  spikeFlattenAmount: TERRAIN_TUNING.collisionSpikeFlattenAmount ?? VISUAL_CONTOUR_OPTIONS.spikeFlattenAmount,
 };
+
+const MATERIAL_CONTOUR_OPTIONS = {
+  ...VISUAL_CONTOUR_OPTIONS,
+  sampleSubdivisions: TERRAIN_TUNING.materialSubdivisions || 1,
+  densityRadiusCells: TERRAIN_TUNING.materialDensityRadiusCells || 1.08,
+  densityThreshold: TERRAIN_TUNING.materialDensityThreshold || 0.5,
+  smoothingIterations: TERRAIN_TUNING.materialSmoothingIterations ?? 1,
+  smoothingAmount: TERRAIN_TUNING.materialSmoothingAmount ?? 0.14,
+  chamferAngleDegrees: TERRAIN_TUNING.materialChamferAngleDegrees ?? 36,
+  chamferLengthCells: TERRAIN_TUNING.materialChamferLengthCells ?? 0.36,
+  chamferMinLength: TERRAIN_TUNING.materialChamferMinLength ?? 3,
+  chamferMaxLength: TERRAIN_TUNING.materialChamferMaxLength ?? 11,
+  gridSnapAmount: TERRAIN_TUNING.materialGridSnapAmount ?? 0.34,
+  cornerRoundAmount: TERRAIN_TUNING.materialCornerRoundAmount ?? 0.12,
+};
+
+const TERRAIN_ROUGHNESS = {
+  enabled: true,
+  edgeNoiseStrength: 2.8,
+  edgeNoiseScale: 0.72,
+  edgeSegmentCount: 5,
+  maxChipDepth: 6,
+  chipChance: 0.42,
+  cornerBreakChance: 0.28,
+  edgeShadowStrength: 0.28,
+  crackChance: 0.34,
+  dentChance: 0.42,
+  pebbleChance: 0.22,
+  pebbleLipChance: 0.16,
+  surfaceDetailOpacity: 0.38,
+  crackLengthMin: 7,
+  crackLengthMax: 20,
+  materialStyles: {},
+  ...(TERRAIN_TUNING.roughness || {}),
+};
+
+const TERRAIN_LIGHTING = {
+  enabled: true,
+  darknessStartDepth: 3,
+  fullDarkDepth: 13,
+  maxDarknessOpacity: 0.88,
+  darknessFalloffPower: 1.42,
+  surfaceLightBleedDepth: 4,
+  tunnelDarknessStrength: 0.86,
+  lightingCellScale: 0.74,
+  lightFalloffPower: 1.18,
+  ambientSurfaceLight: 0.08,
+  materialLights: {},
+  ...(TERRAIN_TUNING.lighting || {}),
+};
+
+const TERRAIN_WALLS = {
+  enabled: true,
+  startDepth: 0.55,
+  materialInfluenceRadius: 4,
+  textureAlpha: 0.96,
+  edgeAlpha: 0.18,
+  surfaceFadeDepth: 4.5,
+  ...(TERRAIN_TUNING.walls || {}),
+};
+
+const WALL_CONTOUR_OPTIONS = {
+  ...MATERIAL_CONTOUR_OPTIONS,
+  densityRadiusCells: TERRAIN_TUNING.wallDensityRadiusCells || 1.22,
+  densityThreshold: TERRAIN_TUNING.wallDensityThreshold || 0.46,
+  smoothingIterations: TERRAIN_TUNING.wallSmoothingIterations ?? 2,
+  smoothingAmount: TERRAIN_TUNING.wallSmoothingAmount ?? 0.2,
+  gridSnapAmount: TERRAIN_TUNING.wallGridSnapAmount ?? 0.18,
+  cornerRoundAmount: TERRAIN_TUNING.wallCornerRoundAmount ?? 0.14,
+};
+
+const TERRAIN_TEXTURE_INSTANCES = new Set();
+const TERRAIN_IMAGE_CACHE = new Map();
+
+function getTerrainTextureImage(src) {
+  if (!src || typeof Image === 'undefined') return null;
+  const href = typeof document !== 'undefined'
+    ? new URL(src, document.baseURI).href
+    : src;
+  if (TERRAIN_IMAGE_CACHE.has(href)) return TERRAIN_IMAGE_CACHE.get(href);
+  const image = new Image();
+  image.onload = () => {
+    TERRAIN_TEXTURE_INSTANCES.forEach((terrain) => {
+      terrain.textureCache?.clear();
+      terrain.renderDirty = true;
+      terrain.fullRenderDirty = true;
+    });
+  };
+  image.src = href;
+  TERRAIN_IMAGE_CACHE.set(href, image);
+  return image;
+}
 
 const POINTS = {
   tl: [0, 0],
@@ -82,6 +202,21 @@ const EDGE_SEGMENTS = {
   13: [['bottom', 'right']],
   14: [['left', 'bottom']],
   15: [],
+};
+
+const EDGE_DIRECTIONS = {
+  top: { dx: 0, dy: -1, normal: { x: 0, y: -1 }, tangent: { x: 1, y: 0 } },
+  right: { dx: 1, dy: 0, normal: { x: 1, y: 0 }, tangent: { x: 0, y: 1 } },
+  bottom: { dx: 0, dy: 1, normal: { x: 0, y: 1 }, tangent: { x: 1, y: 0 } },
+  left: { dx: -1, dy: 0, normal: { x: -1, y: 0 }, tangent: { x: 0, y: 1 } },
+};
+
+const EDGE_DIRECTION_NAMES = Object.keys(EDGE_DIRECTIONS);
+const CORNER_EXPOSED_EDGES = {
+  tl: ['top', 'left'],
+  tr: ['top', 'right'],
+  br: ['bottom', 'right'],
+  bl: ['bottom', 'left'],
 };
 
 const BIOME_PALETTES = {
@@ -227,6 +362,21 @@ function signedNoise(value) {
   return normalized - Math.floor(normalized) - 0.5;
 }
 
+function hash2D(x, y, seed = 0, salt = 0) {
+  let hash = Math.imul(Math.floor(x) ^ 0x9e3779b9, 374761393);
+  hash ^= Math.imul(Math.floor(y) ^ 0x85ebca6b, 668265263);
+  hash ^= Math.imul(Math.floor(seed) ^ 0xc2b2ae35, 2246822519);
+  hash ^= Math.imul(Math.floor(salt) ^ 0x27d4eb2f, 3266489917);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 1274126177);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) / 4294967296;
+}
+
+function signedHash2D(x, y, seed = 0, salt = 0) {
+  return hash2D(x, y, seed, salt) * 2 - 1;
+}
+
 function pointKey(point) {
   return `${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
 }
@@ -254,6 +404,34 @@ function contourBounds(points) {
 
 function boundsOverlap(a, b) {
   return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+}
+
+function segmentIntersectsSegment(a, b, c, d) {
+  const cross = (p, q, r) => ((q.x - p.x) * (r.y - p.y)) - ((q.y - p.y) * (r.x - p.x));
+  const onSegment = (p, q, r) => (
+    Math.min(p.x, r.x) - 0.001 <= q.x
+    && q.x <= Math.max(p.x, r.x) + 0.001
+    && Math.min(p.y, r.y) - 0.001 <= q.y
+    && q.y <= Math.max(p.y, r.y) + 0.001
+  );
+  const d1 = cross(a, b, c);
+  const d2 = cross(a, b, d);
+  const d3 = cross(c, d, a);
+  const d4 = cross(c, d, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  if (Math.abs(d1) <= 0.001 && onSegment(a, c, b)) return true;
+  if (Math.abs(d2) <= 0.001 && onSegment(a, d, b)) return true;
+  if (Math.abs(d3) <= 0.001 && onSegment(c, a, d)) return true;
+  if (Math.abs(d4) <= 0.001 && onSegment(c, b, d)) return true;
+  return false;
+}
+
+function pointInOrientedBox(point, shape, padding = 0.001) {
+  const dx = point.x - shape.centerX;
+  const dy = point.y - shape.centerY;
+  const localX = dx * shape.axisX.x + dy * shape.axisX.y;
+  const localY = dx * shape.axisY.x + dy * shape.axisY.y;
+  return Math.abs(localX) <= shape.halfWidth + padding && Math.abs(localY) <= shape.halfHeight + padding;
 }
 
 function removeDuplicateContourPoints(points) {
@@ -328,6 +506,105 @@ function averageContourPoints(points, amount = 0.35) {
   });
 }
 
+function flattenContourSpikes(points, options) {
+  if (points.length <= 4) return points;
+  const threshold = Math.cos((options.spikeAngleDegrees || 28) * Math.PI / 180);
+  const amount = options.spikeFlattenAmount ?? 0.55;
+  return points.map((point, index) => {
+    const previous = points[(index - 1 + points.length) % points.length];
+    const next = points[(index + 1) % points.length];
+    const ax = previous.x - point.x;
+    const ay = previous.y - point.y;
+    const bx = next.x - point.x;
+    const by = next.y - point.y;
+    const al = Math.hypot(ax, ay) || 1;
+    const bl = Math.hypot(bx, by) || 1;
+    const cosine = (ax * bx + ay * by) / (al * bl);
+    if (cosine > threshold) return point;
+    const target = midpoint(previous, next);
+    return {
+      x: point.x + (target.x - point.x) * amount,
+      y: point.y + (target.y - point.y) * amount,
+    };
+  });
+}
+
+function simplifyNearlyStraightContour(points, minSegmentLength = 0) {
+  if (points.length <= 6) return points;
+  const minSq = Math.max(0.5, minSegmentLength * 0.55) ** 2;
+  const simplified = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const previous = points[(index - 1 + points.length) % points.length];
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    const ax = point.x - previous.x;
+    const ay = point.y - previous.y;
+    const bx = next.x - point.x;
+    const by = next.y - point.y;
+    const cross = Math.abs(ax * by - ay * bx);
+    const dot = ax * bx + ay * by;
+    const lenSq = ax * ax + ay * ay;
+    if (lenSq < minSq && cross < 0.6 && dot > 0) continue;
+    simplified.push(point);
+  }
+  return simplified.length >= 3 ? simplified : points;
+}
+
+function chamferSharpContourCorners(points, options = VISUAL_CONTOUR_OPTIONS, gridStep = 1) {
+  if (points.length <= 4) return points;
+  const angleDegrees = options.chamferAngleDegrees ?? 0;
+  if (angleDegrees <= 0) return points;
+
+  const threshold = Math.cos(angleDegrees * Math.PI / 180);
+  const cellSize = gridStep * Math.max(1, options.sampleSubdivisions || 1);
+  const preferredLength = cellSize * (options.chamferLengthCells ?? 0.45);
+  const minLength = options.chamferMinLength ?? Math.max(2, gridStep * 0.35);
+  const maxLength = options.chamferMaxLength ?? preferredLength;
+  const chamfered = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    const previous = points[(index - 1 + points.length) % points.length];
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    const inX = point.x - previous.x;
+    const inY = point.y - previous.y;
+    const outX = next.x - point.x;
+    const outY = next.y - point.y;
+    const inLength = Math.hypot(inX, inY);
+    const outLength = Math.hypot(outX, outY);
+
+    if (inLength < minLength * 0.85 || outLength < minLength * 0.85) {
+      chamfered.push(point);
+      continue;
+    }
+
+    const dot = ((inX / inLength) * (outX / outLength)) + ((inY / inLength) * (outY / outLength));
+    if (dot > threshold) {
+      chamfered.push(point);
+      continue;
+    }
+
+    const sharpness = clamp01((threshold - dot) / Math.max(0.001, threshold + 1));
+    const targetLength = clamp(preferredLength * (0.85 + sharpness * 0.45), minLength, maxLength);
+    const distance = Math.min(targetLength, inLength * 0.44, outLength * 0.44);
+    if (distance < minLength * 0.55) {
+      chamfered.push(point);
+      continue;
+    }
+
+    chamfered.push({
+      x: point.x - (inX / inLength) * distance,
+      y: point.y - (inY / inLength) * distance,
+    });
+    chamfered.push({
+      x: point.x + (outX / outLength) * distance,
+      y: point.y + (outY / outLength) * distance,
+    });
+  }
+
+  return chamfered.length >= 3 ? chamfered : points;
+}
+
 function snapContourTowardGrid(points, gridStep, amount = 0) {
   if (!gridStep || amount <= 0) return points;
   const t = clamp01(amount);
@@ -344,17 +621,22 @@ function snapContourTowardGrid(points, gridStep, amount = 0) {
 function smoothContour(points, options = VISUAL_CONTOUR_OPTIONS, gridStep = 1) {
   let smoothed = removeDuplicateContourPoints(points);
   smoothed = removeShortContourSegments(smoothed, options.minSegmentLength || 0);
+  smoothed = flattenContourSpikes(smoothed, options);
   smoothed = smoothSharpContourAngles(smoothed, options);
   for (let iteration = 0; iteration < (options.smoothingIterations || 0); iteration += 1) {
     smoothed = averageContourPoints(smoothed, options.smoothingAmount ?? 0.35);
+    smoothed = flattenContourSpikes(smoothed, options);
     smoothed = removeShortContourSegments(smoothed, options.minSegmentLength || 0);
   }
+  smoothed = simplifyNearlyStraightContour(smoothed, options.minSegmentLength || 0);
+  smoothed = chamferSharpContourCorners(smoothed, options, gridStep);
+  smoothed = removeShortContourSegments(smoothed, Math.max(0, (options.minSegmentLength || 0) * 0.5));
   smoothed = snapContourTowardGrid(smoothed, gridStep, options.gridSnapAmount || 0);
   return smoothed.length >= 3 ? smoothed : points;
 }
 
 export class TerrainGrid {
-  constructor({ cols, rows, cellSize = 18, cells = null, seed = 1, biome = 'scrap', landingX = 150, landingY = 360 } = {}) {
+  constructor({ cols, rows, cellSize = 18, cells = null, wallCells = null, seed = 1, biome = 'scrap', landingX = 150, landingY = 360 } = {}) {
     this.cols = cols;
     this.rows = rows;
     this.cellSize = cellSize;
@@ -367,17 +649,37 @@ export class TerrainGrid {
     this.biome = biome;
     this.landingX = landingX;
     this.landingY = landingY;
-    this.cells = cells ? Uint8Array.from(cells) : new Uint8Array(cols * rows);
+    this.chunkSizeCells = DEFAULT_TERRAIN_CHUNK_CELLS;
+    this.dirtyChunks = new Set();
+    const cellCount = cols * rows;
+    this.cells = cells ? Uint8Array.from(cells) : new Uint8Array(cellCount);
+    this.wallCells = wallCells?.length === cellCount ? Uint8Array.from(wallCells) : new Uint8Array(cellCount);
     this.damage = new Float32Array(cols * rows);
     this.renderCanvas = null;
     this.renderCtx = null;
     this.renderDirty = true;
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
+    this.damagedCells = new Set();
     this.textureCache = new Map();
     this.contourCache = new Map();
+    this.roughEdgeCache = new Map();
+    this.roughContourCache = new Map();
     this.collisionContours = null;
     this.surfacePathCache = null;
+    this.surfaceRadiusLookupCache = new Map();
+    this.roughnessRenderEnabled = Boolean(TERRAIN_ROUGHNESS.enabled);
+    this.lightingRenderEnabled = Boolean(TERRAIN_LIGHTING.enabled);
+    this.lightingDebugEnabled = false;
+    this.depthDebugEnabled = false;
+    this.lightingCanvas = null;
+    this.lightingCtx = null;
+    this.lightingFieldCanvas = null;
+    this.lightingFieldCtx = null;
+    this.airExposureMap = null;
+    this.airExposureDirty = true;
+    if (cells && wallCells?.length !== cellCount && TERRAIN_WALLS.enabled) this.generateWallLayerForPlanet();
+    TERRAIN_TEXTURE_INSTANCES.add(this);
   }
 
   static createForIsland(island, world, savedTerrain = null) {
@@ -387,6 +689,7 @@ export class TerrainGrid {
         rows: savedTerrain.rows,
         cellSize: savedTerrain.cellSize || 18,
         cells: savedTerrain.cells,
+        wallCells: savedTerrain.wallCells,
         seed: savedTerrain.seed || hashString(island.id),
         biome: savedTerrain.biome || island.biome,
         landingX: savedTerrain.landingX || world.landingX || 150,
@@ -397,7 +700,9 @@ export class TerrainGrid {
     const cellSize = DEFAULT_TERRAIN_CELL_SIZE;
     const cols = Math.ceil(world.width / cellSize);
     const rows = Math.ceil(world.height / cellSize);
-    const seed = hashString(`${island.id}:${island.type || island.biome}`);
+    const seed = Number.isFinite(island.terrainSeed)
+      ? island.terrainSeed
+      : hashString(`${island.id}:${island.terrainRevision || 0}:${island.type || island.biome}`);
     const terrain = new TerrainGrid({
       cols,
       rows,
@@ -422,12 +727,14 @@ export class TerrainGrid {
       landingX: this.landingX,
       landingY: this.landingY,
       cells: Array.from(this.cells),
+      wallCells: Array.from(this.wallCells || []),
     };
   }
 
   generate(island) {
     const random = createRandom(this.seed);
     this.cells.fill(0);
+    this.wallCells.fill(0);
     this.surfaceRows = [];
     this.bottomRows = [];
     const surfaceRows = [];
@@ -473,8 +780,11 @@ export class TerrainGrid {
     this.placeOreVeins(random, island, flattenedSurfaceRows);
     this.placeFireCoreDeposit(random, island);
     this.placeCrystalVault(random, island);
+    this.smoothMaterialPatches(1);
     this.shapeGentlePlanetSurface(island);
     this.flattenSurfaceTeeth(2);
+    this.flattenStarterLandingPlateau(island);
+    this.generateWallLayerForPlanet(island);
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -623,6 +933,42 @@ export class TerrainGrid {
     }
   }
 
+  smoothMaterialPatches(iterations = 1) {
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const next = new Uint8Array(this.cells);
+      for (let row = 1; row < this.rows - 1; row += 1) {
+        for (let col = 1; col < this.cols - 1; col += 1) {
+          const material = this.getCell(col, row);
+          if (material <= 0) continue;
+          const counts = new Map();
+          for (let oy = -1; oy <= 1; oy += 1) {
+            for (let ox = -1; ox <= 1; ox += 1) {
+              const neighbor = this.getCell(col + ox, row + oy);
+              if (neighbor <= 1) continue;
+              counts.set(neighbor, (counts.get(neighbor) || 0) + 1);
+            }
+          }
+          let bestMaterial = material;
+          let bestCount = material > 1 ? counts.get(material) || 0 : 0;
+          for (const [candidate, count] of counts.entries()) {
+            if (count > bestCount) {
+              bestMaterial = candidate;
+              bestCount = count;
+            }
+          }
+          const index = this.index(col, row);
+          if (material > 1 && bestCount <= 1) next[index] = 1;
+          else if (material === 1 && bestMaterial > 1 && bestCount >= 5) next[index] = bestMaterial;
+          else if (material > 1 && bestMaterial !== material && bestCount >= 5) next[index] = bestMaterial;
+        }
+      }
+      this.cells = next;
+    }
+    this.invalidateTerrainGeometry({ keepSurfacePath: true });
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+  }
+
   rebuildSurfaceProfiles() {
     const surfaceRows = new Array(this.cols).fill(null);
     const bottomRows = new Array(this.cols).fill(null);
@@ -734,13 +1080,14 @@ export class TerrainGrid {
   }
 
   carveCaves(random, island) {
-    const caveCount = {
+    const density = TERRAIN_TUNING.caveDensity || 1;
+    const caveCount = Math.max(1, Math.round(({
       cave: 13,
       largeMineral: 10,
       wreckage: 7,
       crystalCluster: 9,
       smallAsteroid: 5,
-    }[island.type] || 7;
+    }[island.type] || 7) * density));
 
     for (let i = 0; i < caveCount; i += 1) {
       const startCol = clamp(Math.floor(4 + random() * Math.max(1, this.cols - 8)), 3, this.cols - 4);
@@ -761,26 +1108,53 @@ export class TerrainGrid {
         const ry = 30 + random() * 62;
         this.carveEllipse(cx, cy, rx, ry);
       }
+      if (random() < 0.68) {
+        this.carveWormCave(startX, startY, angle + (random() - 0.5) * 0.8, length * (0.55 + random() * 0.55), random);
+      }
+    }
+  }
+
+  carveWormCave(startX, startY, angle, length, random) {
+    const steps = Math.max(8, Math.floor(length / Math.max(28, this.cellSize * 2.2)));
+    let x = startX;
+    let y = startY;
+    let direction = angle;
+    for (let step = 0; step < steps; step += 1) {
+      const t = step / Math.max(1, steps - 1);
+      direction += signedNoise(this.seed * 0.02 + step * 13.71 + x * 0.03) * 0.22;
+      const radius = this.cellSize * (1.55 + Math.sin(t * Math.PI) * 1.6 + random() * 0.55);
+      this.carveEllipse(
+        x,
+        y,
+        radius * (1.15 + random() * 0.35),
+        radius * (0.75 + random() * 0.3),
+      );
+      x += Math.cos(direction) * this.cellSize * (1.65 + random() * 0.6);
+      y += Math.sin(direction) * this.cellSize * (1.65 + random() * 0.6);
+      const { col, row } = this.cellFromWorld(x, y);
+      if (!this.isInside(col, row) || !this.isSolidCell(col, row)) break;
     }
   }
 
   placeOreVeins(random, island, surfaceRows) {
+    const oreDensity = TERRAIN_TUNING.oreDensity || 1;
     if (island.type === 'crashPlanet') {
       const starterVeins = [
-        { material: 2, count: 16, radius: [42, 86], minDepth: 5, depthBias: 0.5, shallowChance: 0.1 },
-        { material: 3, count: 15, radius: [40, 82], minDepth: 5, depthBias: 0.56, shallowChance: 0.1 },
+        { material: 2, count: Math.round(16 * oreDensity), radius: [42, 86], minDepth: 5, depthBias: 0.5, shallowChance: 0.1 },
+        { material: 3, count: Math.round(15 * oreDensity), radius: [40, 82], minDepth: 5, depthBias: 0.56, shallowChance: 0.1 },
+        { material: 9, count: Math.round(5 * oreDensity), radius: [22, 48], minDepth: 7, depthBias: 0.62, shallowChance: 0.04 },
       ];
       this.paintVeinPlan(random, starterVeins, surfaceRows);
       return;
     }
 
-    const richness = {
+    const richness = ({
       smallAsteroid: 1,
       largeMineral: 1.45,
       wreckage: 1.1,
       crystalCluster: 1.55,
       cave: 1.25,
-    }[island.type] || 1;
+    }[island.type] || 1) * oreDensity;
     const veinPlan = [
       { material: 2, count: Math.round(6 * richness), radius: [32, 70], minDepth: 5, depthBias: 0.48, shallowChance: 0.12 },
       { material: 3, count: Math.round(6 * richness), radius: [30, 68], minDepth: 6, depthBias: 0.54, shallowChance: 0.1 },
@@ -1036,17 +1410,27 @@ export class TerrainGrid {
     const index = this.index(col, row);
     if (this.cells[index] === value) return;
     this.cells[index] = value;
+    if (value > 0 && TERRAIN_WALLS.enabled && !this.wallCells[index]) {
+      this.wallCells[index] = this.getWallTypeForTile(col, row, value);
+    }
     this.damage[index] = 0;
-    this.invalidateTerrainGeometry();
+    this.damagedCells.delete(index);
+    this.invalidateTerrainGeometry({ keepSurfacePath: true });
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) this.markDirtyCell(col, row);
     else this.fullRenderDirty = true;
   }
 
-  invalidateTerrainGeometry() {
+  invalidateTerrainGeometry({ keepSurfacePath = false } = {}) {
     this.contourCache?.clear();
+    this.roughEdgeCache?.clear();
+    this.roughContourCache?.clear();
     this.collisionContours = null;
-    this.surfacePathCache = null;
+    if (!keepSurfacePath) {
+      this.surfaceRadiusLookupCache?.clear();
+      this.airExposureDirty = true;
+      this.surfacePathCache = null;
+    }
   }
 
   getDamageRatio(col, row, materialOverride = null) {
@@ -1058,11 +1442,15 @@ export class TerrainGrid {
   }
 
   markDirtyCell(col, row, padding = 5) {
+    const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
+    const chunkCol = Math.floor(col / chunkSize);
+    const chunkRow = Math.floor(row / chunkSize);
+    this.dirtyChunks.add(`${chunkCol},${chunkRow}`);
     const bounds = {
-      minCol: clamp(col - padding, 0, this.cols - 1),
-      maxCol: clamp(col + padding, 0, this.cols - 1),
-      minRow: clamp(row - padding, 0, this.rows - 1),
-      maxRow: clamp(row + padding, 0, this.rows - 1),
+      minCol: clamp(Math.floor((col - padding) / chunkSize) * chunkSize, 0, this.cols - 1),
+      maxCol: clamp(Math.ceil((col + padding + 1) / chunkSize) * chunkSize - 1, 0, this.cols - 1),
+      minRow: clamp(Math.floor((row - padding) / chunkSize) * chunkSize, 0, this.rows - 1),
+      maxRow: clamp(Math.ceil((row + padding + 1) / chunkSize) * chunkSize - 1, 0, this.rows - 1),
     };
     if (!this.dirtyBounds) {
       this.dirtyBounds = bounds;
@@ -1078,17 +1466,67 @@ export class TerrainGrid {
     return this.getCell(col, row) > 0;
   }
 
-  isCollisionSolidSample(col, row) {
-    if (!this.isInside(col, row)) return false;
-    const centerSolid = this.isSolidCell(col, row);
-    let solidCount = 0;
-    for (let oy = -1; oy <= 1; oy += 1) {
-      for (let ox = -1; ox <= 1; ox += 1) {
-        if (this.isSolidCell(col + ox, row + oy)) solidCount += 1;
+  getWallCell(col, row) {
+    if (!this.isInside(col, row)) return 0;
+    return this.wallCells?.[this.index(col, row)] || 0;
+  }
+
+  isWallCell(col, row) {
+    return this.getWallCell(col, row) > 0;
+  }
+
+  getWallTypeForTile(col, row, fallbackMaterial = 1) {
+    const ownMaterial = this.getCell(col, row);
+    if (ownMaterial > 0) return ownMaterial;
+    const radius = Math.max(1, Math.round(TERRAIN_WALLS.materialInfluenceRadius || 4));
+    const weights = new Map();
+    for (let y = row - radius; y <= row + radius; y += 1) {
+      for (let x = col - radius; x <= col + radius; x += 1) {
+        if (!this.isInside(x, y)) continue;
+        const material = this.getCell(x, y);
+        if (material <= 0) continue;
+        const dx = x - col;
+        const dy = y - row;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq > radius * radius) continue;
+        const materialBias = material >= 4 ? 1.7 : material > 1 ? 1.28 : 1;
+        const weight = materialBias / Math.max(1, 1 + distanceSq * 0.42);
+        weights.set(material, (weights.get(material) || 0) + weight);
       }
     }
-    if (centerSolid && solidCount <= 2) return false;
-    return centerSolid || solidCount >= 7;
+    let bestMaterial = fallbackMaterial;
+    let bestWeight = 0;
+    weights.forEach((weight, material) => {
+      if (weight > bestWeight) {
+        bestWeight = weight;
+        bestMaterial = material;
+      }
+    });
+    return bestMaterial || 1;
+  }
+
+  generateWallLayerForPlanet() {
+    if (!TERRAIN_WALLS.enabled) return;
+    const startDepth = Math.max(0, (TERRAIN_WALLS.startDepth ?? 0.55) * this.cellSize);
+    const radius = Math.max(1, Math.round(TERRAIN_WALLS.materialInfluenceRadius || 4));
+    this.wallCells.fill(0);
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const x = col * this.cellSize + this.cellSize * 0.5;
+        const y = row * this.cellSize + this.cellSize * 0.5;
+        const depth = this.getTerrainDepthAt(x, y);
+        if (depth < startDepth) continue;
+        const material = this.getCell(col, row);
+        this.wallCells[this.index(col, row)] = this.getWallTypeForTile(col, row, material || 1);
+      }
+    }
+    this.contourCache?.clear();
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+  }
+
+  isCollisionSolidSample(col, row) {
+    return this.isSolidCell(col, row);
   }
 
   getCollisionContours() {
@@ -1102,15 +1540,16 @@ export class TerrainGrid {
   }
 
   forEachCollisionPolygonInAabb(left, top, right, bottom, callback) {
-    const size = this.cellSize;
-    const minCol = clamp(Math.floor(left / size) - 1, 0, this.cols - 2);
-    const maxCol = clamp(Math.floor(right / size) + 1, 0, this.cols - 2);
-    const minRow = clamp(Math.floor(top / size) - 1, 0, this.rows - 2);
-    const maxRow = clamp(Math.floor(bottom / size) + 1, 0, this.rows - 2);
-    const predicate = (x, y) => this.isCollisionSolidSample(x, y);
+    const size = this.getContourStep(COLLISION_CONTOUR_OPTIONS);
+    const minCol = clamp(Math.floor(left / size) - 2, 0, Math.max(0, Math.ceil(this.width / size) - 1));
+    const maxCol = clamp(Math.floor(right / size) + 2, 0, Math.max(0, Math.ceil(this.width / size) - 1));
+    const minRow = clamp(Math.floor(top / size) - 2, 0, Math.max(0, Math.ceil(this.height / size) - 1));
+    const maxRow = clamp(Math.floor(bottom / size) + 2, 0, Math.max(0, Math.ceil(this.height / size) - 1));
+    const predicate = (x, y) => this.isSolidCell(x, y);
+    const sample = (x, y) => this.sampleContourNode(predicate, x, y, size, COLLISION_CONTOUR_OPTIONS);
     for (let row = minRow; row <= maxRow; row += 1) {
       for (let col = minCol; col <= maxCol; col += 1) {
-        const marchingIndex = this.getMarchingIndex(col, row, predicate);
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
         const polygons = FILL_POLYGONS[marchingIndex];
         if (!polygons?.length) continue;
         const x = col * size;
@@ -1133,14 +1572,45 @@ export class TerrainGrid {
   }
 
   containsCollisionPoint(x, y) {
-    const queryBounds = { minX: x - 2, minY: y - 2, maxX: x + 2, maxY: y + 2 };
-    let inside = false;
-    for (const contour of this.getCollisionContours()) {
-      if (!boundsOverlap(contour.bounds, queryBounds)) continue;
-      if (pointNearPolygonEdge(x, y, contour.points, 2.5)) return true;
-      if (pointInPolygon(x, y, contour.points)) inside = !inside;
-    }
-    return inside;
+    return this.isPointInsideCollisionContours(x, y);
+  }
+
+  isPointInsideCollisionContours(x, y) {
+    if (x < 0 || x > this.width || y < 0 || y > this.height) return false;
+    return this.samplePredicateDensity(
+      (col, row) => this.isCollisionSolidSample(col, row),
+      x,
+      y,
+      COLLISION_CONTOUR_OPTIONS,
+    ) >= (COLLISION_CONTOUR_OPTIONS.densityThreshold ?? 0.5);
+  }
+
+  intersectsCollisionShape(shape) {
+    if (!shape?.corners?.length) return false;
+    const shapeBounds = contourBounds(shape.corners);
+    const shapeEdges = shape.corners.map((point, index) => ({
+      a: point,
+      b: shape.corners[(index + 1) % shape.corners.length],
+    }));
+
+    return this.forEachCollisionPolygonInAabb(
+      shapeBounds.minX - 2,
+      shapeBounds.minY - 2,
+      shapeBounds.maxX + 2,
+      shapeBounds.maxY + 2,
+      (points) => {
+        if (shape.corners.some((corner) => pointInPolygon(corner.x, corner.y, points))) return true;
+        if (points.some((point) => pointInOrientedBox(point, shape))) return true;
+        for (let index = 0; index < points.length; index += 1) {
+          const a = points[index];
+          const b = points[(index + 1) % points.length];
+          for (const edge of shapeEdges) {
+            if (segmentIntersectsSegment(a, b, edge.a, edge.b)) return true;
+          }
+        }
+        return false;
+      },
+    ) === true;
   }
 
   cellFromWorld(x, y) {
@@ -1351,32 +1821,70 @@ export class TerrainGrid {
   }
 
   getClosestTerrainSurfacePoint(x, y, offset = 0) {
-    const loops = this.getContourLoops((col, row) => this.isSolidCell(col, row), 'solid');
+    return this.getClosestSurfacePointWithOptions(
+      x,
+      y,
+      offset,
+      VISUAL_CONTOUR_OPTIONS,
+      (col, row) => this.isSolidCell(col, row),
+    );
+  }
+
+  getClosestCollisionSurfacePoint(x, y, offset = 0) {
+    return this.getClosestSurfacePointWithOptions(
+      x,
+      y,
+      offset,
+      COLLISION_CONTOUR_OPTIONS,
+      (col, row) => this.isCollisionSolidSample(col, row),
+    );
+  }
+
+  getClosestSurfacePointWithOptions(x, y, offset = 0, options = VISUAL_CONTOUR_OPTIONS, predicate = (col, row) => this.isSolidCell(col, row)) {
+    const step = this.getContourStep(options);
+    const searchRadius = Math.max(this.cellSize * 8, Math.abs(offset) + this.cellSize * 5);
+    const minCol = clamp(Math.floor((x - searchRadius) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil((x + searchRadius) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((y - searchRadius) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil((y + searchRadius) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
     let best = null;
     let bestDistanceSq = Infinity;
-    for (const loop of loops) {
-      const points = loop.points || [];
-      for (let index = 0; index < points.length; index += 1) {
-        const a = points[index];
-        const b = points[(index + 1) % points.length];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const segmentLengthSq = dx * dx + dy * dy || 1;
-        const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / segmentLengthSq, 0, 1);
-        const px = a.x + dx * t;
-        const py = a.y + dy * t;
-        const qx = x - px;
-        const qy = y - py;
-        const distanceSq = qx * qx + qy * qy;
-        if (distanceSq >= bestDistanceSq) continue;
-        const segmentLength = Math.sqrt(segmentLengthSq) || 1;
-        bestDistanceSq = distanceSq;
-        best = {
-          surfaceX: px,
-          surfaceY: py,
-          tangent: { x: dx / segmentLength, y: dy / segmentLength },
-          queryVector: { x: qx, y: qy },
-        };
+    const testSegment = (a, b) => {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const segmentLengthSq = dx * dx + dy * dy || 1;
+      const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / segmentLengthSq, 0, 1);
+      const px = a.x + dx * t;
+      const py = a.y + dy * t;
+      const qx = x - px;
+      const qy = y - py;
+      const distanceSq = qx * qx + qy * qy;
+      if (distanceSq >= bestDistanceSq) return;
+      const segmentLength = Math.sqrt(segmentLengthSq) || 1;
+      bestDistanceSq = distanceSq;
+      best = {
+        surfaceX: px,
+        surfaceY: py,
+        tangent: { x: dx / segmentLength, y: dy / segmentLength },
+        queryVector: { x: qx, y: qy },
+      };
+    };
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
+        const segments = EDGE_SEGMENTS[marchingIndex];
+        if (!segments?.length) continue;
+        const originX = col * step;
+        const originY = row * step;
+        for (const segment of segments) {
+          const a = POINTS[segment[0]];
+          const b = POINTS[segment[1]];
+          testSegment(
+            { x: originX + a[0] * step, y: originY + a[1] * step },
+            { x: originX + b[0] * step, y: originY + b[1] * step },
+          );
+        }
       }
     }
     if (!best) return null;
@@ -1444,13 +1952,21 @@ export class TerrainGrid {
 
   collidesAabb(left, top, right, bottom) {
     if (right < 0 || left > this.width || bottom < 0 || top > this.height) return false;
-    let hit = false;
-    this.forEachCollisionPolygonInAabb(left, top, right, bottom, (polygon) => {
-      if (!aabbIntersectsPolygon(left, top, right, bottom, polygon)) return false;
-      hit = true;
-      return true;
-    });
-    return hit;
+    const shape = {
+      centerX: (left + right) * 0.5,
+      centerY: (top + bottom) * 0.5,
+      axisX: { x: 1, y: 0 },
+      axisY: { x: 0, y: 1 },
+      halfWidth: Math.max(0, (right - left) * 0.5),
+      halfHeight: Math.max(0, (bottom - top) * 0.5),
+      corners: [
+        { x: left, y: top },
+        { x: right, y: top },
+        { x: right, y: bottom },
+        { x: left, y: bottom },
+      ],
+    };
+    return this.intersectsCollisionShape(shape);
   }
 
   raycast(startX, startY, endX, endY) {
@@ -1461,35 +1977,72 @@ export class TerrainGrid {
     return this.raycastSampledCells(startX, startY, endX, endY);
   }
 
+  raycastCollision(startX, startY, endX, endY) {
+    const contourHit = this.raycastContourSurfaceWithOptions(
+      startX,
+      startY,
+      endX,
+      endY,
+      COLLISION_CONTOUR_OPTIONS,
+      (col, row) => this.isCollisionSolidSample(col, row),
+    );
+    if (contourHit) return contourHit;
+    return this.raycastMarchingSurface(startX, startY, endX, endY);
+  }
+
   raycastContourSurface(startX, startY, endX, endY) {
+    return this.raycastContourSurfaceWithOptions(
+      startX,
+      startY,
+      endX,
+      endY,
+      VISUAL_CONTOUR_OPTIONS,
+      (col, row) => this.isSolidCell(col, row),
+    );
+  }
+
+  raycastContourSurfaceWithOptions(startX, startY, endX, endY, options = VISUAL_CONTOUR_OPTIONS, predicate = (col, row) => this.isSolidCell(col, row)) {
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.hypot(dx, dy);
     if (distance <= 0.001) return null;
-    const segmentBounds = {
-      minX: Math.min(startX, endX) - this.cellSize,
-      minY: Math.min(startY, endY) - this.cellSize,
-      maxX: Math.max(startX, endX) + this.cellSize,
-      maxY: Math.max(startY, endY) + this.cellSize,
-    };
+    const step = this.getContourStep(options);
+    const minCol = clamp(Math.floor((Math.min(startX, endX) - this.cellSize) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil((Math.max(startX, endX) + this.cellSize) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((Math.min(startY, endY) - this.cellSize) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil((Math.max(startY, endY) + this.cellSize) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
     let best = null;
     let bestT = Infinity;
-    for (const contour of this.getContourLoops((col, row) => this.isSolidCell(col, row), 'solid')) {
-      if (!boundsOverlap(contour.bounds, segmentBounds)) continue;
-      const hit = getSegmentPolygonHit(startX, startY, endX, endY, contour.points);
-      if (!hit || hit.t >= bestT) continue;
-      const cell = this.getRaycastCellNearPoint(hit.x, hit.y);
-      if (!cell) continue;
-      bestT = hit.t;
-      best = {
-        x: hit.x,
-        y: hit.y,
-        col: cell.col,
-        row: cell.row,
-        material: cell.material,
-        distance: hit.t * distance,
-        data: TERRAIN_MATERIALS[cell.material],
-      };
+
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
+        const polygons = FILL_POLYGONS[marchingIndex];
+        if (!polygons?.length) continue;
+        const originX = col * step;
+        const originY = row * step;
+        for (const polygon of polygons) {
+          const points = polygon.map((pointName) => {
+            const point = POINTS[pointName];
+            return { x: originX + point[0] * step, y: originY + point[1] * step };
+          });
+          const hit = getSegmentPolygonHit(startX, startY, endX, endY, points);
+          if (!hit || hit.t >= bestT) continue;
+          const cell = this.getRaycastCellNearPoint(hit.x, hit.y);
+          if (!cell) continue;
+          bestT = hit.t;
+          best = {
+            x: hit.x,
+            y: hit.y,
+            col: cell.col,
+            row: cell.row,
+            material: cell.material,
+            distance: hit.t * distance,
+            data: TERRAIN_MATERIALS[cell.material],
+          };
+        }
+      }
     }
     return best;
   }
@@ -1610,10 +2163,10 @@ export class TerrainGrid {
     const broken = [];
     const halfSize = this.cellSize * 0.5;
     const hasTarget = Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow);
-    const startCol = hasTarget ? options.targetCol : clamp(Math.floor((worldX - radius - halfSize) / this.cellSize), 0, this.cols - 1);
-    const endCol = hasTarget ? options.targetCol : clamp(Math.ceil((worldX + radius + halfSize) / this.cellSize), 0, this.cols - 1);
-    const startRow = hasTarget ? options.targetRow : clamp(Math.floor((worldY - radius - halfSize) / this.cellSize), 0, this.rows - 1);
-    const endRow = hasTarget ? options.targetRow : clamp(Math.ceil((worldY + radius + halfSize) / this.cellSize), 0, this.rows - 1);
+    const startCol = clamp(Math.floor((worldX - radius - halfSize) / this.cellSize), 0, this.cols - 1);
+    const endCol = clamp(Math.ceil((worldX + radius + halfSize) / this.cellSize), 0, this.cols - 1);
+    const startRow = clamp(Math.floor((worldY - radius - halfSize) / this.cellSize), 0, this.rows - 1);
+    const endRow = clamp(Math.ceil((worldY + radius + halfSize) / this.cellSize), 0, this.rows - 1);
     for (let row = startRow; row <= endRow; row += 1) {
       for (let col = startCol; col <= endCol; col += 1) {
         const material = this.getCell(col, row);
@@ -1622,30 +2175,31 @@ export class TerrainGrid {
         const top = row * this.cellSize;
         const centerX = left + halfSize;
         const centerY = top + halfSize;
-        if (!hasTarget) {
-          const distance = getPointAabbDistance(
-            worldX,
-            worldY,
-            left,
-            top,
-            left + this.cellSize,
-            top + this.cellSize,
-          );
-          if (distance > radius) continue;
-        }
+        const distance = getPointAabbDistance(
+          worldX,
+          worldY,
+          left,
+          top,
+          left + this.cellSize,
+          top + this.cellSize,
+        );
+        const isTarget = hasTarget && col === options.targetCol && row === options.targetRow;
+        if (distance > radius && !isTarget) continue;
+        const edgeFalloff = smoothStep(1 - clamp01(distance / Math.max(1, radius)));
+        const damageScale = isTarget
+          ? 1
+          : hasTarget
+            ? 0.2 + edgeFalloff * 0.34
+            : 0.48 + edgeFalloff * 0.52;
+        if (!isTarget && damageScale <= 0.04) continue;
         const data = TERRAIN_MATERIALS[material];
         const index = this.index(col, row);
-        this.damage[index] += power * delta;
-        if (this.renderCanvas && !this.fullRenderDirty) {
-          this.renderDirty = true;
-          this.markDirtyCell(col, row, 2);
-        } else {
-          this.renderDirty = true;
-          this.fullRenderDirty = true;
-        }
+        this.damage[index] += power * delta * damageScale;
+        if (this.damage[index] > data.hardness * 0.06) this.damagedCells.add(index);
         if (this.damage[index] < data.hardness) continue;
         const chip = this.getCellPickupChip(col, row, material);
         this.damage[index] = 0;
+        this.damagedCells.delete(index);
         this.setCell(col, row, 0);
         broken.push({
           col,
@@ -1701,14 +2255,21 @@ export class TerrainGrid {
   }
 
   getCellSurfaceContourSegments(col, row) {
-    const size = this.cellSize;
+    const size = this.getContourStep(VISUAL_CONTOUR_OPTIONS);
+    const cellSize = this.cellSize;
     const bounds = {
-      minX: col * size - size * 0.12,
-      minY: row * size - size * 0.12,
-      maxX: (col + 1) * size + size * 0.12,
-      maxY: (row + 1) * size + size * 0.12,
+      minX: col * cellSize - cellSize * 0.08,
+      minY: row * cellSize - cellSize * 0.08,
+      maxX: (col + 1) * cellSize + cellSize * 0.08,
+      maxY: (row + 1) * cellSize + cellSize * 0.08,
     };
     const segments = [];
+    const minCol = clamp(Math.floor(bounds.minX / size) - 1, 0, Math.max(0, Math.ceil(this.width / size) - 1));
+    const maxCol = clamp(Math.floor(bounds.maxX / size) + 1, 0, Math.max(0, Math.ceil(this.width / size) - 1));
+    const minRow = clamp(Math.floor(bounds.minY / size) - 1, 0, Math.max(0, Math.ceil(this.height / size) - 1));
+    const maxRow = clamp(Math.floor(bounds.maxY / size) + 1, 0, Math.max(0, Math.ceil(this.height / size) - 1));
+    const predicate = (x, y) => this.isSolidCell(x, y);
+    const sample = (x, y) => this.sampleContourNode(predicate, x, y, size, VISUAL_CONTOUR_OPTIONS);
     const addSegment = (a, b) => {
       const midX = (a.x + b.x) * 0.5;
       const midY = (a.y + b.y) * 0.5;
@@ -1716,9 +2277,9 @@ export class TerrainGrid {
       segments.push({ a, b });
     };
 
-    for (let marchingRow = row - 1; marchingRow <= row; marchingRow += 1) {
-      for (let marchingCol = col - 1; marchingCol <= col; marchingCol += 1) {
-        const index = this.getMarchingIndex(marchingCol, marchingRow, (x, y) => this.isSolidCell(x, y));
+    for (let marchingRow = minRow; marchingRow <= maxRow; marchingRow += 1) {
+      for (let marchingCol = minCol; marchingCol <= maxCol; marchingCol += 1) {
+        const index = this.getMarchingIndex(marchingCol, marchingRow, sample);
         const edgeSegments = EDGE_SEGMENTS[index];
         if (!edgeSegments?.length) continue;
         const originX = marchingCol * size;
@@ -1866,7 +2427,27 @@ export class TerrainGrid {
     ctx.restore();
   }
 
-  draw(ctx, camera, viewportWidth, viewportHeight = this.height) {
+  draw(ctx, camera, viewportWidth, viewportHeight = this.height, options = {}) {
+    const nextRoughnessEnabled = TERRAIN_ROUGHNESS.enabled && options?.roughness !== false;
+    const nextLightingEnabled = TERRAIN_LIGHTING.enabled && options?.lighting !== false;
+    const nextLightingDebugEnabled = Boolean(options?.lightingDebug);
+    const nextDepthDebugEnabled = Boolean(options?.depthDebug);
+    if (nextRoughnessEnabled !== this.roughnessRenderEnabled) {
+      this.roughnessRenderEnabled = nextRoughnessEnabled;
+      this.renderDirty = true;
+      this.fullRenderDirty = true;
+    }
+    if (
+      nextLightingEnabled !== this.lightingRenderEnabled
+      || nextLightingDebugEnabled !== this.lightingDebugEnabled
+      || nextDepthDebugEnabled !== this.depthDebugEnabled
+    ) {
+      this.lightingRenderEnabled = nextLightingEnabled;
+      this.lightingDebugEnabled = nextLightingDebugEnabled;
+      this.depthDebugEnabled = nextDepthDebugEnabled;
+      this.renderDirty = true;
+      this.fullRenderDirty = true;
+    }
     if (!this.renderCanvas || this.renderDirty) this.redrawTerrainCache();
     const sx = clamp(Math.floor(camera.x) - this.cellSize * 2, 0, Math.max(0, this.width - 1));
     const sy = clamp(Math.floor(camera.y) - this.cellSize * 2, 0, Math.max(0, this.height - 1));
@@ -1875,6 +2456,7 @@ export class TerrainGrid {
     if (sw <= 0 || sh <= 0) return;
     ctx.save();
     ctx.drawImage(this.renderCanvas, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
+    this.drawLiveDamageOverlays(ctx, camera, { sx, sy, sw, sh });
     ctx.restore();
   }
 
@@ -1890,50 +2472,439 @@ export class TerrainGrid {
     this.renderDirty = false;
     this.fullRenderDirty = false;
     this.dirtyBounds = null;
+    this.dirtyChunks.clear();
   }
 
   redrawTerrainRegion(ctx, bounds) {
-    const size = this.cellSize;
-    const x = bounds.minCol * size;
-    const y = bounds.minRow * size;
-    const width = (bounds.maxCol - bounds.minCol + 1) * size;
-    const height = (bounds.maxRow - bounds.minRow + 1) * size;
-    ctx.clearRect(x, y, width, height);
+    const clearPadding = Math.max(this.cellSize * 4, this.roughnessRenderEnabled ? this.cellSize * 5 : this.cellSize * 3);
+    const cellPadding = Math.max(1, Math.ceil(clearPadding / this.cellSize));
+    const paintBounds = {
+      minCol: clamp(bounds.minCol - cellPadding, 0, this.cols - 1),
+      maxCol: clamp(bounds.maxCol + cellPadding, 0, this.cols - 1),
+      minRow: clamp(bounds.minRow - cellPadding, 0, this.rows - 1),
+      maxRow: clamp(bounds.maxRow + cellPadding, 0, this.rows - 1),
+    };
+    const rect = this.getDrawRect(bounds, clearPadding);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x, y, width, height);
+    ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, bounds);
+    this.drawTerrainLayers(ctx, paintBounds);
     ctx.restore();
   }
 
   drawTerrainLayers(ctx, bounds = null) {
+    this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds);
     this.drawOreVeins(ctx, bounds);
-    this.drawEdgeContours(ctx, bounds);
-    this.drawPersistentDamage(ctx, bounds);
+    if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds);
+    else this.drawEdgeContours(ctx, bounds);
+    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.drawDepthLightingOverlay(ctx, bounds);
   }
 
-  drawPersistentDamage(ctx, bounds = null) {
-    const minCol = bounds ? clamp(bounds.minCol - 2, 0, this.cols - 1) : 0;
-    const maxCol = bounds ? clamp(bounds.maxCol + 2, 0, this.cols - 1) : this.cols - 1;
-    const minRow = bounds ? clamp(bounds.minRow - 2, 0, this.rows - 1) : 0;
-    const maxRow = bounds ? clamp(bounds.maxRow + 2, 0, this.rows - 1) : this.rows - 1;
-    for (let row = minRow; row <= maxRow; row += 1) {
-      for (let col = minCol; col <= maxCol; col += 1) {
-        const material = this.getCell(col, row);
-        if (material <= 0) continue;
-        const ratio = this.getDamageRatio(col, row, material);
-        if (ratio <= 0.08) continue;
-        this.drawCellDamageOverlay(ctx, col, row, {
-          materialId: material,
-          ratio,
-          time: 0,
-          glow: false,
-        });
+  getLightingCanvas(width, height) {
+    if (!this.lightingCanvas) {
+      this.lightingCanvas = document.createElement('canvas');
+      this.lightingCtx = this.lightingCanvas.getContext('2d');
+    }
+    const nextWidth = Math.max(1, Math.ceil(width));
+    const nextHeight = Math.max(1, Math.ceil(height));
+    if (this.lightingCanvas.width !== nextWidth || this.lightingCanvas.height !== nextHeight) {
+      this.lightingCanvas.width = nextWidth;
+      this.lightingCanvas.height = nextHeight;
+    }
+    return this.lightingCanvas;
+  }
+
+  getLightingFieldCanvas(width, height) {
+    if (!this.lightingFieldCanvas) {
+      this.lightingFieldCanvas = document.createElement('canvas');
+      this.lightingFieldCtx = this.lightingFieldCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    const nextWidth = Math.max(1, Math.ceil(width));
+    const nextHeight = Math.max(1, Math.ceil(height));
+    if (this.lightingFieldCanvas.width !== nextWidth || this.lightingFieldCanvas.height !== nextHeight) {
+      this.lightingFieldCanvas.width = nextWidth;
+      this.lightingFieldCanvas.height = nextHeight;
+    }
+    return this.lightingFieldCanvas;
+  }
+
+  getCachedSurfaceRadiusAtAngle(angle) {
+    const normalized = (angle + Math.PI * 2) % (Math.PI * 2);
+    const bucket = Math.round((normalized / (Math.PI * 2)) * 720);
+    if (this.surfaceRadiusLookupCache.has(bucket)) return this.surfaceRadiusLookupCache.get(bucket);
+    const radius = this.getSurfaceRadiusAtAngle(normalized);
+    this.surfaceRadiusLookupCache.set(bucket, radius);
+    return radius;
+  }
+
+  getTerrainDepthAt(x, y) {
+    const dx = x - this.planetCenterX;
+    const dy = y - this.planetCenterY;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.001) return this.planetRadius;
+    const surfaceRadius = this.getCachedSurfaceRadiusAtAngle(Math.atan2(dy, dx));
+    return surfaceRadius - distance;
+  }
+
+  getBaseDarknessAtDepth(depth) {
+    if (depth <= 0) return 0;
+    const start = (TERRAIN_LIGHTING.darknessStartDepth ?? 3) * this.cellSize;
+    const full = Math.max(start + this.cellSize, (TERRAIN_LIGHTING.fullDarkDepth ?? 13) * this.cellSize);
+    const t = smoothStep((depth - start) / Math.max(1, full - start));
+    const falloff = Math.max(0.2, TERRAIN_LIGHTING.darknessFalloffPower ?? 1.4);
+    const maxOpacity = clamp01(TERRAIN_LIGHTING.maxDarknessOpacity ?? 0.88);
+    const bleedDepth = Math.max(this.cellSize, (TERRAIN_LIGHTING.surfaceLightBleedDepth ?? 4) * this.cellSize);
+    const surfaceBleed = 1 - (1 - clamp01(depth / bleedDepth)) * clamp01(TERRAIN_LIGHTING.ambientSurfaceLight ?? 0.08);
+    return clamp01(Math.pow(t, falloff) * maxOpacity * surfaceBleed);
+  }
+
+  ensureAirExposureMap() {
+    if (!this.airExposureDirty && this.airExposureMap?.length === this.cells.length) return this.airExposureMap;
+    const total = this.cols * this.rows;
+    const distances = new Float32Array(total);
+    const infinity = 1e6;
+    const sourceDepth = (TERRAIN_LIGHTING.surfaceExposureSourceDepth ?? 0.75) * this.cellSize;
+
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const index = this.index(col, row);
+        const x = col * this.cellSize + this.cellSize * 0.5;
+        const y = row * this.cellSize + this.cellSize * 0.5;
+        distances[index] = this.getCell(col, row) === 0 && this.getTerrainDepthAt(x, y) <= sourceDepth
+          ? 0
+          : infinity;
       }
     }
+
+    const airCost = Math.max(0.2, TERRAIN_LIGHTING.airExposureCost ?? 0.72);
+    const solidCost = Math.max(0.2, TERRAIN_LIGHTING.solidExposureCost ?? 1.22);
+    const costFor = (col, row, diagonal = false) => {
+      const base = this.getCell(col, row) > 0 ? solidCost : airCost;
+      return diagonal ? base * 1.4142 : base;
+    };
+
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const index = this.index(col, row);
+        let best = distances[index];
+        if (col > 0) best = Math.min(best, distances[this.index(col - 1, row)] + costFor(col, row));
+        if (row > 0) best = Math.min(best, distances[this.index(col, row - 1)] + costFor(col, row));
+        if (col > 0 && row > 0) best = Math.min(best, distances[this.index(col - 1, row - 1)] + costFor(col, row, true));
+        if (col < this.cols - 1 && row > 0) best = Math.min(best, distances[this.index(col + 1, row - 1)] + costFor(col, row, true));
+        distances[index] = best;
+      }
+    }
+
+    for (let row = this.rows - 1; row >= 0; row -= 1) {
+      for (let col = this.cols - 1; col >= 0; col -= 1) {
+        const index = this.index(col, row);
+        let best = distances[index];
+        if (col < this.cols - 1) best = Math.min(best, distances[this.index(col + 1, row)] + costFor(col, row));
+        if (row < this.rows - 1) best = Math.min(best, distances[this.index(col, row + 1)] + costFor(col, row));
+        if (col < this.cols - 1 && row < this.rows - 1) best = Math.min(best, distances[this.index(col + 1, row + 1)] + costFor(col, row, true));
+        if (col > 0 && row < this.rows - 1) best = Math.min(best, distances[this.index(col - 1, row + 1)] + costFor(col, row, true));
+        distances[index] = best;
+      }
+    }
+
+    this.airExposureMap = distances;
+    this.airExposureDirty = false;
+    return distances;
+  }
+
+  getAirExposureDistanceAt(x, y) {
+    const map = this.ensureAirExposureMap();
+    const fx = clamp(x / this.cellSize - 0.5, 0, this.cols - 1);
+    const fy = clamp(y / this.cellSize - 0.5, 0, this.rows - 1);
+    const col = Math.floor(fx);
+    const row = Math.floor(fy);
+    const tx = fx - col;
+    const ty = fy - row;
+    const col1 = Math.min(this.cols - 1, col + 1);
+    const row1 = Math.min(this.rows - 1, row + 1);
+    const a = map[this.index(col, row)];
+    const b = map[this.index(col1, row)];
+    const c = map[this.index(col, row1)];
+    const d = map[this.index(col1, row1)];
+    const top = a + (b - a) * tx;
+    const bottom = c + (d - c) * tx;
+    return (top + (bottom - top) * ty) * this.cellSize;
+  }
+
+  getSmoothDarknessAt(x, y) {
+    const radialDepth = this.getTerrainDepthAt(x, y);
+    if (radialDepth <= 0) return 0;
+    const radialDarkness = this.getBaseDarknessAtDepth(radialDepth);
+    const exposureDistance = this.getAirExposureDistanceAt(x, y);
+    const exposureDarkness = this.getBaseDarknessAtDepth(exposureDistance);
+    const exposureBoost = Math.max(0.5, TERRAIN_LIGHTING.exposureDarknessBoost ?? 1.08);
+    const exposedDarkness = Math.min(radialDarkness, exposureDarkness * exposureBoost);
+    const centerInfluence = clamp01(TERRAIN_LIGHTING.centerDepthInfluence ?? 0.58);
+    const centerBlend = clamp01(TERRAIN_LIGHTING.centerDepthBlend ?? 0.28);
+    const centerDarknessFloor = radialDarkness * centerInfluence;
+    return clamp01(Math.max(centerDarknessFloor, exposedDarkness + radialDarkness * centerBlend));
+  }
+
+  getMaterialLight(materialId) {
+    const material = TERRAIN_MATERIALS[materialId];
+    if (!material?.id) return null;
+    return TERRAIN_LIGHTING.materialLights?.[material.id] || null;
+  }
+
+  getMaxMaterialLightRadius() {
+    const lights = TERRAIN_LIGHTING.materialLights || {};
+    return Object.values(lights).reduce((max, light) => Math.max(max, (light.radius || 0) * this.cellSize), 0);
+  }
+
+  getLightingDrawRect(bounds = null) {
+    const padding = Math.max(this.cellSize * 2, this.getMaxMaterialLightRadius() + this.cellSize * 1.5);
+    return this.getDrawRect(bounds, padding);
+  }
+
+  collectLightSources(bounds = null) {
+    const rect = this.getLightingDrawRect(bounds);
+    const maxRadius = this.getMaxMaterialLightRadius();
+    const minCol = clamp(Math.floor((rect.x - maxRadius) / this.cellSize), 0, this.cols - 1);
+    const maxCol = clamp(Math.ceil((rect.x + rect.width + maxRadius) / this.cellSize), 0, this.cols - 1);
+    const minRow = clamp(Math.floor((rect.y - maxRadius) / this.cellSize), 0, this.rows - 1);
+    const maxRow = clamp(Math.ceil((rect.y + rect.height + maxRadius) / this.cellSize), 0, this.rows - 1);
+    const sources = [];
+    const sourceLimit = bounds ? 260 : 720;
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const materialId = this.getCell(col, row);
+        const light = this.getMaterialLight(materialId);
+        if (!light) continue;
+        const material = TERRAIN_MATERIALS[materialId];
+        const sourceHash = hash2D(col, row, this.seed, materialId * 131);
+        const stride = materialId === 6 ? 1 : Math.max(1, Math.round(light.sampleStride || 2));
+        if (stride > 1 && ((col + row * 3 + materialId) % stride) !== 0 && sourceHash < 0.7) continue;
+        sources.push({
+          x: col * this.cellSize + this.cellSize * 0.5,
+          y: row * this.cellSize + this.cellSize * 0.5,
+          col,
+          row,
+          materialId,
+          material,
+          color: light.color || material.edge || '#ffffff',
+          radius: Math.max(this.cellSize * 1.5, (light.radius || 5) * this.cellSize),
+          intensity: clamp01((light.intensity ?? 0.65) * (0.86 + sourceHash * 0.18)),
+        });
+        if (sources.length >= sourceLimit) return sources;
+      }
+    }
+    return sources;
+  }
+
+  drawDepthLightingOverlay(ctx, bounds = null) {
+    const rect = this.getLightingDrawRect(bounds);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const canvas = this.getLightingCanvas(rect.width, rect.height);
+    const lightCtx = this.lightingCtx;
+    lightCtx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawDepthDarknessGrid(lightCtx, rect);
+    const sources = this.lightingRenderEnabled ? this.collectLightSources(bounds) : [];
+    if (sources.length) this.eraseLightFromOverlay(lightCtx, rect, sources);
+    ctx.save();
+    ctx.drawImage(canvas, rect.x, rect.y);
+    ctx.restore();
+    if (sources.length) this.drawColoredLightGlows(ctx, rect, sources);
+    if (this.lightingDebugEnabled) this.drawLightingDebug(ctx, rect, sources);
+  }
+
+  drawDepthDarknessGrid(ctx, rect) {
+    const scale = clamp(TERRAIN_LIGHTING.darknessFieldScale ?? 0.26, 0.08, 0.72);
+    const fieldWidth = Math.max(2, Math.ceil(rect.width * scale));
+    const fieldHeight = Math.max(2, Math.ceil(rect.height * scale));
+    const fieldCanvas = this.getLightingFieldCanvas(fieldWidth, fieldHeight);
+    const fieldCtx = this.lightingFieldCtx;
+    const imageData = fieldCtx.createImageData(fieldWidth, fieldHeight);
+    const pixels = imageData.data;
+    const invScale = 1 / scale;
+    const darkStrength = TERRAIN_LIGHTING.tunnelDarknessStrength ?? 0.86;
+
+    for (let y = 0; y < fieldHeight; y += 1) {
+      const worldY = rect.y + (y + 0.5) * invScale;
+      for (let x = 0; x < fieldWidth; x += 1) {
+        const worldX = rect.x + (x + 0.5) * invScale;
+        const depth = this.getTerrainDepthAt(worldX, worldY);
+        const darkness = this.getSmoothDarknessAt(worldX, worldY);
+        if (darkness <= 0.006) continue;
+        const offset = (y * fieldWidth + x) * 4;
+        if (this.depthDebugEnabled) {
+          const t = clamp01(depth / Math.max(1, this.planetRadius * 0.42));
+          pixels[offset] = Math.round(45 + t * 70);
+          pixels[offset + 1] = Math.round(150 + t * 60);
+          pixels[offset + 2] = Math.round(255 - t * 80);
+          pixels[offset + 3] = Math.round(Math.min(0.62, darkness * 0.82) * 255);
+        } else {
+          const strength = clamp01(darkness * darkStrength);
+          pixels[offset] = 2;
+          pixels[offset + 1] = 4;
+          pixels[offset + 2] = 11;
+          pixels[offset + 3] = Math.round(strength * 255);
+        }
+      }
+    }
+
+    fieldCtx.putImageData(imageData, 0, 0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    const blur = Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0);
+    if (blur > 0 && 'filter' in ctx) {
+      ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(fieldCanvas, -blur, -blur, ctx.canvas.width + blur * 2, ctx.canvas.height + blur * 2);
+    } else {
+      ctx.drawImage(fieldCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+    ctx.restore();
+  }
+
+  eraseLightFromOverlay(ctx, rect, sources) {
+    const falloffPower = Math.max(0.4, TERRAIN_LIGHTING.lightFalloffPower ?? 1.18);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const source of sources) {
+      if (!boundsOverlap(
+        {
+          minX: source.x - source.radius,
+          minY: source.y - source.radius,
+          maxX: source.x + source.radius,
+          maxY: source.y + source.radius,
+        },
+        {
+          minX: rect.x,
+          minY: rect.y,
+          maxX: rect.x + rect.width,
+          maxY: rect.y + rect.height,
+        },
+      )) continue;
+      const localX = source.x - rect.x;
+      const localY = source.y - rect.y;
+      const gradient = ctx.createRadialGradient(localX, localY, this.cellSize * 0.25, localX, localY, source.radius);
+      const coreAlpha = clamp01(source.intensity * 0.92);
+      const midAlpha = clamp01(source.intensity * 0.5 / falloffPower);
+      gradient.addColorStop(0, `rgba(255,255,255,${coreAlpha})`);
+      gradient.addColorStop(0.42, `rgba(255,255,255,${midAlpha})`);
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(localX, localY, source.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawColoredLightGlows(ctx, rect, sources) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x, rect.y, rect.width, rect.height);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const source of sources) {
+      const rgb = hexToRgb(source.color);
+      const radius = source.radius * 0.92;
+      const gradient = ctx.createRadialGradient(source.x, source.y, this.cellSize * 0.2, source.x, source.y, radius);
+      gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.2 * source.intensity})`);
+      gradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.075 * source.intensity})`);
+      gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(source.x, source.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawLightingDebug(ctx, rect, sources) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x, rect.y, rect.width, rect.height);
+    ctx.clip();
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 5]);
+    for (const source of sources) {
+      ctx.strokeStyle = withAlpha(source.color, 0.68);
+      ctx.beginPath();
+      ctx.arc(source.x, source.y, source.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawLiveDamageOverlays(ctx, camera, visible) {
+    if (!this.damagedCells?.size) return;
+    const minCol = clamp(Math.floor(visible.sx / this.cellSize) - 1, 0, this.cols - 1);
+    const maxCol = clamp(Math.ceil((visible.sx + visible.sw) / this.cellSize) + 1, 0, this.cols - 1);
+    const minRow = clamp(Math.floor(visible.sy / this.cellSize) - 1, 0, this.rows - 1);
+    const maxRow = clamp(Math.ceil((visible.sy + visible.sh) / this.cellSize) + 1, 0, this.rows - 1);
+    ctx.save();
+    ctx.translate(-camera.x, 0);
+    for (const index of this.damagedCells) {
+      const row = Math.floor(index / this.cols);
+      const col = index - row * this.cols;
+      if (col < minCol || col > maxCol || row < minRow || row > maxRow) continue;
+      const material = this.getCell(col, row);
+      if (material <= 0) {
+        this.damagedCells.delete(index);
+        continue;
+      }
+      const ratio = this.getDamageRatio(col, row, material);
+      if (ratio <= 0.06) {
+        this.damagedCells.delete(index);
+        continue;
+      }
+      this.drawCellDamageOverlay(ctx, col, row, {
+        materialId: material,
+        ratio,
+        time: 0,
+        glow: false,
+      });
+    }
+    ctx.restore();
+  }
+
+  drawCellContourPatch(ctx, col, row, {
+    fillStyle = 'rgba(255,255,255,0.16)',
+    strokeStyle = 'rgba(255,255,255,0.8)',
+    lineWidth = 1.5,
+    alpha = 1,
+    scale = 1,
+    stroke = false,
+  } = {}) {
+    const size = this.cellSize;
+    const centerX = col * size + size * 0.5;
+    const centerY = row * size + size * 0.5;
+    const bounds = {
+      minCol: clamp(col - 2, 0, this.cols - 1),
+      maxCol: clamp(col + 2, 0, this.cols - 1),
+      minRow: clamp(row - 2, 0, this.rows - 1),
+      maxRow: clamp(row + 2, 0, this.rows - 1),
+    };
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(scale, scale);
+    ctx.translate(-centerX, -centerY);
+    ctx.beginPath();
+    ctx.rect(col * size - size * 0.18, row * size - size * 0.18, size * 1.36, size * 1.36);
+    ctx.clip();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    this.buildMarchingPath(ctx, (x, y) => this.isSolidCell(x, y), bounds, 'solid', VISUAL_CONTOUR_OPTIONS);
+    ctx.fill('evenodd');
+    if (stroke) {
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawCellTargetGlow(ctx, hit, time = 0, { brushRadius = 0 } = {}) {
@@ -1942,25 +2913,28 @@ export class TerrainGrid {
     const color = material.edge || '#ffd36b';
     const rgb = hexToRgb(color);
     const pulse = 1 + Math.sin(time * 15) * 0.045;
-    const hasSurfaceContour = this.getCellSurfaceContourSegments(hit.col, hit.row).length > 0;
+    const surfaceSegments = this.getCellSurfaceContourSegments(hit.col, hit.row);
+    const hasSurfaceContour = surfaceSegments.length > 0;
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
     ctx.shadowBlur = 14;
-    ctx.globalAlpha = hasSurfaceContour ? 0.16 : 0.36;
-    ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`;
-    ctx.beginPath();
-    this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
-    ctx.fill();
+    this.drawCellContourPatch(ctx, hit.col, hit.row, {
+      fillStyle: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${hasSurfaceContour ? 0.24 : 0.18})`,
+      alpha: hasSurfaceContour ? 0.32 : 0.45,
+      scale: pulse,
+    });
 
     ctx.globalAlpha = hasSurfaceContour ? 0.2 : 0.42;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.92)`;
     ctx.lineWidth = Math.max(1.2, this.cellSize * 0.07);
     ctx.setLineDash([]);
-    ctx.beginPath();
-    this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
-    ctx.stroke();
+    if (!hasSurfaceContour) {
+      ctx.beginPath();
+      this.traceCellShape(ctx, hit.col, hit.row, { scale: pulse });
+      ctx.stroke();
+    }
 
     ctx.globalAlpha = 0.96;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.98)`;
@@ -2010,11 +2984,161 @@ export class TerrainGrid {
   releaseRenderCache() {
     this.renderCanvas = null;
     this.renderCtx = null;
+    this.lightingCanvas = null;
+    this.lightingCtx = null;
+    this.lightingFieldCanvas = null;
+    this.lightingFieldCtx = null;
+    this.airExposureMap = null;
+    this.airExposureDirty = true;
     this.renderDirty = true;
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
+    this.dirtyChunks.clear();
     this.contourCache?.clear();
+    this.roughEdgeCache?.clear();
+    this.roughContourCache?.clear();
     this.collisionContours = null;
+    this.surfaceRadiusLookupCache?.clear();
+  }
+
+  drawBackgroundWalls(ctx, bounds = null) {
+    if (!TERRAIN_WALLS.enabled || !this.wallCells?.length) return;
+    const wallMaterials = Object.keys(TERRAIN_MATERIALS)
+      .map(Number)
+      .filter((material) => material > 0 && this.hasWallMaterialInBounds(material, bounds));
+    if (!wallMaterials.length) return;
+
+    ctx.save();
+    for (const material of wallMaterials) {
+      const style = this.getWallStyleForMaterial(material);
+      const predicate = (col, row) => this.getWallCell(col, row) === material;
+      this.drawPatternInMask(
+        ctx,
+        predicate,
+        `wall:${this.seed}:${this.biome}:${material}:${style.base}:${style.accent}`,
+        (tileCtx, width, height) => this.drawWallTextureTile(tileCtx, width, height, style, material),
+        bounds,
+        style.alpha,
+        `wall-mask:${material}`,
+        WALL_CONTOUR_OPTIONS,
+      );
+      const edgeAlpha = clamp01((TERRAIN_WALLS.edgeAlpha ?? 0.18) * (material >= 4 ? 1.35 : 1));
+      if (edgeAlpha > 0.01) {
+        this.strokeMarchingEdges(
+          ctx,
+          withAlpha(style.edge, edgeAlpha),
+          Math.max(1, this.cellSize * 0.055),
+          bounds,
+          predicate,
+          `wall-mask:${material}`,
+          WALL_CONTOUR_OPTIONS,
+        );
+      }
+    }
+    ctx.restore();
+  }
+
+  hasWallMaterialInBounds(material, bounds = null) {
+    if (!this.wallCells?.length) return false;
+    const minCol = bounds ? clamp(bounds.minCol - 2, 0, this.cols - 1) : 0;
+    const maxCol = bounds ? clamp(bounds.maxCol + 2, 0, this.cols - 1) : this.cols - 1;
+    const minRow = bounds ? clamp(bounds.minRow - 2, 0, this.rows - 1) : 0;
+    const maxRow = bounds ? clamp(bounds.maxRow + 2, 0, this.rows - 1) : this.rows - 1;
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        if (this.getWallCell(col, row) === material) return true;
+      }
+    }
+    return false;
+  }
+
+  getWallStyleForMaterial(materialId) {
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    const material = TERRAIN_MATERIALS[materialId] || TERRAIN_MATERIALS[1];
+    const baseSource = materialId === 1
+      ? mixHex(palette.body, palette.deep, 0.42)
+      : mixHex(material.color || palette.body, palette.body, materialId >= 4 ? 0.34 : 0.54);
+    const base = mixHex(baseSource, '#0b0d13', materialId >= 4 ? 0.4 : 0.48);
+    const mid = mixHex(baseSource, '#151823', materialId >= 4 ? 0.22 : 0.34);
+    const accent = mixHex(material.edge || palette.edge, base, materialId >= 4 ? 0.46 : 0.68);
+    const shadow = mixHex(base, '#010207', 0.42);
+    return {
+      base,
+      mid,
+      accent,
+      edge: mixHex(accent, '#0b0d13', 0.32),
+      shadow,
+      alpha: clamp01((TERRAIN_WALLS.textureAlpha ?? 0.96) * (materialId >= 4 ? 0.92 : 1)),
+    };
+  }
+
+  drawWallTextureTile(ctx, width, height, style, material) {
+    const random = createRandom(hashString(`${this.seed}:${this.biome}:wall:${material}`));
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = style.base;
+    ctx.fillRect(0, 0, width, height);
+
+    for (let i = 0; i < 34; i += 1) {
+      const x = random() * width;
+      const y = random() * height;
+      const radius = 10 + random() * 34;
+      const gradient = ctx.createRadialGradient(x, y, 1, x, y, radius);
+      const color = random() > 0.42 ? style.mid : style.shadow;
+      gradient.addColorStop(0, withAlpha(color, 0.2 + random() * 0.13));
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (let i = 0; i < 90; i += 1) {
+      const x = random() * width;
+      const y = random() * height;
+      const radius = 0.7 + random() * 2.8;
+      ctx.fillStyle = random() > 0.58
+        ? withAlpha(style.accent, material >= 4 ? 0.15 : 0.08)
+        : withAlpha(style.shadow, 0.12 + random() * 0.12);
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * (0.8 + random()), radius * (0.45 + random() * 0.75), random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < 18; i += 1) {
+      const x = random() * width;
+      const y = random() * height;
+      const length = 12 + random() * 42;
+      const angle = random() * Math.PI * 2;
+      ctx.strokeStyle = withAlpha(random() > 0.38 ? style.shadow : style.accent, material >= 4 ? 0.14 : 0.09);
+      ctx.lineWidth = 0.8 + random() * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        x + Math.cos(angle + 0.7) * length * 0.35,
+        y + Math.sin(angle + 0.7) * length * 0.35,
+        x + Math.cos(angle) * length,
+        y + Math.sin(angle) * length,
+      );
+      ctx.stroke();
+    }
+
+    if (material >= 4) {
+      for (let i = 0; i < 16; i += 1) {
+        const x = random() * width;
+        const y = random() * height;
+        const length = 8 + random() * 22;
+        ctx.strokeStyle = withAlpha(style.accent, 0.12 + random() * 0.16);
+        ctx.lineWidth = 1 + random() * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x - length * 0.4, y + length * 0.18);
+        ctx.lineTo(x + length * 0.4, y - length * 0.18);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   drawOrganicMass(ctx, bounds = null) {
@@ -2027,9 +3151,9 @@ export class TerrainGrid {
     this.fillMarchingPath(ctx, (col, row) => this.isSolidCell(col, row), bounds, 'solid');
   }
 
-  fillMarchingPath(ctx, predicate, bounds = null, cacheKey = null) {
+  fillMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
     ctx.beginPath();
-    this.buildMarchingPath(ctx, predicate, bounds, cacheKey);
+    this.buildMarchingPath(ctx, predicate, bounds, cacheKey, options);
     ctx.fill('evenodd');
   }
 
@@ -2037,9 +3161,9 @@ export class TerrainGrid {
     this.clipMarchingPath(ctx, (col, row) => this.isSolidCell(col, row), bounds, 'solid');
   }
 
-  clipMarchingPath(ctx, predicate, bounds = null, cacheKey = null) {
+  clipMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
     ctx.beginPath();
-    this.buildMarchingPath(ctx, predicate, bounds, cacheKey);
+    this.buildMarchingPath(ctx, predicate, bounds, cacheKey, options);
     ctx.clip('evenodd');
   }
 
@@ -2059,35 +3183,52 @@ export class TerrainGrid {
     const canvas = document.createElement('canvas');
     canvas.width = 160;
     canvas.height = 160;
-    drawTile(canvas.getContext('2d'), canvas.width, canvas.height);
-    this.textureCache.set(key, canvas);
+    const cacheable = drawTile(canvas.getContext('2d'), canvas.width, canvas.height) !== false;
+    if (cacheable) this.textureCache.set(key, canvas);
     return canvas;
   }
 
-  drawPatternInMask(ctx, predicate, key, drawTile, bounds = null, alpha = 1, maskKey = key) {
+  drawPatternInMask(ctx, predicate, key, drawTile, bounds = null, alpha = 1, maskKey = key, options = VISUAL_CONTOUR_OPTIONS) {
     const rect = this.getDrawRect(bounds);
     if (rect.width <= 0 || rect.height <= 0) return;
     const tile = this.getTextureTile(key, drawTile);
     const pattern = ctx.createPattern(tile, 'repeat');
     if (!pattern) return;
     ctx.save();
-    this.clipMarchingPath(ctx, predicate, bounds, maskKey);
+    this.clipMarchingPath(ctx, predicate, bounds, maskKey, options);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = pattern;
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     ctx.restore();
   }
 
+  buildSampledMarchingCellPath(ctx, predicate, bounds, options = VISUAL_CONTOUR_OPTIONS) {
+    const step = this.getContourStep(options);
+    const padding = this.cellSize * 3;
+    const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
+        const polygons = FILL_POLYGONS[marchingIndex];
+        if (!polygons?.length) continue;
+        const x = col * step;
+        const y = row * step;
+        for (const polygon of polygons) this.tracePolygon(ctx, x, y, step, polygon);
+      }
+    }
+  }
+
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
+    if (bounds) {
+      this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
+      return;
+    }
     const loops = this.getContourLoops(predicate, cacheKey, options);
-    const clipBounds = bounds ? {
-      minX: clamp(bounds.minCol * this.cellSize - this.cellSize * 3, 0, this.width),
-      minY: clamp(bounds.minRow * this.cellSize - this.cellSize * 3, 0, this.height),
-      maxX: clamp((bounds.maxCol + 1) * this.cellSize + this.cellSize * 3, 0, this.width),
-      maxY: clamp((bounds.maxRow + 1) * this.cellSize + this.cellSize * 3, 0, this.height),
-    } : null;
     for (const loop of loops) {
-      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds)) continue;
       this.traceContourLoop(ctx, loop.points, options);
     }
   }
@@ -2100,31 +3241,72 @@ export class TerrainGrid {
     return loops;
   }
 
-  buildContourLoops(predicate, options = VISUAL_CONTOUR_OPTIONS) {
+  getContourStep(options = VISUAL_CONTOUR_OPTIONS) {
+    const subdivisions = Math.max(1, options.sampleSubdivisions || 1);
+    return this.cellSize / subdivisions;
+  }
+
+  samplePredicateDensity(predicate, x, y, options = VISUAL_CONTOUR_OPTIONS) {
     const size = this.cellSize;
+    const radiusCells = Math.max(0.55, options.densityRadiusCells || 1);
+    const thresholdFallback = predicate(Math.floor(x / size), Math.floor(y / size)) ? 1 : 0;
+    const centerCol = x / size - 0.5;
+    const centerRow = y / size - 0.5;
+    const reach = Math.ceil(radiusCells + 0.5);
+    const baseCol = Math.floor(centerCol);
+    const baseRow = Math.floor(centerRow);
+    let total = 0;
+    let filled = 0;
+
+    for (let row = baseRow - reach; row <= baseRow + reach; row += 1) {
+      for (let col = baseCol - reach; col <= baseCol + reach; col += 1) {
+        if (!this.isInside(col, row)) continue;
+        const dx = centerCol - col;
+        const dy = centerRow - row;
+        const distance = Math.hypot(dx, dy);
+        if (distance > radiusCells) continue;
+        const falloff = 1 - distance / radiusCells;
+        const weight = falloff * falloff * (3 - 2 * falloff);
+        total += weight;
+        if (predicate(col, row)) filled += weight;
+      }
+    }
+
+    return total > 0 ? filled / total : thresholdFallback;
+  }
+
+  sampleContourNode(predicate, sampleCol, sampleRow, step, options = VISUAL_CONTOUR_OPTIONS) {
+    const x = sampleCol * step;
+    const y = sampleRow * step;
+    const threshold = options.densityThreshold ?? 0.5;
+    return this.samplePredicateDensity(predicate, x, y, options) >= threshold;
+  }
+
+  buildContourLoops(predicate, options = VISUAL_CONTOUR_OPTIONS) {
+    const step = this.getContourStep(options);
     const segments = [];
-    const minCol = 0;
-    const maxCol = this.cols - 2;
-    const minRow = 0;
-    const maxRow = this.rows - 2;
-    for (let row = minRow; row <= maxRow; row += 1) {
-      for (let col = minCol; col <= maxCol; col += 1) {
-        const index = this.getMarchingIndex(col, row, predicate);
+    const maxCol = Math.max(1, Math.ceil(this.width / step));
+    const maxRow = Math.max(1, Math.ceil(this.height / step));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
+
+    for (let row = 0; row < maxRow; row += 1) {
+      for (let col = 0; col < maxCol; col += 1) {
+        const index = this.getMarchingIndex(col, row, sample);
         const edgeSegments = EDGE_SEGMENTS[index];
         if (!edgeSegments?.length) continue;
-        const x = col * size;
-        const y = row * size;
+        const x = col * step;
+        const y = row * step;
         for (const segment of edgeSegments) {
           const a = POINTS[segment[0]];
           const b = POINTS[segment[1]];
           segments.push({
-            a: { x: x + a[0] * size, y: y + a[1] * size },
-            b: { x: x + b[0] * size, y: y + b[1] * size },
+            a: { x: x + a[0] * step, y: y + a[1] * step },
+            b: { x: x + b[0] * step, y: y + b[1] * step },
           });
         }
       }
     }
-    return this.linkContourSegments(segments, options, size * 0.5);
+    return this.linkContourSegments(segments, options, step);
   }
 
   linkContourSegments(segments, options = VISUAL_CONTOUR_OPTIONS, gridStep = 1) {
@@ -2203,7 +3385,7 @@ export class TerrainGrid {
       const before = offsetToward(point, previous);
       const after = offsetToward(point, next);
       ctx.lineTo(before.x, before.y);
-      ctx.lineTo(after.x, after.y);
+      ctx.quadraticCurveTo(point.x, point.y, after.x, after.y);
     }
     ctx.closePath();
   }
@@ -2241,6 +3423,7 @@ export class TerrainGrid {
         bounds,
         material >= 4 ? 0.95 : 0.86,
         `ore-mask:${material}`,
+        MATERIAL_CONTOUR_OPTIONS,
       );
       this.drawOreFacets(ctx, material, data, bounds);
       this.strokeMarchingEdges(
@@ -2250,6 +3433,7 @@ export class TerrainGrid {
         bounds,
         predicate,
         `ore-mask:${material}`,
+        MATERIAL_CONTOUR_OPTIONS,
       );
     }
   }
@@ -2259,7 +3443,7 @@ export class TerrainGrid {
     const random = createRandom(hashString(`${this.seed}:ore-facets:${material}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`));
     const count = Math.min(140, Math.max(10, Math.floor((rect.width * rect.height) / 18000)));
     ctx.save();
-    this.clipMarchingPath(ctx, (col, row) => this.getCell(col, row) === material, bounds, `ore-mask:${material}`);
+    this.clipMarchingPath(ctx, (col, row) => this.getCell(col, row) === material, bounds, `ore-mask:${material}`, MATERIAL_CONTOUR_OPTIONS);
     for (let index = 0; index < count; index += 1) {
       const x = rect.x + random() * rect.width;
       const y = rect.y + random() * rect.height;
@@ -2271,7 +3455,7 @@ export class TerrainGrid {
       ctx.globalAlpha = material >= 4 ? 0.45 : 0.24;
       ctx.fillStyle = withAlpha(mixHex(data.edge, '#ffffff', 0.22), material >= 4 ? 0.65 : 0.34);
       ctx.beginPath();
-      if (material === 4 || material === 5 || material === 8) {
+      if (material === 4 || material === 5 || material === 8 || material === 9) {
         ctx.moveTo(0, -radius * 1.5);
         ctx.lineTo(radius * 1.1, 0);
         ctx.lineTo(0, radius * 1.5);
@@ -2329,6 +3513,10 @@ export class TerrainGrid {
   }
 
   drawOreTextureTile(ctx, width, height, data, material) {
+    if (data.textureSrc) {
+      const drawnTexture = this.drawImageOreTextureTile(ctx, width, height, data);
+      if (drawnTexture) return true;
+    }
     const random = createRandom(hashString(`${this.seed}:${data.id}:ore-texture`));
     const base = mixHex(data.color, '#1b1e25', material >= 4 ? 0.08 : 0.18);
     const glow = mixHex(data.edge, '#ffffff', material >= 4 ? 0.3 : 0.14);
@@ -2340,7 +3528,7 @@ export class TerrainGrid {
       const radius = 3 + random() * (material >= 4 ? 11 : 8);
       ctx.fillStyle = withAlpha(random() > 0.4 ? glow : data.color, 0.12 + random() * 0.26);
       ctx.beginPath();
-      if (material === 4 || material === 5 || material === 8) {
+      if (material === 4 || material === 5 || material === 8 || material === 9) {
         ctx.moveTo(x, y - radius);
         ctx.lineTo(x + radius * (0.55 + random()), y);
         ctx.lineTo(x, y + radius);
@@ -2368,6 +3556,36 @@ export class TerrainGrid {
       );
       ctx.stroke();
     }
+    return !data.textureSrc;
+  }
+
+  drawImageOreTextureTile(ctx, width, height, data) {
+    const image = getTerrainTextureImage(data.textureSrc);
+    if (!image?.complete || !image.naturalWidth) return false;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = mixHex(data.color || '#545a73', '#080a12', 0.32);
+    ctx.fillRect(0, 0, width, height);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const scale = clamp(data.textureScale ?? 1, 0.55, 1.25);
+    const overlap = Math.max(0, data.textureOverlap ?? 0);
+    const drawWidth = width * scale;
+    const drawHeight = height * scale;
+    const strideX = Math.max(1, drawWidth - overlap);
+    const strideY = Math.max(1, drawHeight - overlap);
+    for (let y = -strideY; y < height + strideY; y += strideY) {
+      for (let x = -strideX; x < width + strideX; x += strideX) {
+        ctx.drawImage(image, x, y, drawWidth + overlap, drawHeight + overlap);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-atop';
+    const glow = ctx.createRadialGradient(width * 0.45, height * 0.38, 4, width * 0.5, height * 0.5, width * 0.7);
+    glow.addColorStop(0, 'rgba(169, 136, 255, 0.22)');
+    glow.addColorStop(1, 'rgba(28, 31, 45, 0.08)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+    return true;
   }
 
   drawStoneCracks(ctx, palette, bounds = null) {
@@ -2400,31 +3618,849 @@ export class TerrainGrid {
     ctx.restore();
   }
 
+  getMaterialRoughnessStyle(materialId) {
+    const material = TERRAIN_MATERIALS[materialId] || TERRAIN_MATERIALS[1];
+    return {
+      ...TERRAIN_ROUGHNESS,
+      ...(TERRAIN_ROUGHNESS.materialStyles?.[material.id] || {}),
+    };
+  }
+
+  getRoughnessBounds(bounds = null, padding = 2) {
+    if (!bounds) {
+      return {
+        minCol: 0,
+        maxCol: this.cols - 1,
+        minRow: 0,
+        maxRow: this.rows - 1,
+      };
+    }
+    return {
+      minCol: clamp(bounds.minCol - padding, 0, this.cols - 1),
+      maxCol: clamp(bounds.maxCol + padding, 0, this.cols - 1),
+      minRow: clamp(bounds.minRow - padding, 0, this.rows - 1),
+      maxRow: clamp(bounds.maxRow + padding, 0, this.rows - 1),
+    };
+  }
+
+  getExposedEdges(col, row) {
+    const material = this.getCell(col, row);
+    if (material <= 0) return [];
+    return EDGE_DIRECTION_NAMES.filter((directionName) => {
+      const direction = EDGE_DIRECTIONS[directionName];
+      return !this.isSolidCell(col + direction.dx, row + direction.dy);
+    });
+  }
+
+  forEachExposedTerrainCell(bounds, callback) {
+    const scan = this.getRoughnessBounds(bounds);
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        const material = this.getCell(col, row);
+        if (material <= 0) continue;
+        const edges = this.getExposedEdges(col, row);
+        if (!edges.length) continue;
+        callback({ col, row, material, edges });
+      }
+    }
+  }
+
+  getEdgeBasePoint(col, row, directionName, t = 0) {
+    const size = this.cellSize;
+    const x = col * size;
+    const y = row * size;
+    switch (directionName) {
+      case 'top':
+        return { x: x + t * size, y };
+      case 'right':
+        return { x: x + size, y: y + t * size };
+      case 'bottom':
+        return { x: x + t * size, y: y + size };
+      case 'left':
+      default:
+        return { x, y: y + t * size };
+    }
+  }
+
+  getRoughEdgeData(col, row, directionName, materialId) {
+    const key = `${col}:${row}:${directionName}:${materialId}`;
+    if (this.roughEdgeCache.has(key)) return this.roughEdgeCache.get(key);
+    const direction = EDGE_DIRECTIONS[directionName];
+    const style = this.getMaterialRoughnessStyle(materialId);
+    const directionIndex = EDGE_DIRECTION_NAMES.indexOf(directionName) + 1;
+    const segmentCount = clamp(Math.round(style.edgeSegmentCount || 5), 3, 9);
+    const strength = Math.min(this.cellSize * 0.22, Math.max(0, style.edgeNoiseStrength ?? 2.8));
+    const scale = Math.max(0.1, style.edgeNoiseScale ?? 0.72);
+    const points = [];
+
+    for (let index = 0; index <= segmentCount; index += 1) {
+      const t = index / segmentCount;
+      const base = this.getEdgeBasePoint(col, row, directionName, t);
+      const endFade = index === 0 || index === segmentCount ? 0.42 : 1;
+      const curveFade = 0.62 + Math.sin(t * Math.PI) * 0.38;
+      const noise = signedHash2D(col * 17 + index * scale * 11, row * 19 + directionIndex, this.seed, materialId * 101 + directionIndex * 37);
+      const tangentNoise = signedHash2D(col * 29 + index, row * 31 + directionIndex * 7, this.seed, materialId * 211 + directionIndex * 43);
+      points.push({
+        x: base.x + direction.normal.x * noise * strength * endFade * curveFade + direction.tangent.x * tangentNoise * strength * 0.18 * endFade,
+        y: base.y + direction.normal.y * noise * strength * endFade * curveFade + direction.tangent.y * tangentNoise * strength * 0.18 * endFade,
+      });
+    }
+
+    const chips = [];
+    const chipChance = clamp01(style.chipChance ?? 0.42);
+    const maxDepth = Math.min(this.cellSize * 0.35, Math.max(1, style.maxChipDepth ?? 6));
+    for (let index = 0; index < segmentCount; index += 1) {
+      const roll = hash2D(col * 41 + index, row * 47 + directionIndex, this.seed, materialId * 313 + directionIndex * 59);
+      if (roll > chipChance * 0.62) continue;
+      const t = (index + 0.32 + hash2D(col, row + index, this.seed, materialId * 67) * 0.36) / segmentCount;
+      const width = this.cellSize * (0.08 + hash2D(col + index, row, this.seed, materialId * 83) * 0.1);
+      const depth = maxDepth * (0.35 + hash2D(col, row, this.seed, materialId * 97 + index) * 0.65);
+      chips.push({
+        t: clamp01(t),
+        width,
+        depth,
+        skew: signedHash2D(col, row, this.seed, materialId * 109 + index) * width * 0.45,
+      });
+    }
+
+    const data = { directionName, direction, materialId, style, points, chips };
+    this.roughEdgeCache.set(key, data);
+    return data;
+  }
+
+  traceRoughEdge(ctx, points) {
+    if (!points?.length) return;
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index += 1) {
+      const previous = points[index - 1];
+      const point = points[index];
+      const midX = (previous.x + point.x) * 0.5;
+      const midY = (previous.y + point.y) * 0.5;
+      ctx.quadraticCurveTo(previous.x, previous.y, midX, midY);
+    }
+    const last = points[points.length - 1];
+    ctx.lineTo(last.x, last.y);
+  }
+
+  isVisualSolidAt(x, y) {
+    return this.samplePredicateDensity(
+      (col, row) => this.isSolidCell(col, row),
+      x,
+      y,
+      VISUAL_CONTOUR_OPTIONS,
+    ) >= (VISUAL_CONTOUR_OPTIONS.densityThreshold ?? 0.5);
+  }
+
+  getContourPointAirNormal(point, tangent) {
+    const tangentLength = Math.hypot(tangent.x, tangent.y) || 1;
+    const tx = tangent.x / tangentLength;
+    const ty = tangent.y / tangentLength;
+    let normal = { x: -ty, y: tx };
+    const sampleDistance = Math.max(3, this.cellSize * 0.34);
+    const leftSolid = this.isVisualSolidAt(point.x + normal.x * sampleDistance, point.y + normal.y * sampleDistance);
+    const rightSolid = this.isVisualSolidAt(point.x - normal.x * sampleDistance, point.y - normal.y * sampleDistance);
+    if (leftSolid && !rightSolid) normal = { x: -normal.x, y: -normal.y };
+    else if (leftSolid === rightSolid) {
+      const centerX = point.x - this.planetCenterX;
+      const centerY = point.y - this.planetCenterY;
+      if (normal.x * centerX + normal.y * centerY < 0) normal = { x: -normal.x, y: -normal.y };
+    }
+    return normal;
+  }
+
+  getContourMaterialNear(point, airNormal) {
+    const distances = [this.cellSize * 0.38, this.cellSize * 0.78, this.cellSize * 1.18];
+    for (const distance of distances) {
+      const sample = this.cellFromWorld(point.x - airNormal.x * distance, point.y - airNormal.y * distance);
+      const material = this.getCell(sample.col, sample.row);
+      if (material > 0) return material;
+    }
+    const fallback = this.cellFromWorld(point.x, point.y);
+    return this.getCell(fallback.col, fallback.row) || 1;
+  }
+
+  getRoughContourLoops(bounds = null) {
+    const cacheKey = 'solid-rough-contours';
+    if (this.roughContourCache.has(cacheKey)) return this.roughContourCache.get(cacheKey);
+    const sourceLoops = this.getContourLoops((col, row) => this.isSolidCell(col, row), 'solid', VISUAL_CONTOUR_OPTIONS);
+    const roughLoops = this.createRoughContourLoopsFromSource(sourceLoops);
+    this.roughContourCache.set(cacheKey, roughLoops);
+    return roughLoops;
+  }
+
+  buildContourLoopsInBounds(predicate, bounds, options = VISUAL_CONTOUR_OPTIONS) {
+    const step = this.getContourStep(options);
+    const padding = this.cellSize * 3;
+    const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
+    const segments = [];
+
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const index = this.getMarchingIndex(col, row, sample);
+        const edgeSegments = EDGE_SEGMENTS[index];
+        if (!edgeSegments?.length) continue;
+        const x = col * step;
+        const y = row * step;
+        for (const segment of edgeSegments) {
+          const a = POINTS[segment[0]];
+          const b = POINTS[segment[1]];
+          segments.push({
+            a: { x: x + a[0] * step, y: y + a[1] * step },
+            b: { x: x + b[0] * step, y: y + b[1] * step },
+          });
+        }
+      }
+    }
+
+    return this.linkContourSegments(segments, options, step);
+  }
+
+  createRoughContourLoopsFromSource(sourceLoops) {
+    const roughLoops = sourceLoops.map((loop, loopIndex) => {
+      const sourcePoints = loop.points || [];
+      const points = [];
+      for (let index = 0; index < sourcePoints.length; index += 1) {
+        const a = sourcePoints[index];
+        const b = sourcePoints[(index + 1) % sourcePoints.length];
+        const segmentLength = Math.hypot(b.x - a.x, b.y - a.y);
+        const subdivisions = Math.max(1, Math.min(4, Math.ceil(segmentLength / Math.max(6, this.cellSize * 0.55))));
+        for (let sub = 0; sub < subdivisions; sub += 1) {
+          const t = sub / subdivisions;
+          const base = {
+            x: a.x + (b.x - a.x) * t,
+            y: a.y + (b.y - a.y) * t,
+          };
+          const tangent = { x: b.x - a.x, y: b.y - a.y };
+          const normal = this.getContourPointAirNormal(base, tangent);
+          const material = this.getContourMaterialNear(base, normal);
+          const style = this.getMaterialRoughnessStyle(material);
+          const strength = Math.min(this.cellSize * 0.18, Math.max(0, style.edgeNoiseStrength ?? 2.8));
+          const noiseScale = Math.max(0.1, style.edgeNoiseScale ?? 0.72);
+          const salt = loopIndex * 997 + index * 43 + sub * 11 + material * 131;
+          const outwardNoise = signedHash2D(
+            Math.round(base.x * noiseScale),
+            Math.round(base.y * noiseScale),
+            this.seed,
+            salt,
+          );
+          const tangentNoise = signedHash2D(
+            Math.round(base.y * noiseScale),
+            Math.round(base.x * noiseScale),
+            this.seed,
+            salt + 211,
+          );
+          const tangentLength = Math.hypot(tangent.x, tangent.y) || 1;
+          const tx = tangent.x / tangentLength;
+          const ty = tangent.y / tangentLength;
+          points.push({
+            x: base.x + normal.x * outwardNoise * strength + tx * tangentNoise * strength * 0.16,
+            y: base.y + normal.y * outwardNoise * strength + ty * tangentNoise * strength * 0.16,
+            baseX: base.x,
+            baseY: base.y,
+            normal,
+            tangent: { x: tx, y: ty },
+            material,
+            style,
+          });
+        }
+      }
+      return {
+        points,
+        sourceBounds: loop.bounds,
+        bounds: contourBounds(points),
+      };
+    }).filter((loop) => loop.points.length >= 3);
+    return roughLoops;
+  }
+
+  getContourClipBounds(bounds = null) {
+    if (!bounds) return null;
+    return {
+      minX: clamp(bounds.minCol * this.cellSize - this.cellSize * 3, 0, this.width),
+      minY: clamp(bounds.minRow * this.cellSize - this.cellSize * 3, 0, this.height),
+      maxX: clamp((bounds.maxCol + 1) * this.cellSize + this.cellSize * 3, 0, this.width),
+      maxY: clamp((bounds.maxRow + 1) * this.cellSize + this.cellSize * 3, 0, this.height),
+    };
+  }
+
+  traceRoughContourLoop(ctx, points, offset = 0) {
+    if (!points?.length) return;
+    const getPoint = (point) => ({
+      x: point.x - (point.normal?.x || 0) * offset,
+      y: point.y - (point.normal?.y || 0) * offset,
+    });
+    const first = getPoint(points[0]);
+    ctx.moveTo(first.x, first.y);
+    for (let index = 1; index <= points.length; index += 1) {
+      const previous = getPoint(points[(index - 1 + points.length) % points.length]);
+      const current = getPoint(points[index % points.length]);
+      const midX = (previous.x + current.x) * 0.5;
+      const midY = (previous.y + current.y) * 0.5;
+      ctx.quadraticCurveTo(previous.x, previous.y, midX, midY);
+    }
+    ctx.closePath();
+  }
+
+  forEachRoughContourLoop(bounds, callback) {
+    const clipBounds = this.getContourClipBounds(bounds);
+    for (const loop of this.getRoughContourLoops(bounds)) {
+      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds) && !boundsOverlap(loop.sourceBounds, clipBounds)) continue;
+      callback(loop);
+    }
+  }
+
+  drawExposedEdgeRoughness(ctx, bounds = null) {
+    if (bounds) {
+      const segments = this.getLocalRoughContourSegments(bounds);
+      this.drawLocalRoughContourShadows(ctx, segments);
+      this.drawLocalRoughContourLines(ctx, segments);
+      return;
+    }
+    this.drawRoughContourChipCuts(ctx, bounds);
+    this.drawRoughContourShadows(ctx, bounds);
+    this.drawRoughSurfaceDetails(ctx, bounds);
+    this.drawRoughContourPebbleLips(ctx, bounds);
+    this.drawRoughContourLines(ctx, bounds);
+  }
+
+  getLocalRoughContourSegments(bounds) {
+    const segments = [];
+    this.forEachLocalRoughContourSegment(bounds, (segment) => segments.push(segment));
+    return segments;
+  }
+
+  forEachLocalRoughContourSegment(bounds, callback) {
+    if (!bounds) return;
+    const step = this.getContourStep(VISUAL_CONTOUR_OPTIONS);
+    const padding = this.cellSize * 4;
+    const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const clipBounds = this.getContourClipBounds(bounds);
+    const sample = (col, row) => this.sampleContourNode(
+      (x, y) => this.isSolidCell(x, y),
+      col,
+      row,
+      step,
+      VISUAL_CONTOUR_OPTIONS,
+    );
+
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
+        const edgeSegments = EDGE_SEGMENTS[marchingIndex];
+        if (!edgeSegments?.length) continue;
+        const originX = col * step;
+        const originY = row * step;
+        for (const segment of edgeSegments) {
+          const start = POINTS[segment[0]];
+          const end = POINTS[segment[1]];
+          const a = { x: originX + start[0] * step, y: originY + start[1] * step };
+          const b = { x: originX + end[0] * step, y: originY + end[1] * step };
+          if (clipBounds && !boundsOverlap({
+            minX: Math.min(a.x, b.x),
+            minY: Math.min(a.y, b.y),
+            maxX: Math.max(a.x, b.x),
+            maxY: Math.max(a.y, b.y),
+          }, clipBounds)) continue;
+          callback(this.createLocalRoughContourSegment(a, b, col, row));
+        }
+      }
+    }
+  }
+
+  createLocalRoughContourSegment(a, b, gridCol = 0, gridRow = 0) {
+    const tangent = { x: b.x - a.x, y: b.y - a.y };
+    const length = Math.hypot(tangent.x, tangent.y) || 1;
+    const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
+    const normal = this.getContourPointAirNormal(mid, tangent);
+    const material = this.getContourMaterialNear(mid, normal);
+    const style = this.getMaterialRoughnessStyle(material);
+    const strength = Math.min(this.cellSize * 0.14, Math.max(0, style.edgeNoiseStrength ?? 2.8) * 0.72);
+    const tx = tangent.x / length;
+    const ty = tangent.y / length;
+    const roughPoint = (point, salt, pointStrength = strength) => {
+      const qx = Math.round(point.x * 0.45);
+      const qy = Math.round(point.y * 0.45);
+      const normalNoise = signedHash2D(qx, qy, this.seed, material * 811 + salt);
+      const tangentNoise = signedHash2D(qy, qx, this.seed, material * 823 + salt);
+      return {
+        x: point.x + normal.x * normalNoise * pointStrength + tx * tangentNoise * pointStrength * 0.14,
+        y: point.y + normal.y * normalNoise * pointStrength + ty * tangentNoise * pointStrength * 0.14,
+      };
+    };
+    return {
+      a: roughPoint(a, gridCol * 31 + gridRow * 17, strength * 0.52),
+      mid: roughPoint(mid, gridCol * 47 + gridRow * 29 + 7, strength),
+      b: roughPoint(b, gridCol * 31 + gridRow * 17 + 13, strength * 0.52),
+      normal,
+      material,
+      style,
+    };
+  }
+
+  traceLocalRoughContourSegment(ctx, segment, offset = 0) {
+    const offsetPoint = (point) => ({
+      x: point.x - segment.normal.x * offset,
+      y: point.y - segment.normal.y * offset,
+    });
+    const a = offsetPoint(segment.a);
+    const mid = offsetPoint(segment.mid);
+    const b = offsetPoint(segment.b);
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo(mid.x, mid.y, b.x, b.y);
+  }
+
+  drawLocalRoughContourShadows(ctx, segments) {
+    if (!segments?.length) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(5, 8, 14, 0.28)';
+    ctx.lineWidth = Math.max(3.8, this.cellSize * 0.19);
+    ctx.beginPath();
+    segments.forEach((segment) => {
+      this.traceLocalRoughContourSegment(ctx, segment, this.cellSize * 0.08);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawLocalRoughContourLines(ctx, segments) {
+    if (!segments?.length) return;
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(5, 11, 19, 0.62)';
+    ctx.lineWidth = Math.max(2.5, this.cellSize * 0.16);
+    ctx.beginPath();
+    segments.forEach((segment) => {
+      this.traceLocalRoughContourSegment(ctx, segment);
+    });
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(palette.edge, 0.72);
+    ctx.lineWidth = Math.max(1.05, this.cellSize * 0.06);
+    ctx.beginPath();
+    segments.forEach((segment) => {
+      this.traceLocalRoughContourSegment(ctx, segment);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawRoughContourChipCuts(ctx, bounds = null) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    this.forEachRoughContourLoop(bounds, (loop) => {
+      const points = loop.points;
+      const step = Math.max(3, Math.floor(points.length / Math.max(12, Math.min(52, points.length * 0.28))));
+      for (let index = 0; index < points.length; index += step) {
+        const point = points[index];
+        const style = point.style || TERRAIN_ROUGHNESS;
+        if (hash2D(Math.round(point.baseX), Math.round(point.baseY), this.seed, point.material * 701 + index) > (style.chipChance ?? 0.42) * 0.55) continue;
+        const width = this.cellSize * (0.08 + hash2D(index, point.material, this.seed, 719) * 0.11);
+        const depth = Math.min(this.cellSize * 0.34, (style.maxChipDepth ?? 6) * (0.55 + hash2D(index, point.material, this.seed, 727) * 0.75));
+        const inward = { x: -point.normal.x, y: -point.normal.y };
+        ctx.beginPath();
+        ctx.moveTo(point.x - point.tangent.x * width, point.y - point.tangent.y * width);
+        ctx.lineTo(point.x + point.tangent.x * width, point.y + point.tangent.y * width);
+        ctx.lineTo(
+          point.x + inward.x * depth + point.tangent.x * signedHash2D(index, point.material, this.seed, 733) * width * 0.45,
+          point.y + inward.y * depth + point.tangent.y * signedHash2D(index, point.material, this.seed, 733) * width * 0.45,
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
+    ctx.restore();
+  }
+
+  drawRoughContourShadows(ctx, bounds = null) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.forEachRoughContourLoop(bounds, (loop) => {
+      const averageShadow = loop.points.reduce((total, point) => total + (point.style?.edgeShadowStrength ?? 0.28), 0) / Math.max(1, loop.points.length);
+      ctx.strokeStyle = `rgba(5, 8, 14, ${clamp01(averageShadow)})`;
+      ctx.lineWidth = Math.max(3.8, this.cellSize * 0.19);
+      ctx.beginPath();
+      this.traceRoughContourLoop(ctx, loop.points, this.cellSize * 0.08);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  drawRoughContourLines(ctx, bounds = null) {
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.forEachRoughContourLoop(bounds, (loop) => {
+      ctx.strokeStyle = 'rgba(5, 11, 19, 0.62)';
+      ctx.lineWidth = Math.max(2.5, this.cellSize * 0.16);
+      ctx.beginPath();
+      this.traceRoughContourLoop(ctx, loop.points);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(palette.edge, 0.72);
+      ctx.lineWidth = Math.max(1.05, this.cellSize * 0.06);
+      ctx.beginPath();
+      this.traceRoughContourLoop(ctx, loop.points);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  drawRoughContourPebbleLips(ctx, bounds = null) {
+    ctx.save();
+    this.forEachRoughContourLoop(bounds, (loop) => {
+      const points = loop.points;
+      const step = Math.max(7, Math.floor(points.length / 42));
+      for (let index = 0; index < points.length; index += step) {
+        const point = points[index];
+        const style = point.style || TERRAIN_ROUGHNESS;
+        if (hash2D(Math.round(point.baseX), Math.round(point.baseY), this.seed, point.material * 751 + index) > (style.pebbleLipChance ?? 0.16)) continue;
+        const materialData = TERRAIN_MATERIALS[point.material] || TERRAIN_MATERIALS[1];
+        const radius = this.cellSize * (0.04 + hash2D(index, point.material, this.seed, 757) * 0.045);
+        ctx.save();
+        ctx.translate(point.x + point.normal.x * radius * 0.42, point.y + point.normal.y * radius * 0.42);
+        ctx.rotate(hash2D(index, point.material, this.seed, 761) * Math.PI);
+        ctx.fillStyle = withAlpha(mixHex(materialData.color || '#6b625a', '#ffffff', 0.08), 0.62);
+        ctx.strokeStyle = 'rgba(5, 11, 19, 0.34)';
+        ctx.lineWidth = Math.max(0.8, radius * 0.36);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, radius * 1.45, radius * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+    ctx.restore();
+  }
+
+  drawRoughEdgeChipCuts(ctx, bounds = null) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+      edges.forEach((directionName) => {
+        const data = this.getRoughEdgeData(col, row, directionName, material);
+        data.chips.forEach((chip) => {
+          const base = this.getEdgeBasePoint(col, row, directionName, chip.t);
+          const inward = { x: -data.direction.normal.x, y: -data.direction.normal.y };
+          const tangent = data.direction.tangent;
+          ctx.beginPath();
+          ctx.moveTo(base.x - tangent.x * chip.width, base.y - tangent.y * chip.width);
+          ctx.lineTo(base.x + tangent.x * chip.width, base.y + tangent.y * chip.width);
+          ctx.lineTo(
+            base.x + inward.x * chip.depth + tangent.x * chip.skew,
+            base.y + inward.y * chip.depth + tangent.y * chip.skew,
+          );
+          ctx.closePath();
+          ctx.fill();
+        });
+      });
+      this.drawRoughCornerCuts(ctx, col, row, material, edges);
+    });
+    ctx.restore();
+  }
+
+  drawRoughCornerCuts(ctx, col, row, material, edges) {
+    const style = this.getMaterialRoughnessStyle(material);
+    const chance = clamp01(style.cornerBreakChance ?? 0.28);
+    const edgeSet = new Set(edges);
+    const size = this.cellSize;
+    const left = col * size;
+    const top = row * size;
+    const corners = {
+      tl: { x: left, y: top, ix: 1, iy: 1 },
+      tr: { x: left + size, y: top, ix: -1, iy: 1 },
+      br: { x: left + size, y: top + size, ix: -1, iy: -1 },
+      bl: { x: left, y: top + size, ix: 1, iy: -1 },
+    };
+    Object.entries(CORNER_EXPOSED_EDGES).forEach(([cornerName, requiredEdges], index) => {
+      if (!requiredEdges.every((edge) => edgeSet.has(edge))) return;
+      if (hash2D(col, row, this.seed, material * 401 + index * 73) > chance) return;
+      const corner = corners[cornerName];
+      const depthA = size * (0.12 + hash2D(col, row, this.seed, material * 409 + index) * 0.12);
+      const depthB = size * (0.1 + hash2D(row, col, this.seed, material * 419 + index) * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(corner.x, corner.y);
+      ctx.lineTo(corner.x + corner.ix * depthA, corner.y);
+      ctx.lineTo(corner.x + corner.ix * depthA * 0.45, corner.y + corner.iy * depthB * 0.72);
+      ctx.lineTo(corner.x, corner.y + corner.iy * depthB);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+
+  drawRoughEdgeShadows(ctx, bounds = null) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+      const style = this.getMaterialRoughnessStyle(material);
+      const alpha = clamp01(style.edgeShadowStrength ?? 0.28);
+      edges.forEach((directionName) => {
+        const data = this.getRoughEdgeData(col, row, directionName, material);
+        ctx.save();
+        ctx.translate(-data.direction.normal.x * this.cellSize * 0.08, -data.direction.normal.y * this.cellSize * 0.08);
+        ctx.strokeStyle = `rgba(5, 8, 14, ${alpha})`;
+        ctx.lineWidth = Math.max(3.5, this.cellSize * 0.18);
+        ctx.beginPath();
+        this.traceRoughEdge(ctx, data.points);
+        ctx.stroke();
+        ctx.restore();
+      });
+    });
+    ctx.restore();
+  }
+
+  drawRoughEdgeLines(ctx, bounds = null) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+      const materialData = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+      edges.forEach((directionName) => {
+        const data = this.getRoughEdgeData(col, row, directionName, material);
+        ctx.strokeStyle = 'rgba(5, 11, 19, 0.58)';
+        ctx.lineWidth = Math.max(2.2, this.cellSize * 0.15);
+        ctx.beginPath();
+        this.traceRoughEdge(ctx, data.points);
+        ctx.stroke();
+        ctx.strokeStyle = withAlpha(materialData.edge || '#91867a', material >= 4 ? 0.76 : 0.58);
+        ctx.lineWidth = Math.max(1.1, this.cellSize * 0.055);
+        ctx.beginPath();
+        this.traceRoughEdge(ctx, data.points);
+        ctx.stroke();
+      });
+    });
+    ctx.restore();
+  }
+
+  drawRoughPebbleLips(ctx, bounds = null) {
+    ctx.save();
+    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+      const materialData = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+      const style = this.getMaterialRoughnessStyle(material);
+      edges.forEach((directionName, edgeIndex) => {
+        if (hash2D(col, row, this.seed, material * 503 + edgeIndex * 37) > (style.pebbleLipChance ?? 0.16)) return;
+        const data = this.getRoughEdgeData(col, row, directionName, material);
+        const t = 0.18 + hash2D(row, col, this.seed, material * 509 + edgeIndex) * 0.64;
+        const base = this.getEdgeBasePoint(col, row, directionName, t);
+        const radius = this.cellSize * (0.045 + hash2D(col + edgeIndex, row, this.seed, material * 521) * 0.045);
+        ctx.save();
+        ctx.translate(base.x + data.direction.normal.x * radius * 0.45, base.y + data.direction.normal.y * radius * 0.45);
+        ctx.rotate(hash2D(col, row, this.seed, material * 541 + edgeIndex) * Math.PI);
+        ctx.fillStyle = withAlpha(mixHex(materialData.color || '#6b625a', '#ffffff', 0.08), 0.62);
+        ctx.strokeStyle = 'rgba(5, 11, 19, 0.36)';
+        ctx.lineWidth = Math.max(0.8, radius * 0.38);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, radius * 1.45, radius * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+    });
+    ctx.restore();
+  }
+
+  drawRoughSurfaceDetails(ctx, bounds = null) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+      const materialData = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+      const style = this.getMaterialRoughnessStyle(material);
+      const opacity = clamp01(style.surfaceDetailOpacity ?? 0.38);
+      const edgeName = edges[Math.floor(hash2D(col, row, this.seed, material * 601) * edges.length)] || edges[0];
+      const direction = EDGE_DIRECTIONS[edgeName];
+      const baseT = 0.18 + hash2D(col, row, this.seed, material * 607) * 0.64;
+      const base = this.getEdgeBasePoint(col, row, edgeName, baseT);
+      const inward = { x: -direction.normal.x, y: -direction.normal.y };
+      const tangent = direction.tangent;
+
+      ctx.save();
+      ctx.beginPath();
+      this.traceCellShape(ctx, col, row, { scale: 0.98 });
+      ctx.clip();
+
+      if (hash2D(col, row, this.seed, material * 613) < (style.crackChance ?? 0.34)) {
+        const minLength = style.crackLengthMin ?? 7;
+        const maxLength = style.crackLengthMax ?? 20;
+        const length = minLength + hash2D(col, row, this.seed, material * 617) * Math.max(1, maxLength - minLength);
+        const startX = base.x + inward.x * this.cellSize * (0.12 + hash2D(row, col, this.seed, material * 619) * 0.18);
+        const startY = base.y + inward.y * this.cellSize * (0.12 + hash2D(row, col, this.seed, material * 619) * 0.18);
+        const angleOffset = signedHash2D(col, row, this.seed, material * 631) * 0.55;
+        const dirX = tangent.x * Math.cos(angleOffset) + inward.x * Math.sin(angleOffset);
+        const dirY = tangent.y * Math.cos(angleOffset) + inward.y * Math.sin(angleOffset);
+        ctx.strokeStyle = `rgba(12, 13, 18, ${0.22 + opacity * 0.42})`;
+        ctx.lineWidth = Math.max(0.9, this.cellSize * 0.045);
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + dirX * length * 0.52 + inward.x * length * 0.18, startY + dirY * length * 0.52 + inward.y * length * 0.18);
+        ctx.lineTo(startX + dirX * length, startY + dirY * length);
+        ctx.stroke();
+      }
+
+      if (hash2D(col, row, this.seed, material * 641) < (style.dentChance ?? 0.42)) {
+        const x = base.x + inward.x * this.cellSize * (0.2 + hash2D(col, row, this.seed, material * 643) * 0.28);
+        const y = base.y + inward.y * this.cellSize * (0.2 + hash2D(col, row, this.seed, material * 643) * 0.28);
+        const radius = this.cellSize * (0.035 + hash2D(row, col, this.seed, material * 647) * 0.045);
+        ctx.fillStyle = `rgba(7, 9, 14, ${0.08 + opacity * 0.16})`;
+        ctx.beginPath();
+        ctx.ellipse(x, y, radius * 1.6, radius, hash2D(col, row, this.seed, material * 653) * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (hash2D(col, row, this.seed, material * 659) < (style.pebbleChance ?? 0.22)) {
+        const x = base.x + inward.x * this.cellSize * 0.28 + tangent.x * signedHash2D(col, row, this.seed, material * 661) * this.cellSize * 0.18;
+        const y = base.y + inward.y * this.cellSize * 0.28 + tangent.y * signedHash2D(col, row, this.seed, material * 661) * this.cellSize * 0.18;
+        const radius = this.cellSize * (0.035 + hash2D(col, row, this.seed, material * 673) * 0.035);
+        ctx.fillStyle = withAlpha(mixHex(materialData.edge || '#91867a', '#ffffff', 0.18), 0.14 + opacity * 0.16);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  drawRoughnessDebug(ctx, bounds = null) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 214, 107, 0.75)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    this.forEachRoughContourLoop(bounds, (loop) => {
+      ctx.beginPath();
+      this.traceRoughContourLoop(ctx, loop.points);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   drawEdgeContours(ctx, bounds = null) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     ctx.save();
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'bevel';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     this.strokeMarchingEdges(ctx, 'rgba(5, 11, 19, 0.5)', Math.max(4, this.cellSize * 0.28), bounds, (x, y) => this.isSolidCell(x, y), 'solid');
     this.strokeMarchingEdges(ctx, withAlpha(palette.edge, 0.42), Math.max(1.4, this.cellSize * 0.11), bounds, (x, y) => this.isSolidCell(x, y), 'solid');
     ctx.restore();
   }
 
-  strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null) {
-    const loops = this.getContourLoops(predicate, cacheKey, VISUAL_CONTOUR_OPTIONS);
-    const clipBounds = bounds ? {
-      minX: clamp(bounds.minCol * this.cellSize - this.cellSize * 3, 0, this.width),
-      minY: clamp(bounds.minRow * this.cellSize - this.cellSize * 3, 0, this.height),
-      maxX: clamp((bounds.maxCol + 1) * this.cellSize + this.cellSize * 3, 0, this.width),
-      maxY: clamp((bounds.maxRow + 1) * this.cellSize + this.cellSize * 3, 0, this.height),
-    } : null;
+  strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
+    if (bounds) {
+      this.strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options);
+      return;
+    }
+    const loops = this.getContourLoops(predicate, cacheKey, options);
     ctx.strokeStyle = style;
     ctx.lineWidth = width;
     ctx.beginPath();
     for (const loop of loops) {
-      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds)) continue;
-      this.traceContourLoop(ctx, loop.points, VISUAL_CONTOUR_OPTIONS);
+      this.traceContourLoop(ctx, loop.points, options);
     }
     ctx.stroke();
+  }
+
+  strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options = VISUAL_CONTOUR_OPTIONS) {
+    const step = this.getContourStep(options);
+    const padding = this.cellSize * 3;
+    const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, sample);
+        const segments = EDGE_SEGMENTS[marchingIndex];
+        if (!segments?.length) continue;
+        const x = col * step;
+        const y = row * step;
+        for (const segment of segments) {
+          const a = POINTS[segment[0]];
+          const b = POINTS[segment[1]];
+          ctx.moveTo(x + a[0] * step, y + a[1] * step);
+          ctx.lineTo(x + b[0] * step, y + b[1] * step);
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
+  drawDebug(ctx, flags = {}) {
+    if (!flags?.rawGrid && !flags?.visualMesh && !flags?.collision && !flags?.roughnessDebug) return;
+    ctx.save();
+    if (flags.rawGrid) this.drawRawGridDebug(ctx);
+    if (flags.visualMesh) this.drawVisualMeshDebug(ctx);
+    if (flags.collision) this.drawCollisionDebug(ctx);
+    if (flags.roughnessDebug) this.drawRoughnessDebug(ctx);
+    ctx.restore();
+  }
+
+  drawRawGridDebug(ctx) {
+    const size = this.cellSize;
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const material = this.getCell(col, row);
+        if (material <= 0) continue;
+        const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+        ctx.fillStyle = withAlpha(data.edge || '#76f3ff', 0.08);
+        ctx.strokeStyle = 'rgba(126, 231, 255, 0.18)';
+        ctx.fillRect(col * size, row * size, size, size);
+        ctx.strokeRect(col * size + 0.5, row * size + 0.5, size - 1, size - 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  drawVisualMeshDebug(ctx) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([12, 8]);
+    this.strokeMarchingEdges(
+      ctx,
+      'rgba(118, 243, 255, 0.88)',
+      2,
+      null,
+      (col, row) => this.isSolidCell(col, row),
+      'solid',
+      VISUAL_CONTOUR_OPTIONS,
+    );
+    ctx.restore();
+  }
+
+  drawCollisionDebug(ctx) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([5, 7]);
+    this.strokeMarchingEdges(
+      ctx,
+      'rgba(255, 117, 111, 0.9)',
+      2.5,
+      null,
+      (col, row) => this.isSolidCell(col, row),
+      'collision',
+      COLLISION_CONTOUR_OPTIONS,
+    );
+    ctx.restore();
   }
 }

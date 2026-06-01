@@ -43,6 +43,7 @@ export class PlanetEnemy {
     this.attackTimer = this.random() * 0.45;
     this.wanderTimer = 0.8 + this.random() * 1.6;
     this.squish = 0;
+    this.knockbackLift = 0;
     this.accent = data.accent || '#b8ff8e';
     this.pathDistance = this.getInitialPathDistance(island, angle);
     this.localX = 0;
@@ -91,6 +92,7 @@ export class PlanetEnemy {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
     this.attackTimer = Math.max(0, this.attackTimer - dt);
     this.squish = Math.max(0, this.squish - dt * 4);
+    this.knockbackLift = Math.max(0, this.knockbackLift - dt * 80);
     this.updateMovement(dt, context);
     this.updateSurfacePosition(context.island);
     this.updateWorldPosition(context);
@@ -122,7 +124,7 @@ export class PlanetEnemy {
   }
 
   updateSurfacePosition(island) {
-    const sample = island.terrain?.sampleSurfacePath?.(this.pathDistance, this.surfaceOffset);
+    const sample = island.terrain?.sampleSurfacePath?.(this.pathDistance, this.surfaceOffset + this.knockbackLift);
     if (!sample) return;
     this.surfaceSample = sample;
     this.localX = sample.x;
@@ -154,11 +156,16 @@ export class PlanetEnemy {
     });
   }
 
-  takeDamage(amount = 1) {
+  takeDamage(amount = 1, knockback = null) {
     if (!this.isActive()) return false;
     this.health = Math.max(0, this.health - amount);
-    this.hitFlash = 0.18;
+    this.hitFlash = knockback?.flashDuration || 0.18;
     this.squish = 1;
+    if (knockback && this.surfaceSample) {
+      const tangentImpulse = (knockback.x || 0) * this.surfaceSample.tangent.x + (knockback.y || 0) * this.surfaceSample.tangent.y;
+      this.pathDistance += tangentImpulse * 0.045;
+      this.knockbackLift = Math.min(46, this.knockbackLift + Math.hypot(knockback.x || 0, knockback.y || 0) * 0.055);
+    }
     if (this.health > 0) return false;
     this.active = false;
     return true;

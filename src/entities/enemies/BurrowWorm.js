@@ -101,9 +101,9 @@ export class BurrowWorm extends PlanetEnemy {
     this.surfaceSample = sample;
   }
 
-  takeDamage(amount = 1) {
+  takeDamage(amount = 1, knockback = null) {
     if (!this.exposed) return false;
-    return super.takeDamage(amount);
+    return super.takeDamage(amount, knockback);
   }
 
   isTargetable() {

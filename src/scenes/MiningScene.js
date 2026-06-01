@@ -48,7 +48,7 @@ const RING_COLORS = ['#2f5e89', '#284d82', '#c7602c', '#8d66e8', '#dfe7ff'];
 const ASTEROID_CHIP_BRUSH_RADIUS = gameBalance.mining.asteroidMiningBrushRadius || 20;
 const GOD_MODE_MINING_MULTIPLIER = 18;
 const TERRAIN_LASER_RANGE = 390;
-const TERRAIN_MINING_BRUSH_RADIUS = 22;
+const TERRAIN_MINING_BRUSH_RADIUS = gameBalance.terrain?.miningBrushRadius || 22;
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
@@ -67,6 +67,51 @@ const PLANET_PLAYER_HALF_WIDTH = 12;
 const PLANET_PLAYER_HEAD_OFFSET = 29;
 const PLANET_PLAYER_FOOT_OFFSET = 30;
 const PLANET_PLAYER_WALL_SLIDE_DAMPING = 0.18;
+const PLANET_PLAYER_FEEL = {
+  groundAcceleration: 2600,
+  groundDeceleration: 3400,
+  airAcceleration: 920,
+  maxGroundSpeed: 285,
+  maxAirSpeed: 230,
+  friction: 16,
+  slopeFriction: 8,
+  jumpForce: 660,
+  coyoteTime: 0.14,
+  jumpBufferTime: 0.13,
+  jumpCutMultiplier: 0.46,
+  fallGravityMultiplier: 1.32,
+  lowJumpGravityMultiplier: 1.52,
+  maxFallSpeed: 860,
+  groundSnapDistance: 23,
+  maxStepHeight: 18,
+  groundNormalSmoothing: 0.24,
+  footPlantOffset: 2.5,
+  minGroundNormalDot: 0.34,
+  groundedGravityScale: 0.16,
+  postGroundFriction: 28,
+  landingImpactThreshold: 520,
+  hardLandingShakeStrength: 0.2,
+  landingDustAmount: 8,
+};
+const SWORD_COMBAT = {
+  baseDamage: 18,
+  slashRange: 112,
+  slashArcDegrees: 96,
+  attackBufferTime: 0.16,
+  comboResetTime: 0.78,
+  holdAttackRepeatEnabled: true,
+  heavySlashMoveSlowdown: 0.82,
+  hitStopDuration: 0.035,
+  hitShakeStrength: 0.18,
+  killShakeStrength: 0.28,
+  enemyHitFlashDuration: 0.16,
+  comboPattern: [
+    { name: 'slash1A', beat: 1, damage: 1, range: 1, knockback: 1, duration: 0.12, cooldown: 0.18 },
+    { name: 'slash1B', beat: 1, damage: 1, range: 1, knockback: 1, duration: 0.12, cooldown: 0.18 },
+    { name: 'slash2', beat: 2, damage: 1.45, range: 1.14, knockback: 1.34, duration: 0.15, cooldown: 0.22 },
+    { name: 'slash3', beat: 3, damage: 2.15, range: 1.34, knockback: 2.1, duration: 0.2, cooldown: 0.32 },
+  ],
+};
 const ISLAND_STABILIZE_MAX_SPEED = 1.45;
 const ISLAND_STABILIZE_HOLD_MAX_SPEED = 1.75;
 const ISLAND_STABILIZE_TARGET_FOLLOW_SPEED = 1.15;
@@ -96,6 +141,12 @@ function normalizeAngle(angle) {
 
 function angleDifference(from, to) {
   return normalizeAngle(to - from);
+}
+
+function approachValue(value, target, maxDelta) {
+  if (value < target) return Math.min(target, value + maxDelta);
+  if (value > target) return Math.max(target, value - maxDelta);
+  return target;
 }
 
 function hexToRgb(hex) {
@@ -239,6 +290,25 @@ export class MiningScene {
     this.islandMiningBeam = null;
     this.islandMiningHitFeedback = null;
     this.islandAimPreview = null;
+    this.sword = {
+      active: null,
+      effects: [],
+      comboIndex: 0,
+      cooldown: 0,
+      resetTimer: 0,
+      bufferTimer: 0,
+    };
+    this.hitStopTimer = 0;
+    this.movementDebug = {
+      showGroundProbes: false,
+      showTerrainNormal: false,
+      showVelocity: false,
+      showGroundedState: false,
+      showCoyoteTimer: false,
+      showSurfaceTangent: false,
+      showHitboxes: false,
+    };
+    this.debugKeyLatch = {};
     this.islandLaserSoundActive = false;
     this.islandTerrainDirty = false;
     this.islandLandingTimer = 0;
@@ -260,21 +330,62 @@ export class MiningScene {
 
   createSpaceIslands() {
     return this.game.systems.islands.getAllIslands().map((island) => {
-      const world = {
-        width: island.size?.width || 1500,
-        height: Math.max(island.size?.height || 760, 680),
-        floorY: Math.max(300, (island.size?.height || 760) * 0.62),
-        landingX: island.landingX || Math.max(180, (island.size?.width || 1500) * 0.22),
-        gravity: 1560,
-        allowExitBounds: true,
-        allowFreefall: true,
-      };
+      const world = this.createIslandWorld(island);
       const terrain = this.game.systems.islands.createTerrain(island, world);
       return new SpaceIsland({
         ...island,
         placedFlags: this.game.systems.islands.getSavedFlags(island.id),
       }, terrain);
     });
+  }
+
+  createIslandWorld(island) {
+    return {
+      width: island.size?.width || 1500,
+      height: Math.max(island.size?.height || 760, 680),
+      floorY: Math.max(300, (island.size?.height || 760) * 0.62),
+      landingX: island.landingX || Math.max(180, (island.size?.width || 1500) * 0.22),
+      gravity: 1560,
+      allowExitBounds: true,
+      allowFreefall: true,
+    };
+  }
+
+  getCurrentPlanetIdentifier() {
+    const island = this.activeIsland || this.landingIsland || this.atmosphereIsland;
+    return island?.tag || island?.planetTag || island?.id || '';
+  }
+
+  regeneratePlanet(tagOrId = this.getCurrentPlanetIdentifier()) {
+    const islandData = this.game.systems.islands.regenerateIsland(tagOrId);
+    if (!islandData) {
+      this.game.ui.showToast(`Planet ${tagOrId || 'target'} not found`, 'danger');
+      return false;
+    }
+    const runtimeIsland = this.rockIslands.find((island) => island.id === islandData.id);
+    if (!runtimeIsland) {
+      this.rockIslands = this.createSpaceIslands();
+      this.game.ui.showToast(`Regenerated ${islandData.tag || islandData.id}`, 'success');
+      return true;
+    }
+
+    runtimeIsland.terrain?.releaseRenderCache?.();
+    runtimeIsland.data = islandData;
+    runtimeIsland.tag = islandData.tag || islandData.planetTag || runtimeIsland.tag;
+    runtimeIsland.planetTag = runtimeIsland.tag;
+    runtimeIsland.placedFlags = [];
+    runtimeIsland.terrain = this.game.systems.islands.createTerrain(islandData, this.createIslandWorld(islandData));
+    if (this.activeIsland?.id === runtimeIsland.id) {
+      this.activeIsland = runtimeIsland;
+      this.landingIsland = runtimeIsland;
+      this.atmosphereIsland = runtimeIsland;
+      if (this.islandPlayer) this.seedPlanetPlayer(runtimeIsland, this.islandPlayer);
+      this.enemySystem.setActiveIsland(runtimeIsland);
+      this.islandTerrainDirty = false;
+    }
+    this.updateHud(true);
+    this.game.ui.showToast(`Regenerated ${runtimeIsland.tag || runtimeIsland.id}`, 'success');
+    return true;
   }
 
   startCrashPlanet() {
@@ -419,6 +530,10 @@ export class MiningScene {
         <strong data-distance-text>0m</strong>
       </div>
       <div class="zone-chip" data-zone-chip>Scrap Belt</div>
+      <div class="planet-visor is-hidden" data-planet-visor>
+        <span data-planet-tag>P--</span>
+        <strong data-planet-status>Surface</strong>
+      </div>
       <div class="mining-warning" data-warning></div>
       <div class="zone-banner" data-zone-banner>Scrap Belt</div>
       <div class="gps-destination-hud is-hidden" data-gps-panel>
@@ -474,6 +589,9 @@ export class MiningScene {
       stationArrow: hud.querySelector('[data-station-arrow]'),
       distanceText: hud.querySelector('[data-distance-text]'),
       zoneChip: hud.querySelector('[data-zone-chip]'),
+      planetVisor: hud.querySelector('[data-planet-visor]'),
+      planetTag: hud.querySelector('[data-planet-tag]'),
+      planetStatus: hud.querySelector('[data-planet-status]'),
       zoneBanner: hud.querySelector('[data-zone-banner]'),
       warning: hud.querySelector('[data-warning]'),
       gpsPanel: hud.querySelector('[data-gps-panel]'),
@@ -1319,6 +1437,191 @@ export class MiningScene {
     return this.localToActiveIslandWorld(aim.x, aim.y);
   }
 
+  updateOnFootDebugShortcuts() {
+    const keys = this.game.input.keys;
+    const justPressed = (key) => {
+      const down = keys.has(key) || keys.has(key.toLowerCase());
+      const wasDown = Boolean(this.debugKeyLatch[key]);
+      this.debugKeyLatch[key] = down;
+      return down && !wasDown;
+    };
+    if (justPressed('T')) this.spawnCombatTestDrone();
+    if (justPressed('H')) {
+      this.movementDebug.showHitboxes = !this.movementDebug.showHitboxes;
+      this.game.ui.showToast(`Hitboxes ${this.movementDebug.showHitboxes ? 'on' : 'off'}`, 'default', 900);
+    }
+    if (justPressed('M')) {
+      const next = !this.movementDebug.showVelocity;
+      this.movementDebug.showVelocity = next;
+      this.movementDebug.showGroundedState = next;
+      this.movementDebug.showTerrainNormal = next;
+      this.movementDebug.showSurfaceTangent = next;
+      this.game.ui.showToast(`Movement debug ${next ? 'on' : 'off'}`, 'default', 900);
+    }
+  }
+
+  spawnCombatTestDrone() {
+    if (!this.activeIsland || !this.islandPlayer || !this.enemySystem?.spawnEnemy) return;
+    const angle = this.activeIsland.getAngleForLocal(this.islandPlayer.centerX, this.islandPlayer.centerY);
+    const drone = this.enemySystem.spawnEnemy('sentryDrone', this.activeIsland, angle + (Math.random() - 0.5) * 0.9);
+    if (drone) {
+      drone.localX = this.islandPlayer.centerX + (Math.random() > 0.5 ? 1 : -1) * 240;
+      drone.localY = this.islandPlayer.centerY - 180;
+      this.game.audio.playDroneShot?.();
+      this.game.ui.showToast('Test drone spawned', 'success', 900);
+    }
+  }
+
+  updateOnFootCombat(delta) {
+    this.updateSwordTimers(delta);
+    if (!this.activeIsland || !this.islandPlayer) return;
+    this.enemySystem?.syncWorldPositions(
+      this.activeIsland,
+      this.getIslandViewRotation(),
+      (x, y) => this.localToActiveIslandWorld(x, y),
+    );
+
+    const actions = this.game.input.actions;
+    const uiBlocked = Boolean(this.game.ui.modalLayer?.children.length);
+    if (!this.isWeaponToolSelected() || uiBlocked) return;
+
+    if (actions.justPressed.attack) this.sword.bufferTimer = SWORD_COMBAT.attackBufferTime;
+    const wantsRepeat = SWORD_COMBAT.holdAttackRepeatEnabled && actions.attack;
+    if ((this.sword.bufferTimer > 0 || wantsRepeat) && this.sword.cooldown <= 0) {
+      this.startSwordSlash();
+    }
+  }
+
+  updateSwordTimers(delta) {
+    const sword = this.sword;
+    if (!sword) return;
+    sword.cooldown = Math.max(0, sword.cooldown - delta);
+    sword.bufferTimer = Math.max(0, sword.bufferTimer - delta);
+    sword.resetTimer = Math.max(0, sword.resetTimer - delta);
+    if (sword.resetTimer <= 0 && !sword.active) sword.comboIndex = 0;
+
+    if (sword.active) {
+      sword.active.age += delta;
+      this.applySwordHits(sword.active);
+      if (sword.active.age >= sword.active.duration) sword.active = null;
+    }
+
+    let writeIndex = 0;
+    for (let index = 0; index < sword.effects.length; index += 1) {
+      const effect = sword.effects[index];
+      effect.age += delta;
+      if (effect.age < effect.life) {
+        sword.effects[writeIndex] = effect;
+        writeIndex += 1;
+      }
+    }
+    sword.effects.length = writeIndex;
+  }
+
+  startSwordSlash() {
+    if (!this.activeIsland || !this.islandPlayer) return;
+    const pattern = SWORD_COMBAT.comboPattern;
+    const combo = pattern[this.sword.comboIndex % pattern.length] || pattern[0];
+    const origin = {
+      x: this.islandPlayer.centerX,
+      y: this.islandPlayer.centerY - 7,
+    };
+    const aim = this.getIslandAimPoint();
+    const dx = aim.x - origin.x;
+    const dy = aim.y - origin.y;
+    const aimAngle = Math.atan2(dy, dx || this.islandPlayer.facing);
+    const range = SWORD_COMBAT.slashRange * combo.range;
+    const arc = (SWORD_COMBAT.slashArcDegrees * Math.PI / 180) * (combo.beat === 3 ? 1.12 : 1);
+    this.sword.active = {
+      ...combo,
+      age: 0,
+      duration: combo.duration,
+      origin,
+      aimAngle,
+      range,
+      arc,
+      damage: SWORD_COMBAT.baseDamage * combo.damage,
+      knockback: 260 * combo.knockback,
+      hitIds: new Set(),
+    };
+    this.sword.effects.push({
+      kind: 'slash',
+      age: 0,
+      life: combo.duration + 0.12,
+      origin,
+      aimAngle,
+      range,
+      arc,
+      beat: combo.beat,
+    });
+    this.sword.comboIndex = (this.sword.comboIndex + 1) % pattern.length;
+    this.sword.cooldown = combo.cooldown;
+    this.sword.resetTimer = SWORD_COMBAT.comboResetTime;
+    this.sword.bufferTimer = 0;
+    this.islandPlayer.animationState = 'attack';
+    this.updateIslandPlayerFacingFromAim(aim);
+    if (combo.beat === 3) this.game.audio.playSwordHeavy?.();
+    else this.game.audio.playSwordSwing?.();
+  }
+
+  applySwordHits(slash) {
+    if (!slash || slash.age > slash.duration) return;
+    const threats = this.enemySystem?.getThreats() || [];
+    for (const enemy of threats) {
+      if (!enemy || slash.hitIds.has(enemy.id)) continue;
+      const enemyLocal = this.getEnemyLocalPosition(enemy);
+      if (!enemyLocal) continue;
+      const dx = enemyLocal.x - slash.origin.x;
+      const dy = enemyLocal.y - slash.origin.y;
+      const enemyRadius = enemy.radius || 24;
+      const distance = Math.hypot(dx, dy);
+      if (distance > slash.range + enemyRadius * 0.45) continue;
+      const diff = Math.abs(angleDifference(slash.aimAngle, Math.atan2(dy, dx)));
+      if (diff > slash.arc * 0.5 && distance > 34) continue;
+      slash.hitIds.add(enemy.id);
+      const knockbackX = Math.cos(slash.aimAngle) * slash.knockback;
+      const knockbackY = Math.sin(slash.aimAngle) * slash.knockback;
+      const defeated = enemy.takeDamage?.(slash.damage, {
+        x: knockbackX,
+        y: knockbackY,
+        sourceX: slash.origin.x,
+        sourceY: slash.origin.y,
+        flashDuration: SWORD_COMBAT.enemyHitFlashDuration,
+      });
+      const world = this.localToActiveIslandWorld(enemyLocal.x, enemyLocal.y);
+      this.spawnHitParticles(world.x, world.y, enemy.accent || '#7ee36d');
+      this.spawnBurst(world.x, world.y, '#fff4c8', slash.beat === 3 ? 12 : 7, slash.beat === 3 ? 150 : 105);
+      this.addFloatingText(world.x, world.y - 28, `${Math.round(slash.damage)}`, {
+        color: slash.beat === 3 ? '#ffd36b' : '#fff2cf',
+        rarity: slash.beat === 3 ? 'rare' : 'common',
+      });
+      this.sword.effects.push({
+        kind: 'spark',
+        age: 0,
+        life: 0.18,
+        x: enemyLocal.x,
+        y: enemyLocal.y,
+        color: enemy.accent || '#7ee36d',
+        beat: slash.beat,
+      });
+      this.hitStopTimer = Math.max(this.hitStopTimer, SWORD_COMBAT.hitStopDuration * (slash.beat === 3 ? 1.35 : 1));
+      this.addScreenShake(defeated ? SWORD_COMBAT.killShakeStrength : SWORD_COMBAT.hitShakeStrength * (slash.beat === 3 ? 1.4 : 1));
+      this.game.audio.playSwordHit?.();
+      if (defeated) this.handleIslandEnemyDefeated(enemy);
+    }
+  }
+
+  getEnemyLocalPosition(enemy) {
+    if (!enemy) return null;
+    if (Number.isFinite(enemy.localX) && Number.isFinite(enemy.localY)) {
+      return { x: enemy.localX, y: enemy.localY };
+    }
+    if (Number.isFinite(enemy.centerX) && Number.isFinite(enemy.centerY) && this.activeIsland) {
+      return this.activeIsland.worldToLocalRotated(enemy.centerX, enemy.centerY, this.getIslandViewRotation());
+    }
+    return null;
+  }
+
   removeAsteroid(target) {
     const index = this.asteroids.indexOf(target);
     if (index >= 0) this.asteroids.splice(index, 1);
@@ -1683,7 +1986,7 @@ export class MiningScene {
     const warning = this.stats.fuel < (destination.recommendedFuel || 0) * 0.42 ? 'Fuel risk' : '';
     this.destinationIndicator = {
       id: destination.id,
-      name: destination.name,
+      name: destination.tag ? `${destination.tag} ${destination.name}` : destination.name,
       distance,
       warning,
       angle: this.destinationIndicatorAngle,
@@ -1761,7 +2064,7 @@ export class MiningScene {
     this.landingIsland = nearest;
     this.hud?.landingPrompt?.classList.toggle('is-hidden', !nearest);
     if (nearest) {
-      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press E/A to Land - ${nearest.name}`);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press E/A to Land - ${nearest.getDisplayName?.() || nearest.name}`);
       if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Land';
       if (this.mineButtonIcon) this.mineButtonIcon.textContent = 'L';
       this.mineButton?.classList.add('is-land-mode');
@@ -1928,6 +2231,15 @@ export class MiningScene {
   }
 
   updateIntegratedIsland(delta) {
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - delta);
+      this.updateViewScale(delta);
+      this.updateCamera(delta);
+      this.updateParticles(delta);
+      this.updateIslandFloatingText(delta);
+      this.updateHud();
+      return;
+    }
     this.distanceFromStation = this.getDistanceFromStation();
     this.updateZone(delta);
     this.updateNavigation(delta);
@@ -1943,7 +2255,8 @@ export class MiningScene {
       if (this.islandMode === 'onIsland') this.updateIslandEnemies(delta);
       if (this.islandMode === 'onIsland') this.updateIslandPickups(delta);
       this.updateIslandViewRotation(delta);
-      if (this.islandMode === 'onIsland') this.updateOnFootDroneCombat(delta);
+      if (this.islandMode === 'onIsland') this.updateOnFootDebugShortcuts();
+      if (this.islandMode === 'onIsland') this.updateOnFootCombat(delta);
     }
     this.updateViewScale(delta);
     this.updateCamera(delta);
@@ -2024,6 +2337,8 @@ export class MiningScene {
     this.updatePlanetIslandPlayer(delta, {
       moveX: this.game.input.moveVector.x,
       jumpPressed: actions.justPressed.jump || keyboardJump || spaceJump,
+      jumpHeld: actions.jump || actions.up,
+      jumpReleased: actions.justReleased.jump || actions.justReleased.up,
     });
     this.updateGravityStabilizerInput(actions);
     this.islandAimPreview = this.getIslandTerrainPreview({ updateFacing: false });
@@ -3385,6 +3700,8 @@ export class MiningScene {
     player.planetAngle = island.landingAngle;
     player.planetDistance = surface.radius;
     player.onGround = true;
+    this.initializePlanetPlayerFeel(player);
+    player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
   }
 
   updatePlanetIslandPlayer(delta, input) {
@@ -3392,60 +3709,129 @@ export class MiningScene {
     const player = this.islandPlayer;
     if (!island || !player) return;
     const dt = Math.min(delta, 0.05);
+    this.initializePlanetPlayerFeel(player);
     player.hitCooldown = Math.max(0, player.hitCooldown - dt);
     this.resolvePlanetPlayerOverlap(player, island);
 
+    const rawBasis = this.getIslandGravityBasis(island);
+    const wasGrounded = Boolean(player.onGround);
+    const contactBefore = this.getPlanetGroundContact(
+      player,
+      island,
+      rawBasis,
+      player.x,
+      player.y,
+      PLANET_PLAYER_FEEL.groundSnapDistance,
+    );
+    const collisionGrounded = this.isPlanetPlayerGrounded(player, island, rawBasis);
+    const groundedBeforeRecovery = Boolean(contactBefore || collisionGrounded);
+    player.coyoteTimer = Math.max(0, (player.coyoteTimer || 0) - dt);
+    player.jumpBufferTimer = Math.max(0, (player.jumpBufferTimer || 0) - dt);
     player.groundGraceTimer = Math.max(0, (player.groundGraceTimer || 0) - dt);
-    const manualBasis = this.getIslandGravityBasis(island);
-    const groundedBeforeRecovery = this.isPlanetPlayerGrounded(player, island, manualBasis);
-    if (groundedBeforeRecovery || player.onGround) {
+    if (input.jumpPressed) player.jumpBufferTimer = PLANET_PLAYER_FEEL.jumpBufferTime;
+    if (groundedBeforeRecovery || wasGrounded) {
       player.onGround = true;
-      player.groundGraceTimer = PLANET_PLAYER_COYOTE_TIME;
+      player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
     }
     this.updateIslandGravityRecoveryState(island, player);
 
     const basis = this.getIslandGravityBasis(island);
-    const groundedNow = groundedBeforeRecovery || this.isPlanetPlayerGrounded(player, island, basis);
-    if (!player.onGround && groundedNow) {
+    const activeContact = contactBefore || this.getPlanetGroundContact(
+      player,
+      island,
+      basis,
+      player.x,
+      player.y,
+      PLANET_PLAYER_FEEL.groundSnapDistance,
+    );
+    const groundedNow = Boolean(activeContact) || groundedBeforeRecovery || this.isPlanetPlayerGrounded(player, island, basis);
+    if (groundedNow) {
+      if (!player.onGround) player.pendingLandingSpeed = player.vx * basis.inward.x + player.vy * basis.inward.y;
       player.onGround = true;
-      player.groundGraceTimer = PLANET_PLAYER_COYOTE_TIME;
+      player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
     }
-    const startedOnGround = player.onGround;
+
+    const groundNormal = activeContact?.normal || player.groundNormal || basis.outward;
+    player.groundNormal = this.smoothDirection(player.groundNormal || groundNormal, groundNormal, PLANET_PLAYER_FEEL.groundNormalSmoothing);
+    const groundTangent = activeContact?.tangent || {
+      x: -player.groundNormal.y,
+      y: player.groundNormal.x,
+    };
+    if (groundTangent.x * basis.tangent.x + groundTangent.y * basis.tangent.y < 0) {
+      groundTangent.x *= -1;
+      groundTangent.y *= -1;
+    }
+
+    const startedOnGround = Boolean(player.onGround);
     const moveX = Math.max(-1, Math.min(1, input.moveX || 0));
-    const targetTangent = moveX * (player.onGround ? PLANET_PLAYER_MOVE_SPEED : PLANET_PLAYER_AIR_SPEED);
-    const currentTangent = player.vx * basis.tangent.x + player.vy * basis.tangent.y;
-    const tangentDelta = (targetTangent - currentTangent) * Math.min(1, dt * (player.onGround ? 14 : 5.5));
-    player.vx += basis.tangent.x * tangentDelta;
-    player.vy += basis.tangent.y * tangentDelta;
+    const tangent = startedOnGround ? groundTangent : basis.tangent;
+    const maxSpeed = startedOnGround ? PLANET_PLAYER_FEEL.maxGroundSpeed : PLANET_PLAYER_FEEL.maxAirSpeed;
+    const attackSlowdown = this.sword?.active?.beat === 3 ? SWORD_COMBAT.heavySlashMoveSlowdown : 1;
+    const targetTangent = moveX * maxSpeed * attackSlowdown;
+    const currentTangent = player.vx * tangent.x + player.vy * tangent.y;
+    const acceleration = Math.abs(moveX) > 0.05
+      ? (startedOnGround ? PLANET_PLAYER_FEEL.groundAcceleration : PLANET_PLAYER_FEEL.airAcceleration)
+      : (startedOnGround ? PLANET_PLAYER_FEEL.groundDeceleration : PLANET_PLAYER_FEEL.airAcceleration * 0.45);
+    const nextTangent = approachValue(currentTangent, targetTangent, acceleration * dt);
+    const tangentDelta = nextTangent - currentTangent;
+    player.vx += tangent.x * tangentDelta;
+    player.vy += tangent.y * tangentDelta;
 
     if (Math.abs(moveX) > 0.05) {
       player.facing = moveX > 0 ? 1 : -1;
-      player.step += dt * 8;
-    } else if (player.onGround) {
-      const dampedTangent = currentTangent * Math.max(0, 1 - dt * 12);
-      const correction = dampedTangent - currentTangent;
-      player.vx += basis.tangent.x * correction;
-      player.vy += basis.tangent.y * correction;
+      player.step += dt * (8 + Math.abs(nextTangent) / 56);
+    } else if (startedOnGround) {
+      const friction = Math.max(0, 1 - dt * PLANET_PLAYER_FEEL.friction);
+      const correction = nextTangent * friction - nextTangent;
+      player.vx += tangent.x * correction;
+      player.vy += tangent.y * correction;
     }
 
     let didJump = false;
-    const groundedForJump = player.onGround || groundedNow || (player.groundGraceTimer || 0) > 0;
-    if (input.jumpPressed && groundedForJump) {
-      player.vx += basis.outward.x * PLANET_PLAYER_JUMP_SPEED;
-      player.vy += basis.outward.y * PLANET_PLAYER_JUMP_SPEED;
+    const groundedForJump = player.onGround || groundedNow || (player.coyoteTimer || 0) > 0 || (player.groundGraceTimer || 0) > 0;
+    if ((player.jumpBufferTimer || 0) > 0 && groundedForJump) {
+      const outwardSpeed = player.vx * basis.outward.x + player.vy * basis.outward.y;
+      if (outwardSpeed < 0) {
+        player.vx -= basis.outward.x * outwardSpeed;
+        player.vy -= basis.outward.y * outwardSpeed;
+      }
+      player.vx += basis.outward.x * PLANET_PLAYER_FEEL.jumpForce;
+      player.vy += basis.outward.y * PLANET_PLAYER_FEEL.jumpForce;
       player.onGround = false;
       player.groundGraceTimer = 0;
+      player.coyoteTimer = 0;
+      player.jumpBufferTimer = 0;
+      player.animationState = 'jumpStart';
+      player.landingCompression = 0;
       didJump = true;
     }
 
     const gravity = island.world.gravity ?? 1560;
-    player.vx += basis.inward.x * gravity * dt;
-    player.vy += basis.inward.y * gravity * dt;
+    const outwardSpeed = player.vx * basis.outward.x + player.vy * basis.outward.y;
+    let gravityScale = 1;
+    if (startedOnGround && !didJump) gravityScale = PLANET_PLAYER_FEEL.groundedGravityScale;
+    else if (outwardSpeed < -10) gravityScale = PLANET_PLAYER_FEEL.fallGravityMultiplier;
+    else if (!input.jumpHeld && outwardSpeed > 10) gravityScale = PLANET_PLAYER_FEEL.lowJumpGravityMultiplier;
+    player.vx += basis.inward.x * gravity * gravityScale * dt;
+    player.vy += basis.inward.y * gravity * gravityScale * dt;
+    if (input.jumpReleased && outwardSpeed > 20) {
+      const cut = outwardSpeed * (1 - PLANET_PLAYER_FEEL.jumpCutMultiplier);
+      player.vx -= basis.outward.x * cut;
+      player.vy -= basis.outward.y * cut;
+    }
+
+    const inwardSpeed = player.vx * basis.inward.x + player.vy * basis.inward.y;
+    if (inwardSpeed > PLANET_PLAYER_FEEL.maxFallSpeed) {
+      const remove = inwardSpeed - PLANET_PLAYER_FEEL.maxFallSpeed;
+      player.vx -= basis.inward.x * remove;
+      player.vy -= basis.inward.y * remove;
+    }
 
     const speed = Math.hypot(player.vx, player.vy);
-    const maxSpeed = PLANET_PLAYER_MAX_SPEED;
-    if (speed > maxSpeed) {
-      const scale = maxSpeed / speed;
+    if (speed > PLANET_PLAYER_MAX_SPEED) {
+      const scale = PLANET_PLAYER_MAX_SPEED / speed;
       player.vx *= scale;
       player.vy *= scale;
     }
@@ -3453,24 +3839,176 @@ export class MiningScene {
     player.onGround = false;
     this.movePlanetPlayer(player, player.vx * dt, player.vy * dt, island, {
       canStep: startedOnGround && !didJump,
-      groundSpeedLimit: PLANET_PLAYER_MOVE_SPEED,
+      groundSpeedLimit: PLANET_PLAYER_FEEL.maxGroundSpeed,
+      maxStepHeight: PLANET_PLAYER_FEEL.maxStepHeight,
     });
     this.resolvePlanetPlayerOverlap(player, island);
     const nextBasis = this.getIslandGravityBasis(island);
-    if (this.isPlanetPlayerGrounded(player, island, nextBasis)) {
+    const landingContact = !didJump
+      ? this.getPlanetGroundContact(player, island, nextBasis, player.x, player.y, PLANET_PLAYER_FEEL.groundSnapDistance)
+      : null;
+    if (landingContact && this.snapPlanetPlayerToGround(player, island, landingContact, nextBasis)) {
+      const landSpeed = Math.max(player.pendingLandingSpeed || 0, inwardSpeed);
+      if (!wasGrounded && landSpeed > PLANET_PLAYER_FEEL.landingImpactThreshold) this.playPlanetLandingFeedback(player, island, landingContact, landSpeed);
       player.onGround = true;
-      player.groundGraceTimer = PLANET_PLAYER_COYOTE_TIME;
-      const inwardSpeed = player.vx * nextBasis.inward.x + player.vy * nextBasis.inward.y;
-      if (inwardSpeed > 0) {
-        player.vx -= nextBasis.inward.x * inwardSpeed;
-        player.vy -= nextBasis.inward.y * inwardSpeed;
+      player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      this.removePlanetPlayerNormalVelocity(player, nextBasis, Math.max(1, inwardSpeed));
+      this.clampPlanetPlayerTangentSpeed(player, nextBasis, PLANET_PLAYER_FEEL.maxGroundSpeed);
+    } else if (this.isPlanetPlayerGrounded(player, island, nextBasis)) {
+      player.onGround = true;
+      player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
+      const nextInwardSpeed = player.vx * nextBasis.inward.x + player.vy * nextBasis.inward.y;
+      if (nextInwardSpeed > 0) {
+        player.vx -= nextBasis.inward.x * nextInwardSpeed;
+        player.vy -= nextBasis.inward.y * nextInwardSpeed;
       }
-      this.clampPlanetPlayerTangentSpeed(player, nextBasis, PLANET_PLAYER_MOVE_SPEED);
+      this.clampPlanetPlayerTangentSpeed(player, nextBasis, PLANET_PLAYER_FEEL.maxGroundSpeed);
     }
+    if (player.onGround && !didJump) {
+      this.applyPlanetGroundFriction(player, nextBasis, landingContact, moveX, dt);
+    }
+    player.animationState = this.getPlanetPlayerAnimationState(player, moveX);
+    player.landingCompression = Math.max(0, (player.landingCompression || 0) - dt * 5.5);
     const center = island.getCenterLocal();
     player.planetAngle = Math.atan2(player.centerY - center.y, player.centerX - center.x);
     player.planetDistance = Math.hypot(player.centerX - center.x, player.centerY - center.y);
     this.updateIslandGravityRecoveryState(island, player);
+  }
+
+  initializePlanetPlayerFeel(player) {
+    if (!player || player.feelInitialized) return;
+    player.feelInitialized = true;
+    player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+    player.jumpBufferTimer = 0;
+    player.groundNormal = { x: 0, y: -1 };
+    player.animationState = player.onGround ? 'idle' : 'falling';
+    player.landingCompression = 0;
+    player.pendingLandingSpeed = 0;
+  }
+
+  smoothDirection(previous, next, amount = 0.25) {
+    const blend = clamp01(amount);
+    const x = previous.x + (next.x - previous.x) * blend;
+    const y = previous.y + (next.y - previous.y) * blend;
+    const length = Math.hypot(x, y) || 1;
+    return { x: x / length, y: y / length };
+  }
+
+  getPlanetGroundContact(player, island, basis, x = player.x, y = player.y, snapDistance = PLANET_PLAYER_FEEL.groundSnapDistance) {
+    const terrain = island?.terrain;
+    if (!terrain?.raycast) return null;
+    const frame = this.getPlanetPlayerCollisionFrame(player, island, x, y);
+    const sideOffsets = [
+      -PLANET_PLAYER_HALF_WIDTH * 0.8,
+      0,
+      PLANET_PLAYER_HALF_WIDTH * 0.8,
+    ];
+    let best = null;
+    for (const side of sideOffsets) {
+      const footX = frame.centerX + basis.tangent.x * side + basis.inward.x * (PLANET_PLAYER_FOOT_OFFSET - 5);
+      const footY = frame.centerY + basis.tangent.y * side + basis.inward.y * (PLANET_PLAYER_FOOT_OFFSET - 5);
+      const startX = footX + basis.outward.x * 7;
+      const startY = footY + basis.outward.y * 7;
+      const endX = footX + basis.inward.x * (snapDistance + 14);
+      const endY = footY + basis.inward.y * (snapDistance + 14);
+      const hit = terrain.raycastCollision?.(startX, startY, endX, endY)
+        || terrain.raycast(startX, startY, endX, endY);
+      if (!hit) continue;
+      const distanceSq = (hit.x - startX) ** 2 + (hit.y - startY) ** 2;
+      if (best && distanceSq >= best.distanceSq) continue;
+      const surface = (terrain.getClosestCollisionSurfacePoint || terrain.getClosestTerrainSurfacePoint)?.call(
+        terrain,
+        hit.x + basis.outward.x * 3,
+        hit.y + basis.outward.y * 3,
+        0,
+      );
+      let normal = surface?.normal || basis.outward;
+      if (normal.x * basis.outward.x + normal.y * basis.outward.y < 0) {
+        normal = { x: -normal.x, y: -normal.y };
+      }
+      if (normal.x * basis.outward.x + normal.y * basis.outward.y < PLANET_PLAYER_FEEL.minGroundNormalDot) continue;
+      let tangent = surface?.tangent || { x: -normal.y, y: normal.x };
+      if (tangent.x * basis.tangent.x + tangent.y * basis.tangent.y < 0) {
+        tangent = { x: -tangent.x, y: -tangent.y };
+      }
+      best = {
+        ...hit,
+        distanceSq,
+        normal,
+        tangent,
+        surfaceX: surface?.surfaceX ?? hit.x,
+        surfaceY: surface?.surfaceY ?? hit.y,
+      };
+    }
+    return best;
+  }
+
+  snapPlanetPlayerToGround(player, island, contact, basis) {
+    if (!contact) return false;
+    const baseOffset = PLANET_PLAYER_FOOT_OFFSET + PLANET_PLAYER_FEEL.footPlantOffset;
+    const centerX = contact.surfaceX + contact.normal.x * baseOffset;
+    const centerY = contact.surfaceY + contact.normal.y * baseOffset;
+    const currentNormalGap = (centerX - player.centerX) * basis.outward.x + (centerY - player.centerY) * basis.outward.y;
+    if (Math.abs(currentNormalGap) > PLANET_PLAYER_FEEL.groundSnapDistance + PLANET_PLAYER_FEEL.maxStepHeight) return false;
+    for (let nudge = 0; nudge <= 8; nudge += 2) {
+      const candidateCenterX = contact.surfaceX + contact.normal.x * (baseOffset + nudge);
+      const candidateCenterY = contact.surfaceY + contact.normal.y * (baseOffset + nudge);
+      const nextX = candidateCenterX - player.width * 0.5;
+      const nextY = candidateCenterY - player.height * 0.5;
+      if (this.planetPlayerCollidesAt(player, island, nextX, nextY)) continue;
+      player.x = nextX;
+      player.y = nextY;
+      player.groundNormal = this.smoothDirection(player.groundNormal || contact.normal, contact.normal, 0.55);
+      return true;
+    }
+    return false;
+  }
+
+  applyPlanetGroundFriction(player, basis, contact, moveX, dt) {
+    const normal = contact?.normal || player.groundNormal || basis.outward;
+    let tangent = contact?.tangent || { x: -normal.y, y: normal.x };
+    if (tangent.x * basis.tangent.x + tangent.y * basis.tangent.y < 0) {
+      tangent = { x: -tangent.x, y: -tangent.y };
+    }
+    const normalSpeed = player.vx * normal.x + player.vy * normal.y;
+    if (normalSpeed < 0) {
+      player.vx -= normal.x * normalSpeed;
+      player.vy -= normal.y * normalSpeed;
+    }
+    if (Math.abs(moveX) > 0.05) return;
+    const tangentSpeed = player.vx * tangent.x + player.vy * tangent.y;
+    const nextTangent = approachValue(tangentSpeed, 0, PLANET_PLAYER_FEEL.postGroundFriction * PLANET_PLAYER_FEEL.groundDeceleration * dt);
+    const delta = nextTangent - tangentSpeed;
+    player.vx += tangent.x * delta;
+    player.vy += tangent.y * delta;
+  }
+
+  playPlanetLandingFeedback(player, island, contact, landSpeed = 0) {
+    const compression = clamp01((landSpeed - PLANET_PLAYER_FEEL.landingImpactThreshold) / 460);
+    player.landingCompression = Math.max(player.landingCompression || 0, 0.25 + compression * 0.35);
+    const world = island.localToWorldRotated(contact.surfaceX, contact.surfaceY, this.getIslandViewRotation());
+    this.spawnBurst(
+      world.x,
+      world.y,
+      '#c8b99e',
+      PLANET_PLAYER_FEEL.landingDustAmount + Math.round(compression * 7),
+      70 + compression * 70,
+    );
+    this.addScreenShake(PLANET_PLAYER_FEEL.hardLandingShakeStrength * (0.55 + compression));
+    this.game.audio.playLandShip?.();
+  }
+
+  getPlanetPlayerAnimationState(player, moveX = 0) {
+    if (player.hitCooldown > 0) return 'hurt';
+    if (this.sword?.active) return 'attack';
+    if (!player.onGround) {
+      const basis = this.activeIsland ? this.getIslandGravityBasis(this.activeIsland) : { outward: { x: 0, y: -1 } };
+      const outwardSpeed = player.vx * basis.outward.x + player.vy * basis.outward.y;
+      return outwardSpeed > 20 ? 'rising' : 'falling';
+    }
+    return Math.abs(moveX) > 0.08 ? 'run' : 'idle';
   }
 
   getIslandGravityCatchState(island, player) {
@@ -3576,7 +4114,8 @@ export class MiningScene {
     const tangentStep = dx * basis.tangent.x + dy * basis.tangent.y;
     const normalStep = dx * basis.inward.x + dy * basis.inward.y;
     if (options.canStep && Math.abs(tangentStep) > 0.001) {
-      for (let lift = 2; lift <= PLANET_PLAYER_STEP_UP; lift += 2) {
+      const maxStepHeight = options.maxStepHeight || PLANET_PLAYER_FEEL.maxStepHeight || PLANET_PLAYER_STEP_UP;
+      for (let lift = 2; lift <= maxStepHeight; lift += 2) {
         const steppedX = targetX + basis.outward.x * lift;
         const steppedY = targetY + basis.outward.y * lift;
         if (
@@ -3687,8 +4226,15 @@ export class MiningScene {
 
   isPlanetPlayerGrounded(player, island, basis = this.getIslandGravityBasis(island), x = player.x, y = player.y) {
     if (this.planetPlayerCollidesAt(player, island, x, y)) return false;
-    return this.getPlanetPlayerFootProbePoints(player, island, x, y, basis)
-      .some((point) => this.isTerrainSolidAtPoint(island.terrain, point.x, point.y));
+    const contact = this.getPlanetGroundContact(
+      player,
+      island,
+      basis,
+      x,
+      y,
+      Math.max(PLANET_PLAYER_GROUND_PROBE, PLANET_PLAYER_FEEL.groundSnapDistance * 0.55),
+    );
+    return Boolean(contact);
   }
 
   planetPlayerCollidesAt(player, island, x, y) {
@@ -3702,6 +4248,7 @@ export class MiningScene {
     const right = Math.max(...xs) + 1;
     const top = Math.min(...ys) - 1;
     const bottom = Math.max(...ys) + 1;
+    if (terrain.intersectsCollisionShape) return terrain.intersectsCollisionShape(shape);
     if (terrain.forEachCollisionPolygonInAabb) {
       let hit = false;
       terrain.forEachCollisionPolygonInAabb(left, top, right, bottom, (polygon) => {
@@ -4749,6 +5296,12 @@ export class MiningScene {
     this.setHudText('zoneChip', this.hud.zoneChip, this.currentZone.name, force);
     this.setHudText('zoneBanner', this.hud.zoneBanner, this.currentZone.name, force);
     this.setHudClass('zoneBannerVisible', this.hud.zoneBanner, 'is-visible', this.zoneBannerTimer > 0, force);
+    const planetVisor = this.getPlanetVisorState();
+    this.setHudClass('planetVisorVisible', this.hud.planetVisor, 'is-hidden', !planetVisor.visible, force);
+    if (planetVisor.visible) {
+      this.setHudText('planetTag', this.hud.planetTag, planetVisor.tag, force);
+      this.setHudText('planetStatus', this.hud.planetStatus, planetVisor.status, force);
+    }
     const angleToStation = Math.atan2(-this.ship.y, -this.ship.x);
     this.hud.stationArrow.style.transform = `rotate(${angleToStation + Math.PI / 2}rad)`;
     const dockVisible = distance * distance <= DOCK_RADIUS_SQ && !this.cargoDumping;
@@ -4776,6 +5329,28 @@ export class MiningScene {
       distance,
       zone: this.currentZone,
     });
+  }
+
+  getPlanetVisorState() {
+    const island = this.activeIsland || this.landingIsland || this.atmosphereIsland;
+    if (!island) return { visible: false, tag: '', status: '' };
+    const tag = island.tag || island.planetTag || this.game.systems.islands.getPlanetTag(island.id) || 'P??';
+    if (this.activeIsland && this.islandMode === 'onIsland') {
+      return { visible: true, tag, status: 'Surface' };
+    }
+    if (this.activeIsland && this.islandMode === 'landing') {
+      return { visible: true, tag, status: 'Landing' };
+    }
+    if (this.activeIsland && this.islandMode === 'boarding') {
+      return { visible: true, tag, status: 'Boarding' };
+    }
+    if (this.landingIsland) {
+      return { visible: true, tag, status: 'Landing Range' };
+    }
+    if (this.atmosphereIsland) {
+      return { visible: true, tag, status: 'Atmosphere' };
+    }
+    return { visible: false, tag: '', status: '' };
   }
 
   setHudText(key, element, value, force = false) {
@@ -4855,6 +5430,9 @@ export class MiningScene {
         placedFurnaces: island === this.activeIsland ? this.placedFurnaces : [],
         enemies: island === this.activeIsland ? this.enemySystem?.getDrawableEnemies() : [],
         materialPickups: island === this.activeIsland ? this.islandPickups : [],
+        terrainDebug: this.game.state.debug?.terrain,
+        drawCombatEffects: island === this.activeIsland ? (localCtx) => this.drawIslandCombatEffectsLocal(localCtx) : null,
+        drawMovementDebug: island === this.activeIsland ? (localCtx) => this.drawPlanetMovementDebug(localCtx) : null,
       });
     }
     this.drawLandingTargetPreview(ctx);
@@ -4877,7 +5455,7 @@ export class MiningScene {
       this.ship.draw(ctx, camera, this.game.input, { boost: this.isGodBoosting() });
       this.drawShipDestinationIndicator(ctx);
     }
-    if (this.isWeaponToolSelected() && (this.islandMode === 'flight' || this.islandMode === 'onIsland')) {
+    if (this.isWeaponToolSelected() && this.islandMode === 'flight') {
       this.combatDrone.draw(ctx, camera);
     }
     this.drawCargoTransferEffects(ctx);
@@ -5289,7 +5867,7 @@ export class MiningScene {
             ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
             : (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
       )
-      : (this.getIslandTerrainPreview({ updateFacing: false }) || this.islandAimPreview || this.islandMiningBeam);
+      : (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false }));
     if (state) {
       this.terrainLaserRenderer.drawRangeField(ctx, {
         worldToScreen: (x, y) => ({ x, y }),
@@ -5323,6 +5901,139 @@ export class MiningScene {
         hitColor,
         alpha: beamState.hit ? 1 : 0.72,
       });
+    }
+    ctx.restore();
+  }
+
+  drawIslandCombatEffectsLocal(ctx) {
+    if (!this.sword?.effects?.length) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const effect of this.sword.effects) {
+      if (effect.kind === 'slash') this.drawSwordSlashEffect(ctx, effect);
+      else if (effect.kind === 'spark') this.drawSwordSparkEffect(ctx, effect);
+    }
+    if (this.movementDebug.showHitboxes && this.sword.active) {
+      const slash = this.sword.active;
+      ctx.globalAlpha = 0.26;
+      ctx.strokeStyle = '#ffd36b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(slash.origin.x, slash.origin.y);
+      ctx.arc(slash.origin.x, slash.origin.y, slash.range, slash.aimAngle - slash.arc * 0.5, slash.aimAngle + slash.arc * 0.5);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawSwordSlashEffect(ctx, effect) {
+    const progress = clamp01(effect.age / Math.max(0.001, effect.life));
+    const sweep = Math.sin(Math.min(1, progress * 1.35) * Math.PI * 0.5);
+    const fade = Math.max(0, 1 - progress);
+    const arc = effect.arc * (0.62 + sweep * 0.38);
+    const start = effect.aimAngle - arc * 0.5;
+    const end = effect.aimAngle + arc * 0.5;
+    const range = effect.range * (0.86 + sweep * 0.14);
+    ctx.save();
+    ctx.globalAlpha = fade * (effect.beat === 3 ? 0.92 : 0.74);
+    ctx.shadowColor = effect.beat === 3 ? '#ffd36b' : '#8ee8ff';
+    ctx.shadowBlur = effect.beat === 3 ? 18 : 10;
+    ctx.strokeStyle = effect.beat === 3 ? 'rgba(255, 211, 107, 0.98)' : 'rgba(142, 232, 255, 0.9)';
+    ctx.lineWidth = effect.beat === 3 ? 18 : 13;
+    ctx.beginPath();
+    ctx.arc(effect.origin.x, effect.origin.y, range, start, end);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha *= 0.9;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.lineWidth = effect.beat === 3 ? 5 : 3.5;
+    ctx.beginPath();
+    ctx.arc(effect.origin.x, effect.origin.y, range, start, end);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawSwordSparkEffect(ctx, effect) {
+    const progress = clamp01(effect.age / Math.max(0.001, effect.life));
+    const fade = 1 - progress;
+    ctx.save();
+    ctx.translate(effect.x, effect.y);
+    ctx.globalAlpha = fade;
+    ctx.strokeStyle = effect.color || '#fff2cf';
+    ctx.lineWidth = effect.beat === 3 ? 2.4 : 1.6;
+    const rays = effect.beat === 3 ? 9 : 6;
+    for (let index = 0; index < rays; index += 1) {
+      const angle = (index / rays) * Math.PI * 2 + this.time * 0.6;
+      const inner = 4 + progress * 5;
+      const outer = (effect.beat === 3 ? 28 : 18) * fade + inner;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawPlanetMovementDebug(ctx) {
+    if (!this.activeIsland || !this.islandPlayer) return;
+    const debug = this.movementDebug;
+    if (!debug.showGroundProbes && !debug.showTerrainNormal && !debug.showVelocity && !debug.showGroundedState && !debug.showSurfaceTangent && !debug.showHitboxes) return;
+    const player = this.islandPlayer;
+    const basis = this.getIslandGravityBasis(this.activeIsland);
+    const contact = this.getPlanetGroundContact(player, this.activeIsland, basis, player.x, player.y, PLANET_PLAYER_FEEL.groundSnapDistance);
+    ctx.save();
+    if (debug.showHitboxes) {
+      const shape = this.getPlanetPlayerCollisionShape(player, this.activeIsland);
+      ctx.strokeStyle = player.onGround ? 'rgba(118, 243, 255, 0.9)' : 'rgba(255, 117, 111, 0.86)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      shape.corners.forEach((corner, index) => {
+        if (index === 0) ctx.moveTo(corner.x, corner.y);
+        else ctx.lineTo(corner.x, corner.y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+    if (debug.showGroundProbes) {
+      ctx.fillStyle = 'rgba(255, 211, 107, 0.92)';
+      for (const point of this.getPlanetPlayerFootProbePoints(player, this.activeIsland, player.x, player.y, basis)) {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (contact && (debug.showTerrainNormal || debug.showSurfaceTangent || debug.showGroundedState)) {
+      ctx.lineWidth = 2;
+      if (debug.showTerrainNormal) {
+        ctx.strokeStyle = 'rgba(126, 227, 109, 0.95)';
+        ctx.beginPath();
+        ctx.moveTo(contact.surfaceX, contact.surfaceY);
+        ctx.lineTo(contact.surfaceX + contact.normal.x * 42, contact.surfaceY + contact.normal.y * 42);
+        ctx.stroke();
+      }
+      if (debug.showSurfaceTangent) {
+        ctx.strokeStyle = 'rgba(142, 232, 255, 0.95)';
+        ctx.beginPath();
+        ctx.moveTo(contact.surfaceX - contact.tangent.x * 32, contact.surfaceY - contact.tangent.y * 32);
+        ctx.lineTo(contact.surfaceX + contact.tangent.x * 32, contact.surfaceY + contact.tangent.y * 32);
+        ctx.stroke();
+      }
+      if (debug.showGroundedState) {
+        ctx.fillStyle = player.onGround ? 'rgba(126, 227, 109, 0.9)' : 'rgba(255, 117, 111, 0.85)';
+        ctx.beginPath();
+        ctx.arc(contact.surfaceX, contact.surfaceY, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (debug.showVelocity) {
+      ctx.strokeStyle = 'rgba(255, 117, 111, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(player.centerX, player.centerY);
+      ctx.lineTo(player.centerX + player.vx * 0.12, player.centerY + player.vy * 0.12);
+      ctx.stroke();
     }
     ctx.restore();
   }

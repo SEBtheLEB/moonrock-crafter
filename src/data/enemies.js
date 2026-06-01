@@ -9,6 +9,11 @@ export const enemyFamilies = {
     dropMaterial: 'alienGoop',
     description: 'A segmented cave worm that swims through rock and leaps out of the crust.',
   },
+  drone: {
+    name: 'Sentry Drone',
+    dropMaterial: 'alienGoop',
+    description: 'A small hostile orb that circles outside planet surfaces and closes in slowly.',
+  },
 };
 
 export const enemies = {
@@ -100,32 +105,48 @@ export const enemies = {
     maxPerIsland: 2,
     description: 'A rock-swimming worm that dives underground, arcs out near the player, and burrows back into the planet.',
   },
+  sentryDrone: {
+    id: 'sentryDrone',
+    name: 'Sentry Drone',
+    family: 'drone',
+    type: 'flyingDrone',
+    maxHealth: 44,
+    radius: 20,
+    moveSpeed: 155,
+    acceleration: 520,
+    hoverDistance: 176,
+    orbitAltitude: 112,
+    minSurfaceClearance: 64,
+    spawnAltitude: 900,
+    spawnIntervalMin: 20,
+    spawnIntervalMax: 30,
+    maxActive: 2,
+    contactDamage: 9,
+    knockbackResistance: 0.16,
+    color: '#3f7cff',
+    accent: '#8ee8ff',
+    drops: { alienGoop: 1 },
+    spawnWeight: 0.75,
+    minDangerLevel: 1,
+    maxPerIsland: 2,
+    description: 'A simple flying orb that orbits outside the planet surface and slowly closes in on the player.',
+  },
 };
 
 export const enemySpawnProfiles = {
   crashPlanet: {
-    alienGoo: 3,
-    gooSpitter: 1,
-    burrowWorm: 1,
+    sentryDrone: 0,
   },
   scrap: {
-    alienGoo: 3,
-    gooSpitter: 1,
-    burrowWorm: 1,
+    sentryDrone: 0,
   },
   forest: {
-    alienGoo: 4,
-    gooSpitter: 2,
-    burrowWorm: 1,
+    sentryDrone: 0,
   },
   crystal: {
-    alienGoo: 2,
-    gooSpitter: 2,
-    burrowWorm: 2,
+    sentryDrone: 0,
   },
   ember: {
-    alienGoo: 3,
-    gooSpitter: 2,
-    burrowWorm: 2,
+    sentryDrone: 0,
   },
 };

@@ -46,21 +46,75 @@ export class DebugPanel {
   renderActions() {
     const godModeButton = new Button('God Mode', () => this.toggleGodMode(), { icon: 'G', variant: 'forge' }).element;
     const invincibleButton = new Button('Invincible', () => this.toggleInvincible(), { icon: 'I', variant: 'metal' }).element;
+    const terrainRawButton = new Button('Raw Grid', () => this.toggleTerrainDebug('rawGrid'), { icon: 'R', variant: 'metal' }).element;
+    const terrainMeshButton = new Button('Mesh', () => this.toggleTerrainDebug('visualMesh'), { icon: 'M', variant: 'metal' }).element;
+    const terrainCollisionButton = new Button('Collider', () => this.toggleTerrainDebug('collision'), { icon: 'C', variant: 'metal' }).element;
+    const terrainRoughnessButton = new Button('Rough Edges', () => this.toggleTerrainRoughness(), { icon: '~', variant: 'metal' }).element;
+    const terrainRoughnessDebugButton = new Button('Rough Debug', () => this.toggleTerrainDebug('roughnessDebug'), { icon: 'D', variant: 'metal' }).element;
+    const terrainLightingButton = new Button('Lighting', () => this.toggleTerrainLighting(), { icon: 'L', variant: 'metal' }).element;
+    const terrainLightDebugButton = new Button('Light Debug', () => this.toggleTerrainDebug('lightingDebug'), { icon: '*', variant: 'metal' }).element;
+    const terrainDepthDebugButton = new Button('Depth Debug', () => this.toggleTerrainDebug('depthDebug'), { icon: 'Z', variant: 'metal' }).element;
     this.godModeButton = godModeButton;
     this.invincibleButton = invincibleButton;
+    this.terrainRawButton = terrainRawButton;
+    this.terrainMeshButton = terrainMeshButton;
+    this.terrainCollisionButton = terrainCollisionButton;
+    this.terrainRoughnessButton = terrainRoughnessButton;
+    this.terrainRoughnessDebugButton = terrainRoughnessDebugButton;
+    this.terrainLightingButton = terrainLightingButton;
+    this.terrainLightDebugButton = terrainLightDebugButton;
+    this.terrainDepthDebugButton = terrainDepthDebugButton;
     this.actions.replaceChildren(
       godModeButton,
       new Button('+100 Credits', () => this.addCredits(), { icon: '$', variant: 'forge' }).element,
       new Button('+Materials', () => this.addMaterials(), { icon: '#', variant: 'forge' }).element,
       new Button('+3 Research', () => this.addResearch(), { icon: 'R', variant: 'forge' }).element,
       invincibleButton,
+      terrainRawButton,
+      terrainMeshButton,
+      terrainCollisionButton,
+      terrainRoughnessButton,
+      terrainRoughnessDebugButton,
+      terrainLightingButton,
+      terrainLightDebugButton,
+      terrainDepthDebugButton,
       new Button('Refill Fuel', () => this.refillShip(), { icon: 'F', variant: 'metal' }).element,
+      new Button('Regen Planet', () => this.regenerateCurrentPlanet(), { icon: 'P', variant: 'metal' }).element,
       new Button('Spawn Rare', () => this.spawnRareAsteroid(), { icon: '*', variant: 'metal' }).element,
       new Button('Jump Home', () => this.jumpToStation(), { icon: '<', variant: 'metal' }).element,
       new Button('Unlock Upgrades', () => this.unlockAllUpgrades(), { icon: '+', variant: 'metal' }).element,
       new Button('Reset World', () => this.game.resetSave(), { icon: '!', variant: 'danger' }).element,
     );
     this.updateToggleButtons();
+  }
+
+  toggleTerrainDebug(key) {
+    this.game.state.debug ||= {};
+    this.game.state.debug.terrain ||= {};
+    this.game.state.debug.terrain[key] = !this.game.state.debug.terrain[key];
+    this.game.saveGame();
+    this.updateToggleButtons();
+    this.note(`${key} debug ${this.game.state.debug.terrain[key] ? 'on' : 'off'}.`);
+  }
+
+  toggleTerrainRoughness() {
+    this.game.state.debug ||= {};
+    this.game.state.debug.terrain ||= {};
+    const next = this.game.state.debug.terrain.roughness === false;
+    this.game.state.debug.terrain.roughness = next;
+    this.game.saveGame();
+    this.updateToggleButtons();
+    this.note(`Terrain roughness ${next ? 'on' : 'off'}.`);
+  }
+
+  toggleTerrainLighting() {
+    this.game.state.debug ||= {};
+    this.game.state.debug.terrain ||= {};
+    const next = this.game.state.debug.terrain.lighting === false;
+    this.game.state.debug.terrain.lighting = next;
+    this.game.saveGame();
+    this.updateToggleButtons();
+    this.note(`Terrain lighting ${next ? 'on' : 'off'}.`);
   }
 
   addCredits() {
@@ -110,6 +164,14 @@ export class DebugPanel {
     const debug = this.game.state.debug || {};
     this.godModeButton?.classList.toggle('is-active', Boolean(debug.godMode));
     this.invincibleButton?.classList.toggle('is-active', Boolean(debug.invincible));
+    this.terrainRawButton?.classList.toggle('is-active', Boolean(debug.terrain?.rawGrid));
+    this.terrainMeshButton?.classList.toggle('is-active', Boolean(debug.terrain?.visualMesh));
+    this.terrainCollisionButton?.classList.toggle('is-active', Boolean(debug.terrain?.collision));
+    this.terrainRoughnessButton?.classList.toggle('is-active', debug.terrain?.roughness !== false);
+    this.terrainRoughnessDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.roughnessDebug));
+    this.terrainLightingButton?.classList.toggle('is-active', debug.terrain?.lighting !== false);
+    this.terrainLightDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.lightingDebug));
+    this.terrainDepthDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.depthDebug));
     this.element?.classList.toggle('is-god-mode', Boolean(debug.godMode));
   }
 
@@ -133,6 +195,20 @@ export class DebugPanel {
     }
     this.game.sceneManager.current.spawnRareAsteroid();
     this.note('Rare asteroid spawned.');
+  }
+
+  regenerateCurrentPlanet() {
+    const scene = this.game.sceneManager.current;
+    if (!scene?.regeneratePlanet) {
+      this.note('Planet regeneration works in MiningScene.');
+      return;
+    }
+    const tag = scene.getCurrentPlanetIdentifier?.();
+    if (!tag) {
+      this.note('Move near or land on a planet first.');
+      return;
+    }
+    if (scene.regeneratePlanet(tag)) this.refreshStatus(`Regenerated ${tag}.`);
   }
 
   jumpToStation() {

@@ -117,6 +117,17 @@ export const materials = [
     zoneAvailability: ['crashPlanet', 'originBlue'],
   },
   {
+    id: 'moonCrystal',
+    name: 'Moon Crystal',
+    rarity: 'uncommon',
+    icon: 'MC',
+    color: '#a988ff',
+    baseValue: 26,
+    weight: 1,
+    description: 'Dusky lunar stone flecked with violet crystal sparks. Small seams can be found under P01.',
+    zoneAvailability: ['crashPlanet'],
+  },
+  {
     id: 'alienGoop',
     name: 'Alien Goop',
     rarity: 'common',

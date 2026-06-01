@@ -1088,6 +1088,37 @@
   border-top: 2px solid currentColor;
 }
 
+.icon-sword::before {
+  left: 11px;
+  top: 2px;
+  width: 4px;
+  height: 18px;
+  border-radius: 999px 999px 3px 3px;
+  background: currentColor;
+  transform: rotate(42deg);
+  box-shadow: 0 0 12px color-mix(in srgb, currentColor 44%, transparent);
+}
+
+.icon-sword::after {
+  left: 6px;
+  top: 15px;
+  width: 14px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(42deg);
+}
+
+.icon-sword i {
+  left: 5px;
+  top: 19px;
+  width: 7px;
+  height: 4px;
+  border-radius: 3px;
+  background: currentColor;
+  transform: rotate(42deg);
+}
+
 .icon-gravity::before {
   inset: 4px;
   border: 2px solid currentColor;

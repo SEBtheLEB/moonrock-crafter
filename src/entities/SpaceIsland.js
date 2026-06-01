@@ -11,6 +11,8 @@ export class SpaceIsland {
   constructor(data, terrain) {
     this.data = data;
     this.id = data.id;
+    this.tag = data.tag || data.planetTag || '';
+    this.planetTag = this.tag;
     this.name = data.name;
     this.x = data.worldPosition.x;
     this.y = data.worldPosition.y;
@@ -39,6 +41,10 @@ export class SpaceIsland {
       allowExitBounds: true,
       allowFreefall: true,
     };
+  }
+
+  getDisplayName() {
+    return this.tag ? `${this.tag} ${this.name}` : this.name;
   }
 
   get left() {
@@ -256,6 +262,9 @@ export class SpaceIsland {
     placedFurnaces = [],
     enemies = [],
     materialPickups = [],
+    terrainDebug = null,
+    drawCombatEffects = null,
+    drawMovementDebug = null,
   } = {}) {
     if (!this.terrain) return;
     const screen = anchorLocal && anchorWorld
@@ -268,7 +277,8 @@ export class SpaceIsland {
     else ctx.translate(-this.width / 2, -this.height / 2);
     this.drawGravityField(ctx, gravityActive, gravityStrength, time);
     this.drawLandingAura(ctx, active, discovered, time);
-    this.terrain.draw(ctx, { x: 0, y: 0 }, this.width, this.height);
+    this.terrain.draw(ctx, { x: 0, y: 0 }, this.width, this.height, terrainDebug);
+    this.terrain.drawDebug?.(ctx, terrainDebug);
     this.drawEmbeddedLights(ctx, time, discovered);
     (placedCraftingStations || []).forEach((station) => station.draw(ctx, { time }));
     (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time, tileSize: this.terrain?.cellSize }));
@@ -284,6 +294,8 @@ export class SpaceIsland {
       player.draw(ctx, { x: 0 }, time);
       ctx.restore();
     }
+    drawCombatEffects?.(ctx);
+    drawMovementDebug?.(ctx);
     ctx.restore();
   }
 

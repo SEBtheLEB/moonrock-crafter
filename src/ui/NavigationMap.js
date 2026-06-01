@@ -148,9 +148,10 @@ export class NavigationMap {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = `navigation-location-row ${this.selectedId === location.id ? 'is-active' : ''} ${discovered ? '' : 'is-unknown'}`;
+      const label = discovered && location.tag ? `${location.tag} ${location.name}` : location.name;
       row.innerHTML = `
         <span>${location.icon}</span>
-        <strong>${discovered ? location.name : 'Undiscovered Signal'}</strong>
+        <strong>${discovered ? label : 'Undiscovered Signal'}</strong>
         <em>${location.type}</em>
       `;
       row.addEventListener('click', () => {
@@ -173,8 +174,8 @@ export class NavigationMap {
       dot.className = `navigation-map-dot ${this.selectedId === location.id ? 'is-active' : ''} type-${location.type} ${discovered ? '' : 'is-unknown'}`;
       dot.style.left = `${50 + (location.worldPosition.x / maxDistance) * 42}%`;
       dot.style.top = `${50 + (location.worldPosition.y / maxDistance) * 42}%`;
-      dot.textContent = discovered ? location.icon : '?';
-      dot.title = discovered ? location.name : 'Undiscovered Signal';
+      dot.textContent = discovered ? (location.tag || location.icon) : '?';
+      dot.title = discovered ? `${location.tag ? `${location.tag} ` : ''}${location.name}` : 'Undiscovered Signal';
       dot.addEventListener('click', () => {
         this.selectedId = location.id;
         this.render();
@@ -191,11 +192,13 @@ export class NavigationMap {
     }
     const discovered = this.game.systems.navigation.isDiscovered(location.id);
     const selectedDestination = this.game.systems.navigation.getSelectedDestination();
+    const title = discovered && location.tag ? `${location.tag} ${location.name}` : location.name;
     container.innerHTML = `
       <span class="navigation-detail-icon">${discovered ? location.icon : '?'}</span>
-      <h2>${discovered ? location.name : 'Undiscovered Signal'}</h2>
+      <h2>${discovered ? title : 'Undiscovered Signal'}</h2>
       <p>${discovered ? location.description : 'Fly closer or upgrade the scanner to resolve this signal.'}</p>
       <dl>
+        ${discovered && location.tag ? `<div><dt>Planet Tag</dt><dd>${location.tag}</dd></div>` : ''}
         <div><dt>Type</dt><dd>${location.type}</dd></div>
         <div><dt>Distance</dt><dd>${Math.round(Math.hypot(location.worldPosition.x, location.worldPosition.y))}m</dd></div>
         <div><dt>Danger</dt><dd>${location.dangerLevel}/5</dd></div>

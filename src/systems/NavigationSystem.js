@@ -9,6 +9,11 @@ export class NavigationSystem {
     this.upgrades = scannerUpgrades;
   }
 
+  refreshLocations() {
+    this.locations = this.createLocations();
+    return this.locations;
+  }
+
   createLocations() {
     const merged = new Map(locations.map((location) => [location.id, { ...location }]));
     const islands = this.islandSystem?.getAllIslands?.() || [];
@@ -18,6 +23,8 @@ export class NavigationSystem {
       merged.set(island.id, {
         ...existing,
         id: island.id,
+        tag: island.tag || island.planetTag || existing.tag || '',
+        planetTag: island.tag || island.planetTag || existing.planetTag || '',
         name: island.name || existing.name || 'Unknown Island',
         type: island.kind === 'story' ? 'story' : 'island',
         worldPosition: { ...island.worldPosition },
@@ -120,7 +127,8 @@ export class NavigationSystem {
     if (!location || this.isDiscovered(locationId)) return false;
     this.state.discoveredLocations[locationId] = true;
     if (notify) {
-      this.game.ui.showToast(`Discovered: ${location.name}`, 'success', 2200);
+      const label = location.tag ? `${location.tag} ${location.name}` : location.name;
+      this.game.ui.showToast(`Discovered: ${label}`, 'success', 2200);
       this.game.audio.playRareFind();
     }
     if (save) this.game.saveGame();
@@ -145,7 +153,7 @@ export class NavigationSystem {
     this.state.selectedDestinationId = locationId;
     this.discoverLocation(locationId, { notify: false, save: false });
     this.game.audio.playDestinationSet?.();
-    this.game.ui.showToast(`Destination set: ${location.name}`, 'success');
+    this.game.ui.showToast(`Destination set: ${location.tag ? `${location.tag} ` : ''}${location.name}`, 'success');
     this.game.saveGame();
     return true;
   }

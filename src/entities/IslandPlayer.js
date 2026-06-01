@@ -23,6 +23,11 @@ export class IslandPlayer {
     this.hitCooldown = 0;
     this.step = 0;
     this.groundGraceTimer = 0;
+    this.coyoteTimer = 0;
+    this.jumpBufferTimer = 0;
+    this.animationState = 'idle';
+    this.landingCompression = 0;
+    this.groundNormal = { x: 0, y: -1 };
   }
 
   get centerX() {
@@ -171,8 +176,12 @@ export class IslandPlayer {
     const x = this.x - camera.x;
     const y = this.y;
     const bob = this.onGround ? Math.sin(this.step) * Math.min(3, Math.abs(this.vx) / 70) : 0;
+    const compression = Math.max(0, this.landingCompression || 0);
+    const squashX = 1 + compression * 0.16;
+    const squashY = 1 - compression * 0.2;
     ctx.save();
     ctx.translate(x + this.width / 2, y + bob + this.height / 2);
+    ctx.scale(squashX, squashY);
     if (this.hitCooldown > 0 && Math.sin(time * 32) > 0) ctx.globalAlpha = 0.55;
     ctx.translate(-this.width / 2, -this.height / 2);
 

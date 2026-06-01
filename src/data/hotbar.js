@@ -13,13 +13,13 @@ export const hotbarSlots = [
   },
   {
     id: 'weapon',
-    label: 'Weapon',
-    shortLabel: 'Shoot',
+    label: 'Sword',
+    shortLabel: 'Slash',
     icon: 'W',
-    iconHtml: '<span class="tool-icon-shape icon-drone"><i></i></span>',
+    iconHtml: '<span class="tool-icon-shape icon-sword"><i></i></span>',
     action: 'attack',
     tone: 'tech',
-    description: 'Command the drone to fire at threats.',
+    description: 'Swing a wide energy blade toward the cursor.',
   },
   {
     id: 'stabilizer',

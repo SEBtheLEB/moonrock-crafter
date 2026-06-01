@@ -8,6 +8,8 @@ const DEFAULT_VOLUMES = {
   ambience: 0.24,
 };
 
+const ENABLE_PLACEHOLDER_NOISE = false;
+
 const SFX = {
   buttonClick: { category: 'sfx', frequency: 520, duration: 0.045, type: 'triangle', gain: 0.035, cooldown: 0.035 },
   buttonHover: { category: 'sfx', frequency: 680, duration: 0.025, type: 'sine', gain: 0.014, cooldown: 0.08 },
@@ -21,20 +23,23 @@ const SFX = {
   reset: { category: 'sfx', frequency: 130, duration: 0.18, type: 'square', gain: 0.02, cooldown: 0.2 },
 
   engineBoost: { category: 'sfx', frequency: 130, slideTo: 185, duration: 0.09, type: 'sawtooth', gain: 0.012, cooldown: 0.2 },
-  laserStart: { category: 'sfx', frequency: 420, slideTo: 620, duration: 0.075, type: 'sawtooth', gain: 0.018, cooldown: 0.08 },
-  laserStop: { category: 'sfx', frequency: 290, slideTo: 150, duration: 0.08, type: 'sawtooth', gain: 0.014, cooldown: 0.08 },
-  asteroidHit: { category: 'sfx', frequency: 230, duration: 0.035, type: 'square', gain: 0.014, cooldown: 0.08 },
-  asteroidCrack: { category: 'sfx', frequency: 260, slideTo: 140, duration: 0.075, type: 'sawtooth', gain: 0.024, noise: 0.015, cooldown: 0.09 },
-  asteroidBreak: { category: 'sfx', notes: [190, 140, 95], duration: 0.055, gap: 0.045, type: 'sawtooth', gain: 0.026, noise: 0.035, cooldown: 0.16 },
+  laserStart: { category: 'sfx', frequency: 138, slideTo: 104, duration: 0.09, type: 'triangle', gain: 0.013, cooldown: 0.12 },
+  laserStop: { category: 'sfx', frequency: 112, slideTo: 74, duration: 0.09, type: 'sine', gain: 0.01, cooldown: 0.12 },
+  asteroidHit: { category: 'sfx', frequency: 145, slideTo: 108, duration: 0.045, type: 'triangle', gain: 0.011, cooldown: 0.1 },
+  asteroidCrack: { category: 'sfx', frequency: 155, slideTo: 92, duration: 0.085, type: 'triangle', gain: 0.015, cooldown: 0.12 },
+  asteroidBreak: { category: 'sfx', notes: [150, 112, 82], duration: 0.06, gap: 0.045, type: 'triangle', gain: 0.018, cooldown: 0.18 },
   mineralPickup: { category: 'sfx', frequency: 780, slideTo: 1120, duration: 0.055, type: 'square', gain: 0.017, cooldown: 0.055 },
-  shipHit: { category: 'sfx', frequency: 110, slideTo: 82, duration: 0.14, type: 'sawtooth', gain: 0.026, noise: 0.02, cooldown: 0.14 },
-  shipCrash: { category: 'sfx', notes: [120, 92, 64], duration: 0.12, gap: 0.07, type: 'sawtooth', gain: 0.03, noise: 0.055, cooldown: 0.5 },
+  shipHit: { category: 'sfx', frequency: 110, slideTo: 82, duration: 0.14, type: 'triangle', gain: 0.021, cooldown: 0.14 },
+  shipCrash: { category: 'sfx', notes: [120, 92, 64], duration: 0.12, gap: 0.07, type: 'triangle', gain: 0.025, cooldown: 0.5 },
   lowFuelWarning: { category: 'sfx', notes: [240, 170], duration: 0.09, gap: 0.07, type: 'square', gain: 0.02, cooldown: 1.8 },
   cargoFull: { category: 'sfx', frequency: 180, slideTo: 135, duration: 0.12, type: 'square', gain: 0.022, cooldown: 0.7 },
   dockSuccess: { category: 'sfx', notes: [360, 540, 720], duration: 0.06, gap: 0.06, type: 'triangle', gain: 0.026, cooldown: 0.25 },
   rareFind: { category: 'sfx', notes: [650, 960, 1280], duration: 0.065, gap: 0.055, type: 'triangle', gain: 0.024, cooldown: 0.5 },
   droneShot: { category: 'sfx', frequency: 760, slideTo: 1180, duration: 0.055, type: 'triangle', gain: 0.018, cooldown: 0.08 },
   droneHit: { category: 'sfx', frequency: 360, slideTo: 210, duration: 0.055, type: 'square', gain: 0.018, cooldown: 0.08 },
+  swordSwing: { category: 'sfx', frequency: 520, slideTo: 760, duration: 0.055, type: 'triangle', gain: 0.017, cooldown: 0.055 },
+  swordHeavy: { category: 'sfx', frequency: 360, slideTo: 720, duration: 0.085, type: 'sawtooth', gain: 0.021, cooldown: 0.09 },
+  swordHit: { category: 'sfx', frequency: 260, slideTo: 160, duration: 0.05, type: 'triangle', gain: 0.018, cooldown: 0.055 },
 
   sparkPop: { category: 'ambience', frequency: 880, slideTo: 1300, duration: 0.035, type: 'triangle', gain: 0.012, cooldown: 0.18 },
   shipDock: { category: 'sfx', frequency: 210, slideTo: 145, duration: 0.12, type: 'triangle', gain: 0.024, cooldown: 0.25 },
@@ -49,8 +54,8 @@ const SFX = {
   landShip: { category: 'sfx', frequency: 260, slideTo: 150, duration: 0.18, type: 'sawtooth', gain: 0.024, cooldown: 0.4 },
   exitShip: { category: 'sfx', frequency: 420, slideTo: 620, duration: 0.08, type: 'triangle', gain: 0.018, cooldown: 0.2 },
   boardShip: { category: 'sfx', frequency: 360, slideTo: 220, duration: 0.1, type: 'triangle', gain: 0.02, cooldown: 0.25 },
-  chopTree: { category: 'sfx', frequency: 160, duration: 0.055, type: 'square', gain: 0.026, noise: 0.012, cooldown: 0.11 },
-  mineNode: { category: 'sfx', frequency: 220, slideTo: 140, duration: 0.06, type: 'square', gain: 0.024, noise: 0.014, cooldown: 0.1 },
+  chopTree: { category: 'sfx', frequency: 126, duration: 0.06, type: 'triangle', gain: 0.018, cooldown: 0.13 },
+  mineNode: { category: 'sfx', frequency: 118, slideTo: 78, duration: 0.065, type: 'triangle', gain: 0.014, cooldown: 0.16 },
   gatherPlant: { category: 'sfx', frequency: 720, slideTo: 940, duration: 0.055, type: 'triangle', gain: 0.016, cooldown: 0.1 },
   animalHit: { category: 'sfx', frequency: 250, duration: 0.06, type: 'square', gain: 0.021, cooldown: 0.1 },
   animalDefeated: { category: 'sfx', notes: [320, 540], duration: 0.06, gap: 0.05, type: 'triangle', gain: 0.023, cooldown: 0.18 },
@@ -58,9 +63,9 @@ const SFX = {
 };
 
 const LOOP_DEFS = {
-  engineHum: { category: 'ambience', frequency: 72, type: 'sawtooth', gain: 0.006 },
-  engineBoost: { category: 'sfx', frequency: 122, type: 'sawtooth', gain: 0.012 },
-  laserLoop: { category: 'sfx', frequency: 320, type: 'sawtooth', gain: 0.01 },
+  engineHum: { category: 'ambience', frequency: 64, type: 'sine', gain: 0.0035 },
+  engineBoost: { category: 'sfx', frequency: 96, type: 'triangle', gain: 0.007 },
+  laserLoop: { category: 'sfx', frequency: 88, type: 'sine', gain: 0.0055 },
   forgeCrackle: { category: 'ambience', sequence: [180, 260, 190, 330], duration: 0.035, gain: 0.008, interval: 880, jitter: 360, type: 'triangle' },
   stationAmbience: { category: 'ambience', frequency: 86, type: 'sine', gain: 0.006 },
 };
@@ -226,11 +231,11 @@ export class AudioManager {
       definition.notes.forEach((frequency, index) => {
         this.playTone({ ...definition, frequency, delay: (definition.gap || 0.045) * index });
       });
-      if (definition.noise) this.playNoise({ ...definition, delay: 0.02, gain: definition.noise });
+      if (ENABLE_PLACEHOLDER_NOISE && definition.noise) this.playNoise({ ...definition, delay: 0.02, gain: definition.noise });
       return;
     }
     this.playTone(definition);
-    if (definition.noise) this.playNoise({ ...definition, gain: definition.noise });
+    if (ENABLE_PLACEHOLDER_NOISE && definition.noise) this.playNoise({ ...definition, gain: definition.noise });
   }
 
   canPlay(name, cooldown = 0.04) {
@@ -408,6 +413,9 @@ export class AudioManager {
   playRareFind() { this.playSfx('rareFind'); }
   playDroneShot() { this.playSfx('droneShot'); }
   playDroneHit() { this.playSfx('droneHit'); }
+  playSwordSwing() { this.playSfx('swordSwing'); }
+  playSwordHeavy() { this.playSfx('swordHeavy'); }
+  playSwordHit() { this.playSfx('swordHit'); }
 
   playEngineHum() { this.startEngineHum(); }
   playEngineBoost() { this.startEngineBoost(); }
