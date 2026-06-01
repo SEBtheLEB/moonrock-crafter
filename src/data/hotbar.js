@@ -68,6 +68,17 @@ export const hotbarSlotCatalog = [
     description: 'Place a marker flag on voxel terrain.',
   },
   {
+    id: 'torch',
+    inventoryItemId: 'torch',
+    label: 'Torch',
+    shortLabel: 'Torch',
+    icon: 'T',
+    iconHtml: '<span class="tool-icon-shape icon-torch"><i></i></span>',
+    action: 'placeTorch',
+    tone: 'torch',
+    description: 'Place a warm cave torch that pushes back underground darkness.',
+  },
+  {
     id: 'craftingStation',
     inventoryItemId: 'craftingStationKit',
     label: 'Crafting Station',
@@ -97,7 +108,7 @@ export const DEFAULT_HOTBAR_SLOT_IDS = [
   'stabilizer',
   'flag',
   'craftingStation',
-  null,
+  'torch',
   null,
 ];
 

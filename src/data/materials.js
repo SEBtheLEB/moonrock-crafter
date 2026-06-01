@@ -62,6 +62,17 @@ export const materials = [
     zoneAvailability: ['starter'],
   },
   {
+    id: 'torch',
+    name: 'Cave Torch',
+    rarity: 'common',
+    icon: 'T',
+    color: '#ffb45f',
+    baseValue: 1,
+    weight: 0.08,
+    description: 'A lightweight forge torch. Place it underground to reveal tunnels and ore.',
+    zoneAvailability: ['starter'],
+  },
+  {
     id: 'fireCore',
     name: 'Fire Core',
     rarity: 'rare',

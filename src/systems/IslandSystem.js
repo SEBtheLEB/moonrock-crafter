@@ -49,6 +49,15 @@ export class IslandSystem {
     return Array.isArray(flags) ? flags : [];
   }
 
+  getSavedTorches(islandId) {
+    const torches = this.game.state.islands?.torches?.[islandId];
+    return Array.isArray(torches) ? torches : [];
+  }
+
+  getSavedShipAnchor(islandId) {
+    return this.game.state.islands?.shipAnchors?.[islandId] || null;
+  }
+
   saveFlags(islandId, flags = []) {
     this.game.state.islands ||= { visited: {} };
     this.game.state.islands.flags ||= {};
@@ -56,6 +65,34 @@ export class IslandSystem {
       .filter(Boolean)
       .map((flag) => (typeof flag.serialize === 'function' ? flag.serialize() : flag));
     this.game.saveGame();
+  }
+
+  saveTorches(islandId, torches = []) {
+    this.game.state.islands ||= { visited: {} };
+    this.game.state.islands.torches ||= {};
+    this.game.state.islands.torches[islandId] = torches
+      .filter(Boolean)
+      .map((torch) => (typeof torch.serialize === 'function' ? torch.serialize() : torch));
+    this.game.saveGame();
+  }
+
+  saveShipAnchor(islandId, anchor = null, { skipSave = false } = {}) {
+    if (!islandId) return;
+    this.game.state.islands ||= { visited: {} };
+    this.game.state.islands.shipAnchors ||= {};
+    if (!anchor) delete this.game.state.islands.shipAnchors[islandId];
+    else {
+      this.game.state.islands.shipAnchors[islandId] = {
+        landingAngle: Number(anchor.landingAngle) || 0,
+        landingSurfaceLocal: anchor.landingSurfaceLocal
+          ? {
+            x: Math.round(anchor.landingSurfaceLocal.x * 10) / 10,
+            y: Math.round(anchor.landingSurfaceLocal.y * 10) / 10,
+          }
+          : null,
+      };
+    }
+    if (!skipSave) this.game.saveGame();
   }
 
   saveTerrain(islandId, terrain) {
@@ -115,7 +152,7 @@ export class IslandSystem {
     return changed;
   }
 
-  regenerateIsland(tagOrId, { clearFlags = true } = {}) {
+  regenerateIsland(tagOrId, { clearFlags = true, clearTorches = true } = {}) {
     const island = this.getIslandByTag(tagOrId);
     if (!island) return null;
     const terrainSeed = Math.floor(Date.now() % 1_000_000_000);
@@ -124,6 +161,8 @@ export class IslandSystem {
     this.game.state.islands ||= { visited: {}, terrain: {} };
     if (this.game.state.islands.terrain) delete this.game.state.islands.terrain[island.id];
     if (clearFlags && this.game.state.islands.flags) delete this.game.state.islands.flags[island.id];
+    if (clearTorches && this.game.state.islands.torches) delete this.game.state.islands.torches[island.id];
+    if (this.game.state.islands.shipAnchors) delete this.game.state.islands.shipAnchors[island.id];
     this.game.saveGame();
     this.game.systems.navigation?.refreshLocations?.();
     return island;

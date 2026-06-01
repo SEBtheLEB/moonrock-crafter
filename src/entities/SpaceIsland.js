@@ -1,4 +1,5 @@
 import { PlacedFlag } from './PlacedFlag.js?v=115';
+import { PlacedTorch } from './PlacedTorch.js?v=115';
 import { gameBalance } from '../data/gameBalance.js?v=115';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -30,8 +31,14 @@ export class SpaceIsland {
       || Math.hypot(this.width * 0.5, this.height * 0.5) + Math.max(620, this.landingZoneRadius * 1.75);
     this.gravityFieldRadius = data.gravityFieldRadius
       || this.atmosphereRadius;
+    const savedShipAnchor = data.shipAnchor || null;
+    if (savedShipAnchor?.landingSurfaceLocal) {
+      this.landingAngle = savedShipAnchor.landingAngle ?? this.landingAngle;
+      this.landingSurfaceLocal = savedShipAnchor.landingSurfaceLocal;
+    }
     this.terrain = terrain;
     this.placedFlags = (data.placedFlags || []).map((flag) => PlacedFlag.deserialize(flag));
+    this.placedTorches = (data.placedTorches || []).map((torch) => PlacedTorch.deserialize(torch));
     this.world = {
       width: this.width,
       height: this.height,
@@ -258,6 +265,7 @@ export class SpaceIsland {
     anchorLocal = null,
     anchorWorld = null,
     placedFlags = this.placedFlags,
+    placedTorches = this.placedTorches,
     placedCraftingStations = [],
     placedFurnaces = [],
     enemies = [],
@@ -276,6 +284,19 @@ export class SpaceIsland {
     ctx.rotate(viewRotation);
     if (anchorLocal && anchorWorld) ctx.translate(-anchorLocal.x, -anchorLocal.y);
     else ctx.translate(-this.width / 2, -this.height / 2);
+    const torches = placedTorches || this.placedTorches || [];
+    this.terrain.setExtraLightSources?.(torches.map((torch) => (
+      typeof torch.getLightSource === 'function'
+        ? torch.getLightSource()
+        : {
+          id: torch.id,
+          x: torch.x,
+          y: torch.y - 42,
+          color: torch.color || '#ff9f43',
+          radius: 300,
+          intensity: 0.9,
+        }
+    )));
     this.drawGravityField(ctx, gravityActive, gravityStrength, time);
     this.drawLandingAura(ctx, active, discovered, time);
     this.terrain.draw(ctx, { x: 0, y: 0 }, this.width, this.height, terrainDebug);
@@ -284,6 +305,7 @@ export class SpaceIsland {
     (placedCraftingStations || []).forEach((station) => station.draw(ctx, { time }));
     (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time, tileSize: this.terrain?.cellSize }));
     (placedFlags || []).forEach((flag) => flag.draw(ctx, { time }));
+    torches.forEach((torch) => torch.draw?.(ctx, { time }));
     (materialPickups || []).forEach((pickup) => pickup.drawLocal?.(ctx));
     (enemies || []).forEach((enemy) => enemy.draw?.(ctx, { time, viewRotation }));
     if (drawShip) this.drawParkedShip(ctx, ship, time, { broken: shipBroken });
@@ -294,10 +316,42 @@ export class SpaceIsland {
       ctx.translate(-player.centerX, -player.centerY);
       player.draw(ctx, { x: 0 }, time);
       drawPlayerEquipment?.(ctx);
+      this.drawPlayerDepthShadow(ctx, player, time);
       ctx.restore();
     }
     drawCombatEffects?.(ctx);
     drawMovementDebug?.(ctx);
+    ctx.restore();
+  }
+
+  getPlayerDepthDarkness(player) {
+    if (!player || !this.terrain?.getDarknessAtWithLights) return 0;
+    const samples = [
+      [player.centerX, player.centerY],
+      [player.centerX, player.y + 8],
+      [player.centerX, player.y + player.height - 6],
+      [player.x + 5, player.centerY],
+      [player.x + player.width - 5, player.centerY],
+    ];
+    return samples.reduce((max, sample) => Math.max(max, this.terrain.getDarknessAtWithLights(sample[0], sample[1])), 0);
+  }
+
+  drawPlayerDepthShadow(ctx, player, time = 0) {
+    const darkness = this.getPlayerDepthDarkness(player);
+    if (darkness <= 0.035) return;
+    const alpha = clamp01((darkness - 0.03) * 0.82);
+    ctx.save();
+    ctx.fillStyle = `rgba(2, 4, 10, ${alpha})`;
+    ctx.beginPath();
+    ctx.roundRect(player.x + 2.5, player.y, player.width - 5, player.height, 8);
+    ctx.fill();
+    if (alpha > 0.32) {
+      ctx.globalAlpha = Math.min(0.22, alpha * 0.45);
+      ctx.fillStyle = '#66d8e8';
+      ctx.beginPath();
+      ctx.arc(player.x + (player.facing > 0 ? 21 : 9), player.y + 18, 3.2 + Math.sin(time * 5) * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 

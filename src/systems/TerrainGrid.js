@@ -676,6 +676,8 @@ export class TerrainGrid {
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
     this.lightingFieldCtx = null;
+    this.extraLightSources = [];
+    this.extraLightSignature = '';
     this.airExposureMap = null;
     this.airExposureDirty = true;
     if (cells && wallCells?.length !== cellCount && TERRAIN_WALLS.enabled) this.generateWallLayerForPlanet();
@@ -2658,9 +2660,76 @@ export class TerrainGrid {
     return TERRAIN_LIGHTING.materialLights?.[material.id] || null;
   }
 
-  getMaxMaterialLightRadius() {
+  setExtraLightSources(sources = []) {
+    const normalized = (Array.isArray(sources) ? sources : [])
+      .filter((source) => Number.isFinite(source?.x) && Number.isFinite(source?.y))
+      .map((source, index) => ({
+        id: source.id || `light-${index}`,
+        x: source.x,
+        y: source.y,
+        color: source.color || '#ffb45f',
+        radius: Math.max(this.cellSize * 2, Number(source.radius) || this.cellSize * 8),
+        intensity: clamp01(source.intensity ?? 0.8),
+      }))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const signature = normalized
+      .map((source) => `${source.id}:${Math.round(source.x)}:${Math.round(source.y)}:${Math.round(source.radius)}:${Math.round(source.intensity * 100)}:${source.color}`)
+      .join('|');
+    if (signature === this.extraLightSignature) return;
+    this.extraLightSources = normalized;
+    this.extraLightSignature = signature;
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+  }
+
+  getMaxStaticMaterialLightRadius() {
     const lights = TERRAIN_LIGHTING.materialLights || {};
     return Object.values(lights).reduce((max, light) => Math.max(max, (light.radius || 0) * this.cellSize), 0);
+  }
+
+  getMaxMaterialLightRadius() {
+    const staticRadius = this.getMaxStaticMaterialLightRadius();
+    const extraRadius = (this.extraLightSources || []).reduce((max, source) => Math.max(max, source.radius || 0), 0);
+    return Math.max(staticRadius, extraRadius);
+  }
+
+  getLightReductionAt(x, y) {
+    let reduction = 0;
+    const falloffPower = Math.max(0.4, TERRAIN_LIGHTING.lightFalloffPower ?? 1.18);
+    for (const source of this.extraLightSources || []) {
+      const distance = Math.hypot(x - source.x, y - source.y);
+      if (distance >= source.radius) continue;
+      const falloff = Math.pow(1 - distance / Math.max(1, source.radius), falloffPower);
+      reduction = Math.max(reduction, clamp01(source.intensity * falloff));
+    }
+
+    const staticRadius = this.getMaxStaticMaterialLightRadius();
+    if (staticRadius <= 0) return reduction;
+    const minCol = clamp(Math.floor((x - staticRadius) / this.cellSize), 0, this.cols - 1);
+    const maxCol = clamp(Math.ceil((x + staticRadius) / this.cellSize), 0, this.cols - 1);
+    const minRow = clamp(Math.floor((y - staticRadius) / this.cellSize), 0, this.rows - 1);
+    const maxRow = clamp(Math.ceil((y + staticRadius) / this.cellSize), 0, this.rows - 1);
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const materialId = this.getCell(col, row);
+        const light = this.getMaterialLight(materialId);
+        if (!light) continue;
+        const radius = Math.max(this.cellSize * 1.5, (light.radius || 5) * this.cellSize);
+        const sourceX = col * this.cellSize + this.cellSize * 0.5;
+        const sourceY = row * this.cellSize + this.cellSize * 0.5;
+        const distance = Math.hypot(x - sourceX, y - sourceY);
+        if (distance >= radius) continue;
+        const falloff = Math.pow(1 - distance / Math.max(1, radius), falloffPower);
+        reduction = Math.max(reduction, clamp01((light.intensity ?? 0.65) * falloff * 0.92));
+      }
+    }
+    return reduction;
+  }
+
+  getDarknessAtWithLights(x, y) {
+    const darkness = this.getSmoothDarknessAt(x, y);
+    if (darkness <= 0) return 0;
+    return clamp01(darkness * (1 - this.getLightReductionAt(x, y)));
   }
 
   getLightingDrawRect(bounds = null) {
@@ -2671,15 +2740,41 @@ export class TerrainGrid {
     return this.getDrawRect(bounds, padding);
   }
 
+  collectExtraLightSources(rect) {
+    if (!this.extraLightSources?.length) return [];
+    return this.extraLightSources
+      .filter((source) => boundsOverlap(
+        {
+          minX: source.x - source.radius,
+          minY: source.y - source.radius,
+          maxX: source.x + source.radius,
+          maxY: source.y + source.radius,
+        },
+        {
+          minX: rect.x,
+          minY: rect.y,
+          maxX: rect.x + rect.width,
+          maxY: rect.y + rect.height,
+        },
+      ))
+      .map((source) => ({
+        ...source,
+        materialId: 0,
+        material: null,
+        dynamic: true,
+      }));
+  }
+
   collectLightSources(bounds = null) {
     const rect = this.getLightingDrawRect(bounds);
-    const maxRadius = this.getMaxMaterialLightRadius();
+    const maxRadius = this.getMaxStaticMaterialLightRadius();
     const minCol = clamp(Math.floor((rect.x - maxRadius) / this.cellSize), 0, this.cols - 1);
     const maxCol = clamp(Math.ceil((rect.x + rect.width + maxRadius) / this.cellSize), 0, this.cols - 1);
     const minRow = clamp(Math.floor((rect.y - maxRadius) / this.cellSize), 0, this.rows - 1);
     const maxRow = clamp(Math.ceil((rect.y + rect.height + maxRadius) / this.cellSize), 0, this.rows - 1);
-    const sources = [];
-    const sourceLimit = bounds ? 260 : 720;
+    const extraSources = this.collectExtraLightSources(rect);
+    const sources = [...extraSources];
+    const sourceLimit = (bounds ? 260 : 720) + extraSources.length;
     for (let row = minRow; row <= maxRow; row += 1) {
       for (let col = minCol; col <= maxCol; col += 1) {
         const materialId = this.getCell(col, row);

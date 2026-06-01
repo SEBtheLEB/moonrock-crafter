@@ -72,6 +72,7 @@ export class Hotbar {
       laser: '#6ee7ff',
       utility: '#b794ff',
       flag: '#ffd36b',
+      torch: '#ffb45f',
       crafting: '#76f3ff',
       furnace: '#ff9f43',
       empty: '#6d7480',

@@ -127,6 +127,7 @@ export class Game {
       tutorial: {},
       progression: {
         toolInventoryMigrated: true,
+        starterTorchMigrated: true,
       },
       achievements: {},
       navigation: {
@@ -241,6 +242,15 @@ export class Game {
       });
       merged.progression ||= {};
       merged.progression.toolInventoryMigrated = true;
+    }
+    if (!savedState.progression?.starterTorchMigrated) {
+      merged.inventory.torch = Math.max(merged.inventory.torch || 0, gameBalance.startingInventory.torch || 20);
+      if (!merged.hotbar.includes('torch')) {
+        const emptyIndex = merged.hotbar.findIndex((slot) => !slot);
+        if (emptyIndex >= 0) merged.hotbar[emptyIndex] = 'torch';
+      }
+      merged.progression ||= {};
+      merged.progression.starterTorchMigrated = true;
     }
     return merged;
   }
@@ -721,6 +731,7 @@ export class Game {
       'mine',
       'attack',
       'placeFlag',
+      'placeTorch',
       'placeFurnace',
       'placeCraftingStation',
       'crafting',

@@ -147,6 +147,7 @@ export class InputManager {
       mine: false,
       attack: false,
       placeFlag: false,
+      placeTorch: false,
       placeFurnace: false,
       placeCraftingStation: false,
       inventory: false,
