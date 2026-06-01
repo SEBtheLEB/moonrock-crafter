@@ -173,7 +173,7 @@ export const gameBalance = {
     ],
   },
   terrain: {
-    cellSize: 25,
+    cellSize: 18,
     chunkSizeCells: 24,
     visualSubdivisions: 2,
     collisionSubdivisions: 2,
@@ -224,6 +224,11 @@ export const gameBalance = {
       textureAlpha: 0.96,
       edgeAlpha: 0.18,
       surfaceFadeDepth: 4.5,
+      densityRadiusCells: 0.68,
+      densityThreshold: 0.52,
+      smoothingIterations: 0,
+      gridSnapAmount: 0.82,
+      cornerRoundAmount: 0.03,
     },
     lighting: {
       enabled: true,

@@ -1,30 +1,30 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=115';
-import { Ship } from '../entities/Ship.js?v=115';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=115';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=115';
-import { MineralPickup } from '../entities/MineralPickup.js?v=115';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=115';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=115';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=115';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=115';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=115';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=115';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=115';
-import { BaseLab } from '../entities/BaseLab.js?v=115';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=115';
-import { EnemySystem } from '../systems/EnemySystem.js?v=115';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=115';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=115';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=115';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=115';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=115';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=115';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=115';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=115';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=115';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=115';
+import { Hotbar } from '../ui/Hotbar.js?v=116';
+import { Ship } from '../entities/Ship.js?v=116';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=116';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=116';
+import { MineralPickup } from '../entities/MineralPickup.js?v=116';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=116';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=116';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=116';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=116';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=116';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=116';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=116';
+import { BaseLab } from '../entities/BaseLab.js?v=116';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=116';
+import { EnemySystem } from '../systems/EnemySystem.js?v=116';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=116';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=116';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=116';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=116';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=116';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=116';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=116';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=116';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=116';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=116';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -37,9 +37,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=115';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=115';
-import { gameBalance } from '../data/gameBalance.js?v=115';
+} from '../systems/MachineSculptingSystem.js?v=116';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=116';
+import { gameBalance } from '../data/gameBalance.js?v=116';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;

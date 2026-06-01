@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=115';
-import { gameBalance } from '../data/gameBalance.js?v=115';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=116';
+import { gameBalance } from '../data/gameBalance.js?v=116';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -16,7 +16,7 @@ export const TERRAIN_MATERIALS = {
   11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
 };
 
-const TERRAIN_SAVE_VERSION = 20;
+const TERRAIN_SAVE_VERSION = 21;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -127,12 +127,12 @@ const TERRAIN_WALLS = {
 
 const WALL_CONTOUR_OPTIONS = {
   ...MATERIAL_CONTOUR_OPTIONS,
-  densityRadiusCells: TERRAIN_TUNING.wallDensityRadiusCells || 1.22,
-  densityThreshold: TERRAIN_TUNING.wallDensityThreshold || 0.46,
-  smoothingIterations: TERRAIN_TUNING.wallSmoothingIterations ?? 2,
-  smoothingAmount: TERRAIN_TUNING.wallSmoothingAmount ?? 0.2,
-  gridSnapAmount: TERRAIN_TUNING.wallGridSnapAmount ?? 0.18,
-  cornerRoundAmount: TERRAIN_TUNING.wallCornerRoundAmount ?? 0.14,
+  densityRadiusCells: TERRAIN_WALLS.densityRadiusCells ?? TERRAIN_TUNING.wallDensityRadiusCells ?? 1.22,
+  densityThreshold: TERRAIN_WALLS.densityThreshold ?? TERRAIN_TUNING.wallDensityThreshold ?? 0.46,
+  smoothingIterations: TERRAIN_WALLS.smoothingIterations ?? TERRAIN_TUNING.wallSmoothingIterations ?? 2,
+  smoothingAmount: TERRAIN_WALLS.smoothingAmount ?? TERRAIN_TUNING.wallSmoothingAmount ?? 0.2,
+  gridSnapAmount: TERRAIN_WALLS.gridSnapAmount ?? TERRAIN_TUNING.wallGridSnapAmount ?? 0.18,
+  cornerRoundAmount: TERRAIN_WALLS.cornerRoundAmount ?? TERRAIN_TUNING.wallCornerRoundAmount ?? 0.14,
 };
 
 const TERRAIN_TEXTURE_INSTANCES = new Set();
@@ -4080,9 +4080,10 @@ export class TerrainGrid {
           const tangentLength = Math.hypot(tangent.x, tangent.y) || 1;
           const tx = tangent.x / tangentLength;
           const ty = tangent.y / tangentLength;
+          const outwardShift = Math.max(0, outwardNoise) * strength;
           points.push({
-            x: base.x + normal.x * outwardNoise * strength + tx * tangentNoise * strength * 0.16,
-            y: base.y + normal.y * outwardNoise * strength + ty * tangentNoise * strength * 0.16,
+            x: base.x + normal.x * outwardShift + tx * tangentNoise * strength * 0.14,
+            y: base.y + normal.y * outwardShift + ty * tangentNoise * strength * 0.14,
             baseX: base.x,
             baseY: base.y,
             normal,
@@ -4217,9 +4218,10 @@ export class TerrainGrid {
         + salt;
       const normalNoise = signedHash2D(qx, qy, this.seed, pointSalt);
       const tangentNoise = signedHash2D(qy, qx, this.seed, pointSalt + 211);
+      const normalPush = Math.max(0, normalNoise) * pointStrength;
       return {
-        x: point.x + normal.x * normalNoise * pointStrength + tx * tangentNoise * pointStrength * 0.14,
-        y: point.y + normal.y * normalNoise * pointStrength + ty * tangentNoise * pointStrength * 0.14,
+        x: point.x + normal.x * normalPush + tx * tangentNoise * pointStrength * 0.12,
+        y: point.y + normal.y * normalPush + ty * tangentNoise * pointStrength * 0.12,
       };
     };
     return {

@@ -1,6 +1,6 @@
 import { Button } from '../ui/Button.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { upgradeCategories } from '../data/upgrades.js?v=115';
+import { upgradeCategories } from '../data/upgrades.js?v=116';
 
 const TABS = [
   ...upgradeCategories,
