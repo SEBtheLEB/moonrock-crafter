@@ -47,6 +47,7 @@ export class Game {
     this.controllerUiFocusScope = '';
     this.controllerUiNavRepeatTimer = 0;
     this.controllerUiNavLastKey = '';
+    this.controllerUiWaitForRelease = false;
     this.isResettingWorld = false;
 
     this.state = this.createInitialState();
@@ -565,6 +566,7 @@ export class Game {
     const scope = this.getControllerUiScope();
     if (!scope) {
       this.controllerUiFocusScope = '';
+      this.controllerUiWaitForRelease = false;
       return;
     }
     const controls = this.getControllerUiControls(scope);
@@ -578,6 +580,15 @@ export class Game {
     }
 
     const actions = this.input.actions;
+    if (this.controllerUiWaitForRelease) {
+      const holdingActivation = actions.confirm || actions.interact || actions.cancel || actions.pause;
+      if (holdingActivation) {
+        this.suppressGameplayInputForUi(scope);
+        return;
+      }
+      this.controllerUiWaitForRelease = false;
+    }
+
     if (actions.justPressed.cancel) {
       if (this.paused) this.togglePause(false);
       else if (scope === 'upgrades' || scope === 'storage') this.sceneManager.switchTo('station');
@@ -700,6 +711,9 @@ export class Game {
       'down',
       'left',
       'right',
+      'confirm',
+      'cancel',
+      'pause',
       'jump',
       'interact',
       'primaryUse',
@@ -715,5 +729,13 @@ export class Game {
       this.input.actions[actionName] = false;
       this.input.actions.justPressed[actionName] = false;
     });
+  }
+
+  blockControllerUiActivationUntilRelease() {
+    if (!this.input.isControllerActive?.()) return;
+    this.controllerUiWaitForRelease = true;
+    this.controllerUiFocusScope = '';
+    this.controllerUiNavLastKey = '';
+    this.controllerUiNavRepeatTimer = 0;
   }
 }

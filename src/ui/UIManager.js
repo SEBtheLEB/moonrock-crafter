@@ -222,6 +222,7 @@ export class UIManager {
     const mutedLabel = game.audio.enabled ? 'Mute Audio' : 'Unmute Audio';
     const touchLabel = game.state.settings?.touchControlsEnabled ? 'Hide Touch Controls' : 'Show Touch Controls';
     this.audio.playModalOpen();
+    game.blockControllerUiActivationUntilRelease?.();
     const modal = new Modal({
       title: 'Paused',
       body: 'Tune the station, then jump back in.',
@@ -251,6 +252,7 @@ export class UIManager {
 
   showModal(element) {
     this.audio.playModalOpen();
+    this.game?.blockControllerUiActivationUntilRelease?.();
     this.modalLayer.replaceChildren(element);
   }
 

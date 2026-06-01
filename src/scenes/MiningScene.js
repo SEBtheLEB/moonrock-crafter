@@ -6746,6 +6746,17 @@ export class MiningScene {
 
   drawControllerIslandAimIndicator(ctx) {
     if (!this.isControllerAimIndicatorActive() || !this.islandPlayer) return;
+    if (this.isMinerToolSelected()) {
+      const state = this.islandMiningBeam
+        || this.islandAimPreview
+        || this.getIslandTerrainPreview({ updateFacing: false });
+      if (!state?.origin || !state?.end) return;
+      this.drawControllerAimBall(ctx, state.origin, state.end, {
+        subtle: true,
+        showDot: false,
+      });
+      return;
+    }
     const aimPoint = this.getControllerIslandAimPoint();
     if (!aimPoint) return;
     const start = {
@@ -6755,38 +6766,43 @@ export class MiningScene {
     this.drawControllerAimBall(ctx, start, aimPoint);
   }
 
-  drawControllerAimBall(ctx, start, end) {
+  drawControllerAimBall(ctx, start, end, { subtle = false, showDot = true } = {}) {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = clamp01(Math.hypot(aim.x, aim.y));
     const pulse = 1 + Math.sin(this.time * 9) * 0.08;
+    const lineAlpha = subtle ? 0.38 : 0.68;
+    const ringAlpha = subtle ? 0.34 : 0.52;
+    const ringRadius = subtle ? 8 + magnitude * 5 : 15 + magnitude * 8;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalAlpha = 0.68;
-    ctx.strokeStyle = 'rgba(118, 243, 255, 0.34)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 8]);
+    ctx.globalAlpha = lineAlpha;
+    ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.24)' : 'rgba(118, 243, 255, 0.34)';
+    ctx.lineWidth = subtle ? 1.25 : 2;
+    ctx.setLineDash(subtle ? [5, 9] : [8, 8]);
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     ctx.lineTo(end.x, end.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = 'rgba(118, 243, 255, 0.82)';
-    ctx.strokeStyle = 'rgba(9, 20, 34, 0.74)';
-    ctx.lineWidth = 2.2;
-    ctx.shadowColor = '#76f3ff';
-    ctx.shadowBlur = 13;
+    if (showDot) {
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'rgba(118, 243, 255, 0.82)';
+      ctx.strokeStyle = 'rgba(9, 20, 34, 0.74)';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = '#76f3ff';
+      ctx.shadowBlur = 13;
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, (5.5 + magnitude * 4.5) * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = ringAlpha;
+    ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.64)' : 'rgba(255, 255, 255, 0.72)';
+    ctx.lineWidth = subtle ? 1 : 1.2;
     ctx.beginPath();
-    ctx.arc(end.x, end.y, (5.5 + magnitude * 4.5) * pulse, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 0.52;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(end.x, end.y, 15 + magnitude * 8, 0, Math.PI * 2);
+    ctx.arc(end.x, end.y, ringRadius * pulse, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
