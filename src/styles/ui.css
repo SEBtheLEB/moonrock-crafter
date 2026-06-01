@@ -953,7 +953,7 @@
 }
 
 html[data-input-mode="controller"] .tool-hotbar::before {
-  content: "A jump  \2022  X interact  \2022  RT use  \2022  LB/RB tools  \2022  Select inventory";
+  content: "LS move  \2022  RS aim  \2022  A jump  \2022  X interact  \2022  RT use  \2022  LB/RB tools  \2022  Select inv";
   position: absolute;
   left: 50%;
   bottom: calc(100% + 8px);
@@ -1011,6 +1011,42 @@ html[data-input-mode="controller"] .tool-hotbar::before {
 
 .tool-hotbar-slot.tone-empty {
   opacity: 0.58;
+}
+
+.tool-hotbar-slot.is-empty {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.tool-hotbar-slot.is-empty .tool-hotbar-icon {
+  opacity: 0.58;
+}
+
+.item-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 9999;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--item-color, #fff2cf), white 16%);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--item-color, #fff2cf) 35%, transparent), transparent 68%),
+    rgba(5, 12, 22, 0.62);
+  color: var(--item-color, #fff2cf);
+  font: 900 13px/1 var(--font-ui);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-999px, -999px);
+  translate: -50% -50%;
+  box-shadow: 0 10px 24px rgba(1, 6, 12, 0.35), 0 0 20px color-mix(in srgb, var(--item-color, #fff2cf) 26%, transparent);
+}
+
+.item-drag-ghost.is-dragging {
+  opacity: 0.95;
 }
 
 .tool-hotbar-slot kbd {
@@ -1138,6 +1174,35 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   border-radius: 3px;
   background: currentColor;
   transform: rotate(42deg);
+}
+
+.icon-laser-gun::before {
+  left: 3px;
+  top: 9px;
+  width: 17px;
+  height: 7px;
+  border: 2px solid currentColor;
+  border-radius: 4px 8px 8px 4px;
+  box-shadow: 0 0 12px color-mix(in srgb, currentColor 42%, transparent);
+}
+
+.icon-laser-gun::after {
+  right: 1px;
+  top: 7px;
+  width: 5px;
+  height: 11px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.icon-laser-gun i {
+  left: 7px;
+  top: 15px;
+  width: 6px;
+  height: 8px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: skewX(-12deg);
 }
 
 .icon-gravity::before {

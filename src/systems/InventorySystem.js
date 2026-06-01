@@ -17,6 +17,7 @@ export class InventorySystem {
     const inventory = this.storage;
     inventory[itemId] = (inventory[itemId] || 0) + amount;
     this.game.state.station.storageUsed = this.getTotalStored();
+    this.notifyInventoryChanged();
     if (!skipSave) this.game.saveGame();
   }
 
@@ -26,8 +27,16 @@ export class InventorySystem {
     inventory[itemId] -= amount;
     if (inventory[itemId] <= 0) delete inventory[itemId];
     this.game.state.station.storageUsed = this.getTotalStored();
+    this.notifyInventoryChanged();
     if (!skipSave) this.game.saveGame();
     return true;
+  }
+
+  notifyInventoryChanged() {
+    this.game.input?.syncHotbarWithInventory?.({ notify: false });
+    if (this.game.input?.hotbarSlotIds) this.game.state.hotbar = [...this.game.input.hotbarSlotIds];
+    this.game.sceneManager?.current?.refreshHotbar?.(true);
+    this.game.sceneManager?.current?.updateQuickInventory?.();
   }
 
   getStoredAmount(itemId) {

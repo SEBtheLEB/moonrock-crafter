@@ -19,6 +19,7 @@ import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.
 import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=115';
 import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=115';
 import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=115';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=115';
 import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=115';
 import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=115';
 import {
@@ -106,6 +107,13 @@ const SWORD_COMBAT = {
     { name: 'slash2', beat: 2, damage: 1.45, range: 1.14, knockback: 1.34, duration: 0.15, cooldown: 0.22 },
     { name: 'slash3', beat: 3, damage: 2.15, range: 1.34, knockback: 2.1, duration: 0.2, cooldown: 0.32 },
   ],
+};
+const LASER_GUN_COMBAT = {
+  damage: 16,
+  range: 560,
+  hitRadius: 13,
+  cooldown: 0.28,
+  effectLife: 0.16,
 };
 const ISLAND_STABILIZE_MAX_SPEED = 1.45;
 const ISLAND_STABILIZE_HOLD_MAX_SPEED = 1.75;
@@ -292,6 +300,10 @@ export class MiningScene {
       cooldown: 0,
       resetTimer: 0,
       bufferTimer: 0,
+    };
+    this.laserGun = {
+      cooldown: 0,
+      effects: [],
     };
     this.hitStopTimer = 0;
     this.movementDebug = {
@@ -668,6 +680,7 @@ export class MiningScene {
   }
 
   exit() {
+    this.cancelItemDrag();
     this.closeSurvivalModal();
     this.closeQuickInventory();
     this.moveStick?.__inputCleanup?.();
@@ -1470,6 +1483,7 @@ export class MiningScene {
 
   updateOnFootCombat(delta) {
     this.updateSwordTimers(delta);
+    this.updateLaserGunTimers(delta);
     if (!this.activeIsland || !this.islandPlayer) return;
     this.enemySystem?.syncWorldPositions(
       this.activeIsland,
@@ -1479,6 +1493,10 @@ export class MiningScene {
 
     const actions = this.game.input.actions;
     const uiBlocked = Boolean(this.game.ui.modalLayer?.children.length);
+    if (this.isLaserGunToolSelected()) {
+      if (!uiBlocked && actions.justPressed.attack) this.fireLaserGun();
+      return;
+    }
     if (!this.isWeaponToolSelected() || uiBlocked) return;
 
     if (actions.justPressed.attack) this.sword.bufferTimer = SWORD_COMBAT.attackBufferTime;
@@ -1558,6 +1576,86 @@ export class MiningScene {
     this.updateIslandPlayerFacingFromAim(aim);
     if (combo.beat === 3) this.game.audio.playSwordHeavy?.();
     else this.game.audio.playSwordSwing?.();
+  }
+
+  updateLaserGunTimers(delta) {
+    const gun = this.laserGun;
+    if (!gun) return;
+    gun.cooldown = Math.max(0, gun.cooldown - delta);
+    let writeIndex = 0;
+    for (let index = 0; index < gun.effects.length; index += 1) {
+      const effect = gun.effects[index];
+      effect.age += delta;
+      if (effect.age < effect.life) {
+        gun.effects[writeIndex] = effect;
+        writeIndex += 1;
+      }
+    }
+    gun.effects.length = writeIndex;
+  }
+
+  fireLaserGun() {
+    if (!this.activeIsland || !this.islandPlayer || !this.laserGun || this.laserGun.cooldown > 0) return;
+    const origin = this.getIslandGunOriginLocal();
+    const aim = this.getIslandAimPoint();
+    let dx = aim.x - origin.x;
+    let dy = aim.y - origin.y;
+    let length = Math.hypot(dx, dy);
+    if (length < 0.001) {
+      dx = this.islandPlayer.facing;
+      dy = 0;
+      length = 1;
+    }
+    const dir = { x: dx / length, y: dy / length };
+    const range = LASER_GUN_COMBAT.range;
+    const threats = this.enemySystem?.getThreats() || [];
+    let best = null;
+    let bestT = range;
+    for (const enemy of threats) {
+      const local = this.getEnemyLocalPosition(enemy);
+      if (!local) continue;
+      const ex = local.x - origin.x;
+      const ey = local.y - origin.y;
+      const t = ex * dir.x + ey * dir.y;
+      if (t < 0 || t > bestT) continue;
+      const closestX = origin.x + dir.x * t;
+      const closestY = origin.y + dir.y * t;
+      const missDistance = Math.hypot(local.x - closestX, local.y - closestY);
+      if (missDistance > (enemy.radius || 20) + LASER_GUN_COMBAT.hitRadius) continue;
+      best = { enemy, local };
+      bestT = t;
+    }
+    const end = best
+      ? { x: best.local.x, y: best.local.y }
+      : { x: origin.x + dir.x * range, y: origin.y + dir.y * range };
+    this.laserGun.effects.push({
+      age: 0,
+      life: LASER_GUN_COMBAT.effectLife,
+      origin,
+      end,
+      hit: Boolean(best),
+    });
+    this.laserGun.cooldown = LASER_GUN_COMBAT.cooldown;
+    this.updateIslandPlayerFacingFromAim(aim);
+    this.islandPlayer.animationState = 'attack';
+    this.game.audio.playDroneShot?.();
+    if (!best) return;
+    const defeated = best.enemy.takeDamage?.(LASER_GUN_COMBAT.damage, {
+      x: dir.x * 210,
+      y: dir.y * 210,
+      sourceX: origin.x,
+      sourceY: origin.y,
+      flashDuration: 0.12,
+    });
+    const world = this.localToActiveIslandWorld(best.local.x, best.local.y);
+    this.spawnHitParticles(world.x, world.y, best.enemy.accent || '#6ee7ff');
+    this.addFloatingText(world.x, world.y - 28, `${LASER_GUN_COMBAT.damage}`, {
+      color: '#6ee7ff',
+      rarity: 'uncommon',
+    });
+    this.addScreenShake(0.08);
+    this.game.audio.playDroneHit?.();
+    if (defeated) this.handleIslandEnemyDefeated(best.enemy);
   }
 
   applySwordHits(slash) {
@@ -1736,7 +1834,7 @@ export class MiningScene {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = Math.hypot(aim.x, aim.y);
     if (magnitude < 0.12) return null;
-    const range = this.stats?.miningRange || 420;
+    const range = this.getControllerToolAimRange('ship');
     const distance = Math.max(72, range * Math.min(1, magnitude));
     return {
       x: this.ship.x + (aim.x / magnitude) * distance,
@@ -1899,6 +1997,25 @@ export class MiningScene {
       if (!this.collidesWithShip(pickup)) {
         this.pickups[writeIndex] = pickup;
         writeIndex += 1;
+        continue;
+      }
+      if (pickup.age < (pickup.pickupDelay || 0)) {
+        this.pickups[writeIndex] = pickup;
+        writeIndex += 1;
+        continue;
+      }
+      if (pickup.storagePickup) {
+        this.game.systems.inventory.add(pickup.materialId, pickup.amount, { skipSave: true });
+        this.game.saveGame();
+        const material = this.game.systems.materials.getMaterial(pickup.materialId);
+        this.addFloatingText(
+          pickup.x,
+          pickup.y,
+          `+${pickup.amount} ${this.game.systems.materials.getDisplayName(pickup.materialId)}`,
+          { color: material?.color || '#fff2cf', rarity: material?.rarity || 'common' },
+        );
+        this.game.audio.playMineralPickup();
+        this.releasePickup(pickup);
         continue;
       }
       const cargoResult = this.game.systems.inventory.addToRunCargo(pickup.materialId, pickup.amount, {
@@ -2367,7 +2484,7 @@ export class MiningScene {
       jumpReleased: actions.justReleased.jump || actions.justReleased.up,
     });
     this.updateGravityStabilizerInput(actions);
-    this.islandAimPreview = this.getIslandTerrainPreview({ updateFacing: false });
+    this.islandAimPreview = this.isTerrainToolSelected() ? this.getIslandTerrainPreview({ updateFacing: false }) : null;
     this.flagPlacementPreview = this.isFlagToolSelected() ? this.getFlagPlacementPreview() : null;
     this.furnacePlacementPreview = this.isFurnaceToolSelected() ? this.getFurnacePlacementPreview() : null;
     this.craftingStationPlacementPreview = this.isCraftingStationToolSelected() ? this.getCraftingStationPlacementPreview() : null;
@@ -2465,6 +2582,46 @@ export class MiningScene {
 
   isWeaponToolSelected() {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'weapon';
+  }
+
+  isLaserGunToolSelected() {
+    return this.game.input.getSelectedHotbarSlot?.()?.id === 'laserGun';
+  }
+
+  isMinerToolSelected() {
+    return this.game.input.getSelectedHotbarSlot?.()?.id === 'miner';
+  }
+
+  isTerrainToolSelected() {
+    const selectedId = this.game.input.getSelectedHotbarSlot?.()?.id;
+    return selectedId === 'miner'
+      || selectedId === 'flag'
+      || selectedId === 'furnace'
+      || selectedId === 'craftingStation';
+  }
+
+  getCurrentSwordAimRange() {
+    const pattern = SWORD_COMBAT.comboPattern || [];
+    const combo = pattern.length
+      ? pattern[(this.sword?.comboIndex || 0) % pattern.length]
+      : null;
+    return SWORD_COMBAT.slashRange * (combo?.range || 1);
+  }
+
+  getControllerToolAimRange(context = 'island') {
+    const slot = this.game.input.getSelectedHotbarSlot?.();
+    const id = slot?.id || '';
+    const action = slot?.action || '';
+    if (id === 'miner') {
+      return context === 'ship'
+        ? (this.stats?.miningRange || 420)
+        : TERRAIN_LASER_RANGE;
+    }
+    if (id === 'laserGun') return context === 'island' ? 150 : 170;
+    if ((id === 'weapon' || action === 'attack') && context === 'island') return this.getCurrentSwordAimRange();
+    if (id === 'weapon' || id.includes('gun') || id.includes('blaster') || id.includes('drone') || action === 'shoot' || action === 'attack') return 150;
+    if (this.isTerrainToolSelected()) return TERRAIN_LASER_RANGE;
+    return context === 'ship' ? 150 : 120;
   }
 
   getFlagPlacementPreview() {
@@ -2911,6 +3068,8 @@ export class MiningScene {
     const material = this.game.systems.materials.getMaterial(itemId);
     const rarity = material?.rarity || 'common';
     const name = this.game.systems.materials.getDisplayName(itemId);
+    button.dataset.itemId = itemId;
+    button.dataset.inventorySlot = 'true';
     button.classList.add(`rarity-${rarity}`);
     button.style.setProperty('--item-color', material?.color || '#fff2cf');
     button.innerHTML = `
@@ -2919,7 +3078,26 @@ export class MiningScene {
     `;
     button.title = `${name} x${amount} | ${this.game.systems.materials.getRarityLabel(rarity)} | ${this.game.systems.materials.getValue(itemId, amount)} cr`;
     button.setAttribute('aria-label', `${name}, ${amount}`);
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+      if (event.button === 2) {
+        event.preventDefault();
+        this.autoAssignItemToHotbar(itemId);
+        return;
+      }
+      if (event.button !== 0) return;
+      this.beginItemDrag({ itemId, source: 'inventory', pointerEvent: event });
+    });
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.autoAssignItemToHotbar(itemId);
+    });
     button.addEventListener('click', (event) => {
+      if (this.suppressInventoryClick) {
+        this.suppressInventoryClick = false;
+        return;
+      }
       event.stopPropagation();
       this.game.audio.playButtonClick?.();
       this.game.ui.showToast(`${name} x${amount}`, rarity === 'common' ? 'info' : 'success', 1100);
@@ -2979,14 +3157,237 @@ export class MiningScene {
     }
     const material = this.game.systems.materials.getMaterial(itemId);
     const rarity = material?.rarity || 'common';
+    button.dataset.itemId = itemId;
+    button.dataset.inventorySlot = 'true';
     button.classList.add(`rarity-${rarity}`);
     button.innerHTML = `
       <span class="slot-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
       <strong>${amount}</strong>
     `;
     button.title = `${this.game.systems.materials.getDisplayName(itemId)} x${amount}`;
-    button.addEventListener('click', () => this.showItemInfoModal(itemId, amount));
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+      if (event.button === 2) {
+        event.preventDefault();
+        this.autoAssignItemToHotbar(itemId);
+        return;
+      }
+      if (event.button !== 0) return;
+      this.beginItemDrag({ itemId, source: 'inventory', pointerEvent: event });
+    });
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.autoAssignItemToHotbar(itemId);
+    });
+    button.addEventListener('click', () => {
+      if (this.suppressInventoryClick) {
+        this.suppressInventoryClick = false;
+        return;
+      }
+      this.showItemInfoModal(itemId, amount);
+    });
     return button;
+  }
+
+  beginItemDrag({ itemId, source = 'inventory', hotbarSlotIndex = -1, pointerEvent } = {}) {
+    if (!itemId || !pointerEvent || this.game.systems.inventory.getStoredAmount(itemId) <= 0) return;
+    pointerEvent.preventDefault();
+    pointerEvent.stopPropagation();
+    this.cancelItemDrag();
+    const material = this.game.systems.materials.getMaterial(itemId);
+    const ghost = document.createElement('div');
+    ghost.className = 'item-drag-ghost';
+    ghost.style.setProperty('--item-color', material?.color || '#fff2cf');
+    ghost.innerHTML = `<span>${material?.icon || '?'}</span>`;
+    document.body.append(ghost);
+    this.itemDragState = {
+      itemId,
+      source,
+      hotbarSlotIndex,
+      startX: pointerEvent.clientX,
+      startY: pointerEvent.clientY,
+      pointerId: pointerEvent.pointerId,
+      moved: false,
+      ghost,
+    };
+    this.updateItemDrag(pointerEvent);
+    this.itemDragMoveHandler = (event) => this.updateItemDrag(event);
+    this.itemDragUpHandler = (event) => this.finishItemDrag(event);
+    window.addEventListener('pointermove', this.itemDragMoveHandler, { passive: false });
+    window.addEventListener('pointerup', this.itemDragUpHandler, { passive: false });
+    window.addEventListener('pointercancel', this.itemDragUpHandler, { passive: false });
+  }
+
+  updateItemDrag(event) {
+    const drag = this.itemDragState;
+    if (!drag || (drag.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && dx * dx + dy * dy > 36) {
+      drag.moved = true;
+      drag.ghost?.classList.add('is-dragging');
+      this.suppressInventoryClick = true;
+    }
+    if (drag.ghost) {
+      drag.ghost.style.transform = `translate(${event.clientX}px, ${event.clientY}px)`;
+    }
+    event.preventDefault?.();
+  }
+
+  finishItemDrag(event) {
+    const drag = this.itemDragState;
+    if (!drag || (drag.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
+    this.cleanupItemDragListeners();
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    if (!drag.moved && drag.source === 'hotbar' && drag.hotbarSlotIndex >= 0) {
+      this.game.input.selectHotbarSlot(drag.hotbarSlotIndex);
+      this.refreshHotbar(true);
+    } else if (drag.moved) {
+      const hotbarIndex = this.getHotbarSlotIndexFromElement(target);
+      if (hotbarIndex >= 0) {
+        this.assignInventoryItemToHotbar(drag.itemId, hotbarIndex, {
+          clearSourceIndex: drag.source === 'hotbar' ? drag.hotbarSlotIndex : -1,
+        });
+      } else if (this.isInventoryDropTarget(target)) {
+        this.dropInventoryItemToWorld(drag.itemId, {
+          source: drag.source,
+          hotbarSlotIndex: drag.hotbarSlotIndex,
+        });
+      }
+    }
+    drag.ghost?.remove();
+    this.itemDragState = null;
+    event.preventDefault?.();
+  }
+
+  cleanupItemDragListeners() {
+    if (this.itemDragMoveHandler) window.removeEventListener('pointermove', this.itemDragMoveHandler);
+    if (this.itemDragUpHandler) {
+      window.removeEventListener('pointerup', this.itemDragUpHandler);
+      window.removeEventListener('pointercancel', this.itemDragUpHandler);
+    }
+    this.itemDragMoveHandler = null;
+    this.itemDragUpHandler = null;
+  }
+
+  cancelItemDrag() {
+    this.cleanupItemDragListeners();
+    this.itemDragState?.ghost?.remove();
+    this.itemDragState = null;
+  }
+
+  getHotbarSlotIndexFromElement(target) {
+    const slot = target?.closest?.('[data-hotbar-index]');
+    if (!slot) return -1;
+    const index = Number(slot.dataset.hotbarIndex);
+    return Number.isFinite(index) ? index : -1;
+  }
+
+  isInventoryDropTarget(target) {
+    if (!target) return true;
+    if (target.closest?.('.tool-hotbar, .quick-inventory, .survival-panel')) return false;
+    return true;
+  }
+
+  assignInventoryItemToHotbar(itemId, hotbarIndex, { clearSourceIndex = -1 } = {}) {
+    const slot = getHotbarSlotForItem(itemId);
+    if (!slot) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('That item cannot be equipped to the hotbar yet', 'danger', 1200);
+      return false;
+    }
+    if (clearSourceIndex >= 0 && clearSourceIndex !== hotbarIndex) {
+      this.game.input.clearHotbarSlot?.(clearSourceIndex, { notify: false });
+    }
+    const assigned = this.game.input.assignHotbarSlot?.(hotbarIndex, slot.id);
+    if (!assigned) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('You need that item in inventory first', 'danger', 1200);
+      return false;
+    }
+    this.refreshHotbar(true);
+    this.game.audio.playButtonClick?.();
+    this.game.ui.showToast(`${slot.label} assigned to slot ${hotbarIndex + 1}`, 'success', 1000);
+    return true;
+  }
+
+  autoAssignItemToHotbar(itemId) {
+    const slot = getHotbarSlotForItem(itemId);
+    if (!slot) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('No hotbar tool for this item yet', 'danger', 1100);
+      return false;
+    }
+    const ids = this.game.input.hotbarSlotIds || [];
+    let index = ids.findIndex((slotId) => slotId === slot.id);
+    if (index < 0) index = ids.findIndex((slotId) => !slotId);
+    if (index < 0) index = Math.max(0, HOTBAR_SLOT_COUNT - 1);
+    return this.assignInventoryItemToHotbar(itemId, index);
+  }
+
+  dropInventoryItemToWorld(itemId, { source = 'inventory', hotbarSlotIndex = -1 } = {}) {
+    if (!this.game.systems.inventory.remove(itemId, 1, { skipSave: true })) {
+      this.game.audio.playError?.();
+      return false;
+    }
+    if (source === 'hotbar' && hotbarSlotIndex >= 0 && this.game.systems.inventory.getStoredAmount(itemId) <= 0) {
+      this.game.input.clearHotbarSlot?.(hotbarSlotIndex, { notify: false });
+    }
+    this.spawnDroppedInventoryItem(itemId);
+    this.game.saveGame();
+    this.updateQuickInventory(true);
+    this.refreshHotbar(true);
+    this.game.audio.playMineralPickup?.();
+    return true;
+  }
+
+  spawnDroppedInventoryItem(itemId) {
+    const material = this.game.systems.materials.getMaterial(itemId);
+    if (this.islandMode === 'onIsland' && this.activeIsland && this.islandPlayer) {
+      const drop = {
+        x: this.islandPlayer.centerX + this.islandPlayer.facing * 42,
+        y: this.islandPlayer.centerY - 18,
+      };
+      const pickup = this.acquireIslandPickup({
+        materialId: itemId,
+        amount: 1,
+        x: drop.x,
+        y: drop.y,
+        seed: Math.random(),
+        material,
+        storagePickup: true,
+        pickupDelay: 0.65,
+      });
+      pickup.vx = this.islandPlayer.facing * 92;
+      pickup.vy = -80;
+      this.islandPickups.push(pickup);
+      const world = this.activeIsland.localToWorldRotated(drop.x, drop.y, this.getIslandViewRotation());
+      this.addFloatingText(world.x, world.y - 22, `${this.game.systems.materials.getDisplayName(itemId)} dropped`, {
+        color: material?.color || '#fff2cf',
+        rarity: material?.rarity || 'common',
+      });
+      return;
+    }
+
+    const angle = this.ship?.angle || 0;
+    const pickup = this.acquirePickup({
+      materialId: itemId,
+      amount: 1,
+      x: (this.ship?.x || 0) - Math.cos(angle) * 46,
+      y: (this.ship?.y || 0) - Math.sin(angle) * 46,
+      seed: Math.random(),
+      material,
+      storagePickup: true,
+      pickupDelay: 0.75,
+    });
+    pickup.vx = (this.ship?.vx || 0) * 0.2 - Math.cos(angle) * 70;
+    pickup.vy = (this.ship?.vy || 0) * 0.2 - Math.sin(angle) * 70;
+    this.pickups.push(pickup);
+  }
+
+  refreshHotbar(force = false) {
+    this.hotbar?.update(force);
   }
 
   showItemInfoModal(itemId, amount = 0) {
@@ -3064,8 +3465,10 @@ export class MiningScene {
   }
 
   ensureVoxelCraftState() {
-    const recipe = this.getVoxelCraftRecipes()[0];
-    if (this.voxelCraftState?.recipeId === recipe.id) return this.voxelCraftState;
+    const recipes = this.getVoxelCraftRecipes();
+    const existingRecipe = recipes.find((recipe) => recipe.id === this.voxelCraftState?.recipeId);
+    if (existingRecipe) return this.voxelCraftState;
+    const recipe = recipes[0];
     this.voxelCraftState = {
       recipeId: recipe.id,
       selectedMaterialId: Object.keys(recipe.requirements)[0],
@@ -3095,18 +3498,32 @@ export class MiningScene {
   }
 
   getVoxelCraftRecipes() {
-    const recipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
-    return [{
-      id: recipe.id || 'starterFurnace',
-      name: recipe.name || 'Starter Furnace',
+    const furnaceRecipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
+    const laserGunRecipe = gameBalance.earlyGame?.crashStart?.laserGunRecipe || {};
+    return [
+    {
+      id: furnaceRecipe.id || 'starterFurnace',
+      name: furnaceRecipe.name || 'Starter Furnace',
       icon: 'Fu',
       category: 'Survival',
       description: 'Sculpt a custom furnace body. Leave an inner chamber, socket the Fire Core into the body, and use copper as a heat path.',
       outputItemId: 'starterFurnace',
-      requirements: recipe.requirements || { stoneOre: 20, copperShards: 10, fireCore: 1 },
-      gridSize: recipe.gridSize || 16,
-      shapeRules: recipe.shapeRules || {},
-    }];
+      requirements: furnaceRecipe.requirements || { stoneOre: 20, copperShards: 10, fireCore: 1 },
+      gridSize: furnaceRecipe.gridSize || 16,
+      shapeRules: furnaceRecipe.shapeRules || {},
+    },
+    {
+      id: laserGunRecipe.id || 'laserGun',
+      name: laserGunRecipe.name || 'Laser Gun',
+      icon: 'LG',
+      category: 'Weapon',
+      description: 'Place one Fire Core, five Iron Ingots, and four Copper Ingots anywhere in the grid to assemble a laser sidearm.',
+      outputItemId: 'laserGun',
+      requirements: laserGunRecipe.requirements || { fireCore: 1, ironIngot: 5, copperIngot: 4 },
+      gridSize: laserGunRecipe.gridSize || 16,
+      shapeRules: laserGunRecipe.shapeRules || {},
+    },
+    ];
   }
 
   populateVoxelCraftingContent(content) {
@@ -3283,10 +3700,10 @@ export class MiningScene {
       this.autofillVoxelRecipe(recipe, state);
       this.populateVoxelCraftingContent(content);
     }, { icon: 'A', variant: 'metal' }).element;
-    const craftButton = new Button('Craft Blueprint', () => {
+    const craftButton = new Button(recipe.outputItemId === 'starterFurnace' ? 'Craft Blueprint' : 'Craft Item', () => {
       this.craftVoxelRecipe(recipe, state);
       this.populateVoxelCraftingContent(content);
-    }, { icon: 'Fu', variant: 'forge' }).element;
+    }, { icon: recipe.icon || 'C', variant: 'forge' }).element;
     craftButton.disabled = !validation.ok;
     actions.append(clearButton, autoButton, craftButton);
 
@@ -3342,7 +3759,7 @@ export class MiningScene {
       edge: terrain?.edge || material?.color || fallbackEdge,
       visualType: itemId === 'fireCore'
         ? 'core'
-        : itemId === 'copperShards' || itemId === 'copperIngot'
+        : itemId === 'copperShards' || itemId === 'copperIngot' || itemId === 'ironIngot'
           ? 'metal'
           : 'stone',
     };
@@ -3527,6 +3944,16 @@ export class MiningScene {
       if (!cell.layers.includes(itemId)) cell.layers.push(itemId);
       state.grid[index] = cell;
     };
+    if (recipe.outputItemId === 'laserGun') {
+      [
+        [5, 7], [6, 7], [7, 7], [8, 7], [9, 7],
+      ].slice(0, recipe.requirements.ironIngot || 0).forEach(([x, y]) => set(x, y, 'ironIngot'));
+      [
+        [6, 8], [7, 8], [8, 8], [9, 8],
+      ].slice(0, recipe.requirements.copperIngot || 0).forEach(([x, y]) => set(x, y, 'copperIngot'));
+      if (recipe.requirements.fireCore) set(4, 8, 'fireCore');
+      return;
+    }
     const stoneCoords = [
       [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
       [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10],
@@ -3556,6 +3983,18 @@ export class MiningScene {
     const sculptGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
     const cells = this.getVoxelCraftCells(recipe, sculptGrid);
     const tileSize = this.activeIsland?.terrain?.cellSize || 22;
+    if (recipe.outputItemId !== 'starterFurnace') {
+      this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
+      this.autoAssignItemToHotbar(recipe.outputItemId);
+      this.game.state.stats ||= {};
+      this.game.state.stats.totalItemsCrafted = (this.game.state.stats.totalItemsCrafted || 0) + 1;
+      this.game.saveGame();
+      this.game.audio.playSuccess?.();
+      this.game.ui.showToast(`${recipe.name} crafted`, 'success', 1600);
+      state.grid.fill(null);
+      state.detailGrid?.fill(null);
+      return true;
+    }
     const blueprint = {
       id: `furnace-blueprint-${Date.now().toString(36)}-${Math.floor(Math.random() * 9999).toString(36)}`,
       recipeId: recipe.id,
@@ -3571,6 +4010,7 @@ export class MiningScene {
     story.furnaceInventory.push(blueprint);
     story.furnaceBuilt = true;
     this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
+    this.autoAssignItemToHotbar(recipe.outputItemId);
     this.game.saveGame();
     this.game.audio.playSuccess?.();
     this.game.ui.showToast(`${recipe.name} blueprint crafted`, 'success', 1600);
@@ -3696,6 +4136,7 @@ export class MiningScene {
       shape: furnace.shape || placed?.shape || this.createDefaultFurnaceBlueprint().shape,
     });
     this.game.systems.inventory.add('starterFurnace', 1, { skipSave: true });
+    this.autoAssignItemToHotbar('starterFurnace');
     story.furnaces = (story.furnaces || []).filter((item) => item.id !== furnace.id);
     this.placedFurnaces = this.placedFurnaces.filter((item) => item.id !== furnace.id);
     this.placedFurnace = this.placedFurnaces[0] || null;
@@ -4819,6 +5260,11 @@ export class MiningScene {
         }
         continue;
       }
+      if (pickup.age < (pickup.pickupDelay || 0)) {
+        this.islandPickups[writeIndex] = pickup;
+        writeIndex += 1;
+        continue;
+      }
       if (!this.collectIslandPickup(pickup)) {
         this.islandPickups[writeIndex] = pickup;
         writeIndex += 1;
@@ -4852,6 +5298,24 @@ export class MiningScene {
   }
 
   collectIslandPickup(pickup) {
+    if (pickup.storagePickup) {
+      this.game.systems.inventory.add(pickup.materialId, pickup.amount, { skipSave: true });
+      this.game.saveGame();
+      this.game.systems.objectives.record('materialCollected', {
+        materialId: pickup.materialId,
+        amount: pickup.amount,
+      });
+      const material = this.game.systems.materials.getMaterial(pickup.materialId);
+      const world = this.activeIsland.localToWorldRotated(pickup.x, pickup.y, this.getIslandViewRotation());
+      this.addFloatingText(
+        world.x,
+        world.y,
+        `+${pickup.amount} ${this.game.systems.materials.getDisplayName(pickup.materialId)}`,
+        { color: material?.color || '#fff2cf', rarity: material?.rarity || 'common' },
+      );
+      this.game.audio.playIslandPickup?.();
+      return true;
+    }
     if (this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId) {
       this.collectCrashStarterMaterial(pickup.materialId, pickup.amount, pickup);
       return true;
@@ -4930,34 +5394,45 @@ export class MiningScene {
     this.game.audio.playAnimalDefeated?.();
 
     const drops = enemy.data?.drops || {};
-    Object.entries(drops).forEach(([materialId, amount]) => {
+    Object.entries(drops).forEach(([materialId, amount], index) => {
       const material = this.game.systems.materials.getMaterial(materialId);
-      const dropText = `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`;
-      if (this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId) {
-        this.game.systems.inventory.add(materialId, amount, { skipSave: true });
-        this.game.saveGame();
-      } else {
-        const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
-          capacity: this.stats.cargoCapacity,
-        });
-        if (!result.ok) {
-          this.game.ui.showToast('Cargo Full', 'danger');
-          this.game.audio.playCargoFull();
-          this.addFloatingText(world.x, world.y - 44, 'Cargo Full', { color: '#ff756f', rarity: 'rare' });
-          return;
-        }
-        this.runCargo = result.cargo;
-        this.runCargoWeight = result.currentWeight;
-        this.stats.cargo = Math.ceil(this.runCargoWeight);
-        this.runCargoCount += amount;
-      }
-      this.game.systems.objectives.record('materialCollected', { materialId, amount });
-      this.addFloatingText(world.x, world.y - 44, dropText, {
-        color: material?.color || '#7ee36d',
-        rarity: material?.rarity || 'common',
+      this.spawnIslandLootDrop(materialId, amount, {
+        worldX: world.x + Math.cos(index * 2.4) * 18,
+        worldY: world.y - 8 + Math.sin(index * 2.4) * 18,
+        material,
+        storagePickup: this.crashStart && this.activeIsland?.id === this.getStoryState().starterPlanetId,
       });
-      this.game.audio.playIslandPickup?.();
     });
+  }
+
+  spawnIslandLootDrop(materialId, amount = 1, {
+    worldX = 0,
+    worldY = 0,
+    material = null,
+    storagePickup = false,
+    pickupDelay = 0.25,
+  } = {}) {
+    if (!this.activeIsland) return null;
+    const local = this.activeIsland.worldToLocalRotated(worldX, worldY, this.getIslandViewRotation());
+    const pickup = this.acquireIslandPickup({
+      materialId,
+      amount,
+      x: local.x,
+      y: local.y,
+      seed: Math.random(),
+      material: material || this.game.systems.materials.getMaterial(materialId),
+      storagePickup,
+      pickupDelay,
+    });
+    const angle = Math.random() * Math.PI * 2;
+    pickup.vx = Math.cos(angle) * 74;
+    pickup.vy = Math.sin(angle) * 74 - 28;
+    this.islandPickups.push(pickup);
+    this.addFloatingText(worldX, worldY - 34, `${amount} ${this.game.systems.materials.getDisplayName(materialId)} dropped`, {
+      color: pickup.material?.color || '#7ee36d',
+      rarity: pickup.material?.rarity || 'common',
+    });
+    return pickup;
   }
 
   getIslandAimPoint() {
@@ -4968,7 +5443,7 @@ export class MiningScene {
       return this.screenToIslandLocal(pointer.canvasX, pointer.canvasY);
     }
     return {
-      x: this.islandPlayer.centerX + this.islandPlayer.facing * TERRAIN_LASER_RANGE,
+      x: this.islandPlayer.centerX + this.islandPlayer.facing * this.getControllerToolAimRange('island'),
       y: this.islandPlayer.centerY - 8,
     };
   }
@@ -4982,7 +5457,8 @@ export class MiningScene {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = Math.hypot(aim.x, aim.y);
     if (magnitude < 0.12) return null;
-    const distance = Math.max(48, TERRAIN_LASER_RANGE * Math.min(1, magnitude));
+    const range = this.getControllerToolAimRange('island');
+    const distance = Math.max(Math.min(42, range * 0.36), range * Math.min(1, magnitude));
     const localAim = this.rotateScreenVectorToIslandLocal(aim.x / magnitude, aim.y / magnitude);
     return {
       x: this.islandPlayer.centerX + localAim.x * distance,
@@ -5386,6 +5862,7 @@ export class MiningScene {
         materialPickups: island === this.activeIsland ? this.islandPickups : [],
         terrainDebug: this.game.state.debug?.terrain,
         drawCombatEffects: island === this.activeIsland ? (localCtx) => this.drawIslandCombatEffectsLocal(localCtx) : null,
+        drawPlayerEquipment: island === this.activeIsland ? (localCtx) => this.drawIslandPlayerEquipmentLocal(localCtx) : null,
         drawMovementDebug: island === this.activeIsland ? (localCtx) => this.drawPlanetMovementDebug(localCtx) : null,
       });
     }
@@ -5814,6 +6291,7 @@ export class MiningScene {
     const furnacePlacementMode = this.isFurnaceToolSelected();
     const craftingStationPlacementMode = this.isCraftingStationToolSelected();
     const placementMode = flagPlacementMode || furnacePlacementMode || craftingStationPlacementMode;
+    const terrainToolMode = this.isMinerToolSelected() || placementMode || Boolean(this.islandMiningBeam);
     const state = placementMode
       ? (
         flagPlacementMode
@@ -5822,7 +6300,7 @@ export class MiningScene {
             ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
             : (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
       )
-      : (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false }));
+      : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
       this.terrainLaserRenderer.drawRangeField(ctx, {
         worldToScreen: (x, y) => ({ x, y }),
@@ -5862,10 +6340,11 @@ export class MiningScene {
   }
 
   drawIslandCombatEffectsLocal(ctx) {
-    if (!this.sword?.effects?.length) return;
+    if (!this.sword?.effects?.length && !this.laserGun?.effects?.length) return;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    for (const effect of this.laserGun?.effects || []) this.drawLaserGunShotEffect(ctx, effect);
     for (const effect of this.sword.effects) {
       if (effect.kind === 'slash') this.drawSwordSlashEffect(ctx, effect);
       else if (effect.kind === 'spark') this.drawSwordSparkEffect(ctx, effect);
@@ -5880,6 +6359,98 @@ export class MiningScene {
       ctx.arc(slash.origin.x, slash.origin.y, slash.range, slash.aimAngle - slash.arc * 0.5, slash.aimAngle + slash.arc * 0.5);
       ctx.closePath();
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  getIslandGunOriginLocal() {
+    if (!this.islandPlayer) return { x: 0, y: 0 };
+    return {
+      x: this.islandPlayer.centerX,
+      y: this.islandPlayer.centerY - 5,
+    };
+  }
+
+  getIslandPlayerAimScreenAngle() {
+    if (!this.islandPlayer) return 0;
+    const origin = this.getIslandGunOriginLocal();
+    const aim = this.getIslandAimPoint();
+    const dx = aim.x - origin.x;
+    const dy = aim.y - origin.y;
+    const rotation = this.getIslandViewRotation();
+    const screenDx = dx * Math.cos(rotation) - dy * Math.sin(rotation);
+    const screenDy = dx * Math.sin(rotation) + dy * Math.cos(rotation);
+    if (Math.hypot(screenDx, screenDy) < 0.01) return this.islandPlayer.facing >= 0 ? 0 : Math.PI;
+    return Math.atan2(screenDy, screenDx);
+  }
+
+  drawIslandPlayerEquipmentLocal(ctx) {
+    if (!this.isLaserGunToolSelected() || !this.islandPlayer) return;
+    this.drawLaserGunOnPlayer(ctx);
+  }
+
+  drawLaserGunOnPlayer(ctx) {
+    const player = this.islandPlayer;
+    const angle = this.getIslandPlayerAimScreenAngle();
+    const torsoX = player.centerX + Math.cos(angle) * 4;
+    const torsoY = player.centerY + 2 + Math.sin(angle) * 2;
+    ctx.save();
+    ctx.translate(torsoX, torsoY);
+    ctx.rotate(angle);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = '#1c3448';
+    ctx.strokeStyle = 'rgba(4, 10, 18, 0.78)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.roundRect(-5, -6, 28, 12, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#6ee7ff';
+    ctx.beginPath();
+    ctx.roundRect(4, -3, 12, 6, 3);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(110, 231, 255, 0.72)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(20, 0);
+    ctx.lineTo(29, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#bf8352';
+    ctx.strokeStyle = 'rgba(4, 10, 18, 0.68)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(-1, 5, 8, 13, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawLaserGunShotEffect(ctx, effect) {
+    const progress = clamp01(effect.age / Math.max(0.001, effect.life));
+    const fade = 1 - progress;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.strokeStyle = effect.hit ? 'rgba(110, 231, 255, 0.96)' : 'rgba(110, 231, 255, 0.56)';
+    ctx.lineWidth = effect.hit ? 7 : 5;
+    ctx.shadowColor = '#6ee7ff';
+    ctx.shadowBlur = effect.hit ? 16 : 9;
+    ctx.beginPath();
+    ctx.moveTo(effect.origin.x, effect.origin.y);
+    ctx.lineTo(effect.end.x, effect.end.y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(effect.origin.x, effect.origin.y);
+    ctx.lineTo(effect.end.x, effect.end.y);
+    ctx.stroke();
+    if (effect.hit) {
+      ctx.fillStyle = 'rgba(110, 231, 255, 0.55)';
+      ctx.beginPath();
+      ctx.arc(effect.end.x, effect.end.y, 10 + progress * 8, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }

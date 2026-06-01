@@ -1,8 +1,20 @@
 export const HOTBAR_SLOT_COUNT = 7;
 
-export const hotbarSlots = [
+export const EMPTY_HOTBAR_SLOT = {
+  id: 'empty',
+  label: 'Empty',
+  shortLabel: 'Empty',
+  icon: '+',
+  iconHtml: '<span class="tool-icon-shape icon-empty"><i></i></span>',
+  action: null,
+  tone: 'empty',
+  description: 'Open tool slot.',
+};
+
+export const hotbarSlotCatalog = [
   {
     id: 'miner',
+    inventoryItemId: 'minerTool',
     label: 'Miner',
     shortLabel: 'Mine',
     icon: 'M',
@@ -13,6 +25,7 @@ export const hotbarSlots = [
   },
   {
     id: 'weapon',
+    inventoryItemId: 'swordWeapon',
     label: 'Sword',
     shortLabel: 'Slash',
     icon: 'W',
@@ -22,7 +35,19 @@ export const hotbarSlots = [
     description: 'Swing a wide energy blade toward the cursor.',
   },
   {
+    id: 'laserGun',
+    inventoryItemId: 'laserGun',
+    label: 'Laser Gun',
+    shortLabel: 'Laser',
+    icon: 'LG',
+    iconHtml: '<span class="tool-icon-shape icon-laser-gun"><i></i></span>',
+    action: 'attack',
+    tone: 'laser',
+    description: 'A crafted sidearm that rotates with your aim while equipped.',
+  },
+  {
     id: 'stabilizer',
+    inventoryItemId: 'gravityStabilizer',
     label: 'Gravity',
     shortLabel: 'Grav',
     icon: 'G',
@@ -33,6 +58,7 @@ export const hotbarSlots = [
   },
   {
     id: 'flag',
+    inventoryItemId: 'markerFlag',
     label: 'Flag',
     shortLabel: 'Flag',
     icon: 'F',
@@ -43,6 +69,7 @@ export const hotbarSlots = [
   },
   {
     id: 'craftingStation',
+    inventoryItemId: 'craftingStationKit',
     label: 'Crafting Station',
     shortLabel: 'Craft',
     icon: 'Cr',
@@ -53,6 +80,7 @@ export const hotbarSlots = [
   },
   {
     id: 'furnace',
+    inventoryItemId: 'starterFurnace',
     label: 'Furnace',
     shortLabel: 'Furn',
     icon: 'Fu',
@@ -61,18 +89,30 @@ export const hotbarSlots = [
     tone: 'furnace',
     description: 'Place a crafted furnace blueprint.',
   },
-  {
-    id: 'empty-7',
-    label: 'Empty',
-    shortLabel: 'Empty',
-    icon: '+',
-    iconHtml: '<span class="tool-icon-shape icon-empty"><i></i></span>',
-    action: null,
-    tone: 'empty',
-    description: 'Open tool slot.',
-  },
 ];
 
+export const DEFAULT_HOTBAR_SLOT_IDS = [
+  'miner',
+  'weapon',
+  'stabilizer',
+  'flag',
+  'craftingStation',
+  null,
+  null,
+];
+
+export const hotbarSlots = DEFAULT_HOTBAR_SLOT_IDS.map((slotId) => getHotbarSlotById(slotId));
+
+export function getHotbarSlotById(slotId) {
+  if (!slotId) return EMPTY_HOTBAR_SLOT;
+  return hotbarSlotCatalog.find((slot) => slot.id === slotId) || EMPTY_HOTBAR_SLOT;
+}
+
+export function getHotbarSlotForItem(itemId) {
+  if (!itemId) return null;
+  return hotbarSlotCatalog.find((slot) => slot.inventoryItemId === itemId) || null;
+}
+
 export function getHotbarSlot(index) {
-  return hotbarSlots[((index % HOTBAR_SLOT_COUNT) + HOTBAR_SLOT_COUNT) % HOTBAR_SLOT_COUNT] || hotbarSlots[0];
+  return hotbarSlots[((index % HOTBAR_SLOT_COUNT) + HOTBAR_SLOT_COUNT) % HOTBAR_SLOT_COUNT] || EMPTY_HOTBAR_SLOT;
 }

@@ -234,6 +234,8 @@ export class UIManager {
           this.showPauseMenu(game);
         }, { icon: 'T', variant: 'metal' }).element,
         new Button('Manual Save', () => game.manualSave(), { icon: 'S', variant: 'metal' }).element,
+        new Button('Refresh App', () => game.refreshApp(), { icon: 'R', variant: 'metal' }).element,
+        new Button('Exit Fullscreen', () => game.exitFullscreen(), { icon: '[]', variant: 'metal' }).element,
         new Button('Return to Station', () => game.returnToStation(), { icon: '<' }).element,
         new Button('Reset Save', () => game.resetSave(), { icon: '!', variant: 'danger' }).element,
         new Button(mutedLabel, () => {

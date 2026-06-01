@@ -23,6 +23,7 @@ import { UpgradeScene } from '../scenes/UpgradeScene.js?v=115';
 import { StorageScene } from '../scenes/StorageScene.js?v=115';
 import { IslandScene } from '../scenes/IslandScene.js?v=115';
 import { gameBalance } from '../data/gameBalance.js?v=115';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=115';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -81,6 +82,7 @@ export class Game {
         precisionCutter: gameBalance.shipBaseStats.precisionCutter,
       },
       inventory: { ...gameBalance.startingInventory },
+      hotbar: [...DEFAULT_HOTBAR_SLOT_IDS],
       runCargo: {},
       upgrades: {},
       research: {},
@@ -122,7 +124,9 @@ export class Game {
         },
       },
       tutorial: {},
-      progression: {},
+      progression: {
+        toolInventoryMigrated: true,
+      },
       achievements: {},
       navigation: {
         gpsUnlocked: false,
@@ -150,6 +154,9 @@ export class Game {
       station: { ...defaultState.station, ...savedState.station },
       mining: { ...defaultState.mining, ...savedState.mining },
       inventory: this.migrateInventory({ ...defaultState.inventory, ...savedState.inventory }),
+      hotbar: Array.isArray(savedState.hotbar)
+        ? this.normalizeSavedHotbar(savedState.hotbar, defaultState.hotbar)
+        : [...defaultState.hotbar],
       runCargo: this.migrateInventory({ ...defaultState.runCargo, ...savedState.runCargo }),
       upgrades: { ...defaultState.upgrades, ...savedState.upgrades },
       research: { ...defaultState.research, ...savedState.research },
@@ -227,7 +234,21 @@ export class Game {
     };
     if (merged.story?.furnaceBuilt) delete merged.inventory.fireCore;
     if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
+    if (!savedState.progression?.toolInventoryMigrated) {
+      ['minerTool', 'swordWeapon', 'gravityStabilizer', 'markerFlag'].forEach((itemId) => {
+        if ((merged.inventory[itemId] || 0) <= 0) merged.inventory[itemId] = 1;
+      });
+      merged.progression ||= {};
+      merged.progression.toolInventoryMigrated = true;
+    }
     return merged;
+  }
+
+  normalizeSavedHotbar(savedHotbar = [], defaultHotbar = DEFAULT_HOTBAR_SLOT_IDS) {
+    return Array.from({ length: DEFAULT_HOTBAR_SLOT_IDS.length }, (_, index) => {
+      const slot = savedHotbar[index];
+      return slot === undefined ? (defaultHotbar[index] ?? null) : slot;
+    });
   }
 
   migrateInventory(inventory) {
@@ -273,6 +294,7 @@ export class Game {
     this.audio.setMuted(Boolean(this.state.settings?.audioMuted));
     this.applyTouchControlsSetting();
     this.systems.upgrades.applyUpgrades();
+    this.configureInputHotbar();
 
     this.registerScenes();
     this.ui.setupGlobalControls(this);
@@ -297,6 +319,20 @@ export class Game {
     this.sceneManager.register('upgrades', UpgradeScene);
     this.sceneManager.register('storage', StorageScene);
     this.sceneManager.register('island', IslandScene);
+  }
+
+  configureInputHotbar() {
+    this.state.hotbar = this.normalizeSavedHotbar(this.state.hotbar, DEFAULT_HOTBAR_SLOT_IDS);
+    this.input.configureHotbar?.({
+      slotIds: this.state.hotbar,
+      isSlotOwned: (slot) => !slot?.inventoryItemId || this.systems.inventory.getStoredAmount(slot.inventoryItemId) > 0,
+      onChange: (slotIds) => {
+        this.state.hotbar = this.normalizeSavedHotbar(slotIds, Array(DEFAULT_HOTBAR_SLOT_IDS.length).fill(null));
+        this.sceneManager.current?.refreshHotbar?.(true);
+        this.saveGame();
+      },
+    });
+    if (this.input.hotbarSlotIds) this.state.hotbar = [...this.input.hotbarSlotIds];
   }
 
   resize() {
@@ -360,6 +396,7 @@ export class Game {
       this.state = this.createInitialState({ worldSeed: this.createWorldSeed() });
       this.systems = this.createSystems();
       this.systems.upgrades.applyUpgrades({ refuel: true, repair: true });
+      this.configureInputHotbar();
       this.applyTouchControlsSetting();
       this.saveGame();
       this.paused = false;
@@ -376,6 +413,21 @@ export class Game {
     this.paused = typeof forceState === 'boolean' ? forceState : !this.paused;
     if (this.paused) this.ui.showPauseMenu(this);
     else this.ui.hidePauseMenu();
+  }
+
+  refreshApp() {
+    this.manualSave?.();
+    window.location.reload();
+  }
+
+  exitFullscreen() {
+    if (!document.fullscreenElement || !document.exitFullscreen) {
+      this.ui.showToast('Already windowed', 'default', 1100);
+      return;
+    }
+    document.exitFullscreen()
+      .then(() => this.ui.showToast('Exited fullscreen', 'success', 1100))
+      .catch(() => this.ui.showToast('Could not exit fullscreen', 'danger', 1400));
   }
 
   applyTouchControlsSetting() {

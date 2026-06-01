@@ -1441,7 +1441,7 @@ export class TerrainGrid {
     return clamp01(this.damage[this.index(col, row)] / data.hardness);
   }
 
-  markDirtyCell(col, row, padding = 5) {
+  markDirtyCell(col, row, padding = 2) {
     const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
     const chunkCol = Math.floor(col / chunkSize);
     const chunkRow = Math.floor(row / chunkSize);
@@ -2476,7 +2476,7 @@ export class TerrainGrid {
   }
 
   redrawTerrainRegion(ctx, bounds) {
-    const clearPadding = Math.max(this.cellSize * 4, this.roughnessRenderEnabled ? this.cellSize * 5 : this.cellSize * 3);
+    const clearPadding = Math.max(this.cellSize * 2.25, this.roughnessRenderEnabled ? this.cellSize * 2.8 : this.cellSize * 2.2);
     const cellPadding = Math.max(1, Math.ceil(clearPadding / this.cellSize));
     const paintBounds = {
       minCol: clamp(bounds.minCol - cellPadding, 0, this.cols - 1),
@@ -3844,7 +3844,7 @@ export class TerrainGrid {
   }
 
   createRoughContourLoopsFromSource(sourceLoops) {
-    const roughLoops = sourceLoops.map((loop, loopIndex) => {
+    const roughLoops = sourceLoops.map((loop) => {
       const sourcePoints = loop.points || [];
       const points = [];
       for (let index = 0; index < sourcePoints.length; index += 1) {
@@ -3864,7 +3864,9 @@ export class TerrainGrid {
           const style = this.getMaterialRoughnessStyle(material);
           const strength = Math.min(this.cellSize * 0.18, Math.max(0, style.edgeNoiseStrength ?? 2.8));
           const noiseScale = Math.max(0.1, style.edgeNoiseScale ?? 0.72);
-          const salt = loopIndex * 997 + index * 43 + sub * 11 + material * 131;
+          const salt = material * 131
+            + Math.round(base.x * 0.73) * 17
+            + Math.round(base.y * 0.73) * 31;
           const outwardNoise = signedHash2D(
             Math.round(base.x * noiseScale),
             Math.round(base.y * noiseScale),
@@ -3992,13 +3994,13 @@ export class TerrainGrid {
             maxX: Math.max(a.x, b.x),
             maxY: Math.max(a.y, b.y),
           }, clipBounds)) continue;
-          callback(this.createLocalRoughContourSegment(a, b, col, row));
+          callback(this.createLocalRoughContourSegment(a, b));
         }
       }
     }
   }
 
-  createLocalRoughContourSegment(a, b, gridCol = 0, gridRow = 0) {
+  createLocalRoughContourSegment(a, b) {
     const tangent = { x: b.x - a.x, y: b.y - a.y };
     const length = Math.hypot(tangent.x, tangent.y) || 1;
     const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
@@ -4011,17 +4013,21 @@ export class TerrainGrid {
     const roughPoint = (point, salt, pointStrength = strength) => {
       const qx = Math.round(point.x * 0.45);
       const qy = Math.round(point.y * 0.45);
-      const normalNoise = signedHash2D(qx, qy, this.seed, material * 811 + salt);
-      const tangentNoise = signedHash2D(qy, qx, this.seed, material * 823 + salt);
+      const pointSalt = material * 811
+        + Math.round(point.x * 0.73) * 19
+        + Math.round(point.y * 0.73) * 37
+        + salt;
+      const normalNoise = signedHash2D(qx, qy, this.seed, pointSalt);
+      const tangentNoise = signedHash2D(qy, qx, this.seed, pointSalt + 211);
       return {
         x: point.x + normal.x * normalNoise * pointStrength + tx * tangentNoise * pointStrength * 0.14,
         y: point.y + normal.y * normalNoise * pointStrength + ty * tangentNoise * pointStrength * 0.14,
       };
     };
     return {
-      a: roughPoint(a, gridCol * 31 + gridRow * 17, strength * 0.52),
-      mid: roughPoint(mid, gridCol * 47 + gridRow * 29 + 7, strength),
-      b: roughPoint(b, gridCol * 31 + gridRow * 17 + 13, strength * 0.52),
+      a: roughPoint(a, 0, strength * 0.52),
+      mid: roughPoint(mid, 97, strength),
+      b: roughPoint(b, 0, strength * 0.52),
       normal,
       material,
       style,
@@ -4088,16 +4094,19 @@ export class TerrainGrid {
       for (let index = 0; index < points.length; index += step) {
         const point = points[index];
         const style = point.style || TERRAIN_ROUGHNESS;
-        if (hash2D(Math.round(point.baseX), Math.round(point.baseY), this.seed, point.material * 701 + index) > (style.chipChance ?? 0.42) * 0.55) continue;
-        const width = this.cellSize * (0.08 + hash2D(index, point.material, this.seed, 719) * 0.11);
-        const depth = Math.min(this.cellSize * 0.34, (style.maxChipDepth ?? 6) * (0.55 + hash2D(index, point.material, this.seed, 727) * 0.75));
+        const pointX = Math.round((point.baseX ?? point.x) * 0.73);
+        const pointY = Math.round((point.baseY ?? point.y) * 0.73);
+        const pointSalt = point.material * 701 + pointX * 17 + pointY * 31;
+        if (hash2D(pointX, pointY, this.seed, pointSalt) > (style.chipChance ?? 0.42) * 0.55) continue;
+        const width = this.cellSize * (0.08 + hash2D(pointX, pointY, this.seed, pointSalt + 19) * 0.11);
+        const depth = Math.min(this.cellSize * 0.34, (style.maxChipDepth ?? 6) * (0.55 + hash2D(pointY, pointX, this.seed, pointSalt + 27) * 0.75));
         const inward = { x: -point.normal.x, y: -point.normal.y };
         ctx.beginPath();
         ctx.moveTo(point.x - point.tangent.x * width, point.y - point.tangent.y * width);
         ctx.lineTo(point.x + point.tangent.x * width, point.y + point.tangent.y * width);
         ctx.lineTo(
-          point.x + inward.x * depth + point.tangent.x * signedHash2D(index, point.material, this.seed, 733) * width * 0.45,
-          point.y + inward.y * depth + point.tangent.y * signedHash2D(index, point.material, this.seed, 733) * width * 0.45,
+          point.x + inward.x * depth + point.tangent.x * signedHash2D(pointX, pointY, this.seed, pointSalt + 33) * width * 0.45,
+          point.y + inward.y * depth + point.tangent.y * signedHash2D(pointX, pointY, this.seed, pointSalt + 33) * width * 0.45,
         );
         ctx.closePath();
         ctx.fill();
@@ -4149,12 +4158,15 @@ export class TerrainGrid {
       for (let index = 0; index < points.length; index += step) {
         const point = points[index];
         const style = point.style || TERRAIN_ROUGHNESS;
-        if (hash2D(Math.round(point.baseX), Math.round(point.baseY), this.seed, point.material * 751 + index) > (style.pebbleLipChance ?? 0.16)) continue;
+        const pointX = Math.round((point.baseX ?? point.x) * 0.73);
+        const pointY = Math.round((point.baseY ?? point.y) * 0.73);
+        const pointSalt = point.material * 751 + pointX * 17 + pointY * 31;
+        if (hash2D(pointX, pointY, this.seed, pointSalt) > (style.pebbleLipChance ?? 0.16)) continue;
         const materialData = TERRAIN_MATERIALS[point.material] || TERRAIN_MATERIALS[1];
-        const radius = this.cellSize * (0.04 + hash2D(index, point.material, this.seed, 757) * 0.045);
+        const radius = this.cellSize * (0.04 + hash2D(pointY, pointX, this.seed, pointSalt + 6) * 0.045);
         ctx.save();
         ctx.translate(point.x + point.normal.x * radius * 0.42, point.y + point.normal.y * radius * 0.42);
-        ctx.rotate(hash2D(index, point.material, this.seed, 761) * Math.PI);
+        ctx.rotate(hash2D(pointX, pointY, this.seed, pointSalt + 10) * Math.PI);
         ctx.fillStyle = withAlpha(mixHex(materialData.color || '#6b625a', '#ffffff', 0.08), 0.62);
         ctx.strokeStyle = 'rgba(5, 11, 19, 0.34)';
         ctx.lineWidth = Math.max(0.8, radius * 0.36);

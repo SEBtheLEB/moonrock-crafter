@@ -264,6 +264,7 @@ export class SpaceIsland {
     materialPickups = [],
     terrainDebug = null,
     drawCombatEffects = null,
+    drawPlayerEquipment = null,
     drawMovementDebug = null,
   } = {}) {
     if (!this.terrain) return;
@@ -292,6 +293,7 @@ export class SpaceIsland {
       ctx.rotate(-viewRotation);
       ctx.translate(-player.centerX, -player.centerY);
       player.draw(ctx, { x: 0 }, time);
+      drawPlayerEquipment?.(ctx);
       ctx.restore();
     }
     drawCombatEffects?.(ctx);

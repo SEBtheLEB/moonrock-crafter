@@ -1,4 +1,9 @@
-import { HOTBAR_SLOT_COUNT, getHotbarSlot } from '../data/hotbar.js?v=115';
+import {
+  DEFAULT_HOTBAR_SLOT_IDS,
+  EMPTY_HOTBAR_SLOT,
+  HOTBAR_SLOT_COUNT,
+  getHotbarSlotById,
+} from '../data/hotbar.js?v=115';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',
@@ -82,6 +87,9 @@ export class InputManager {
     this.cursorVisible = false;
     this.cursorPressed = false;
     this.selectedHotbarIndex = 0;
+    this.hotbarSlotIds = [...DEFAULT_HOTBAR_SLOT_IDS];
+    this.hotbarOwnershipResolver = null;
+    this.hotbarChangeHandler = null;
     this.selectHotbarSlot(0);
     this.virtualButtons = new Map();
     this.pointerDownEvents = [];
@@ -557,8 +565,73 @@ export class InputManager {
     this.selectHotbarSlot((this.selectedHotbarIndex + normalized + HOTBAR_SLOT_COUNT) % HOTBAR_SLOT_COUNT);
   }
 
+  configureHotbar({ slotIds = DEFAULT_HOTBAR_SLOT_IDS, isSlotOwned = null, onChange = null } = {}) {
+    this.hotbarSlotIds = this.normalizeHotbarSlotIds(slotIds);
+    this.hotbarOwnershipResolver = typeof isSlotOwned === 'function' ? isSlotOwned : null;
+    this.hotbarChangeHandler = typeof onChange === 'function' ? onChange : null;
+    this.syncHotbarWithInventory({ notify: false });
+    this.selectHotbarSlot(this.selectedHotbarIndex);
+  }
+
+  normalizeHotbarSlotIds(slotIds = []) {
+    const normalized = Array.from({ length: HOTBAR_SLOT_COUNT }, (_, index) => {
+      const slotId = slotIds[index];
+      const slot = getHotbarSlotById(slotId);
+      return slot?.id && slot.id !== EMPTY_HOTBAR_SLOT.id ? slot.id : null;
+    });
+    return normalized;
+  }
+
+  isHotbarSlotOwned(slot) {
+    if (!slot || slot.id === EMPTY_HOTBAR_SLOT.id) return false;
+    if (!this.hotbarOwnershipResolver) return true;
+    return Boolean(this.hotbarOwnershipResolver(slot));
+  }
+
+  getHotbarSlotAt(index, { ignoreOwnership = false } = {}) {
+    const normalizedIndex = ((index % HOTBAR_SLOT_COUNT) + HOTBAR_SLOT_COUNT) % HOTBAR_SLOT_COUNT;
+    const slot = getHotbarSlotById(this.hotbarSlotIds[normalizedIndex]);
+    if (slot.id === EMPTY_HOTBAR_SLOT.id) return EMPTY_HOTBAR_SLOT;
+    if (!ignoreOwnership && !this.isHotbarSlotOwned(slot)) return EMPTY_HOTBAR_SLOT;
+    return slot;
+  }
+
+  assignHotbarSlot(index, slotId) {
+    const nextIndex = Math.max(0, Math.min(HOTBAR_SLOT_COUNT - 1, Number(index) || 0));
+    const slot = getHotbarSlotById(slotId);
+    if (!slot || slot.id === EMPTY_HOTBAR_SLOT.id || !this.isHotbarSlotOwned(slot)) return false;
+    this.hotbarSlotIds[nextIndex] = slot.id;
+    this.selectHotbarSlot(nextIndex);
+    this.hotbarChangeHandler?.([...this.hotbarSlotIds]);
+    return true;
+  }
+
+  clearHotbarSlot(index, { notify = true } = {}) {
+    const nextIndex = Math.max(0, Math.min(HOTBAR_SLOT_COUNT - 1, Number(index) || 0));
+    if (!this.hotbarSlotIds[nextIndex]) return false;
+    this.hotbarSlotIds[nextIndex] = null;
+    this.selectHotbarSlot(this.selectedHotbarIndex);
+    if (notify) this.hotbarChangeHandler?.([...this.hotbarSlotIds]);
+    return true;
+  }
+
+  syncHotbarWithInventory({ notify = true } = {}) {
+    let changed = false;
+    this.hotbarSlotIds = this.normalizeHotbarSlotIds(this.hotbarSlotIds).map((slotId) => {
+      const slot = getHotbarSlotById(slotId);
+      if (slot.id !== EMPTY_HOTBAR_SLOT.id && !this.isHotbarSlotOwned(slot)) {
+        changed = true;
+        return null;
+      }
+      return slotId;
+    });
+    if (changed && notify) this.hotbarChangeHandler?.([...this.hotbarSlotIds]);
+    document.documentElement.dataset.selectedTool = this.getSelectedHotbarSlot()?.id || '';
+    return changed;
+  }
+
   getSelectedHotbarSlot() {
-    return getHotbarSlot(this.selectedHotbarIndex);
+    return this.getHotbarSlotAt(this.selectedHotbarIndex);
   }
 
   getSelectedHotbarAction() {
@@ -678,8 +751,8 @@ export class InputManager {
       x: Number(buttonHeld(GAMEPAD_BUTTONS.dpadRight, 0.1)) - Number(buttonHeld(GAMEPAD_BUTTONS.dpadLeft, 0.1)),
       y: Number(buttonHeld(GAMEPAD_BUTTONS.dpadDown, 0.1)) - Number(buttonHeld(GAMEPAD_BUTTONS.dpadUp, 0.1)),
     };
-    const move = Math.hypot(rightStick.x, rightStick.y) > 0.01 ? rightStick : dpad;
-    const aim = leftStick;
+    const move = Math.hypot(leftStick.x, leftStick.y) > 0.01 ? leftStick : dpad;
+    const aim = rightStick;
     if (move.y < -0.05) actions.add('up');
     if (move.y > 0.05) actions.add('down');
     if (move.x < -0.05) actions.add('left');

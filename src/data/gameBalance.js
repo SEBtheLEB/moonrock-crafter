@@ -2,6 +2,10 @@ export const gameBalance = {
   startingCredits: 0,
   startingResearchPoints: 0,
   startingInventory: {
+    minerTool: 1,
+    swordWeapon: 1,
+    gravityStabilizer: 1,
+    markerFlag: 1,
     craftingStationKit: 1,
   },
   miningFuelCost: 12,
@@ -290,6 +294,13 @@ export const gameBalance = {
             copperShards: { maxWidth: 5, maxHeight: 5, label: 'Copper heat channel must fit inside a 5x5 chamber.' },
           },
         },
+      },
+      laserGunRecipe: {
+        id: 'laserGun',
+        name: 'Laser Gun',
+        requirements: { fireCore: 1, ironIngot: 5, copperIngot: 4 },
+        gridSize: 16,
+        shapeRules: {},
       },
       smelting: {
         ironDust: { output: 'ironIngot', time: 4.8 },
