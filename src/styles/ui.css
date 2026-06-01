@@ -952,6 +952,27 @@
   transform: translateX(-50%);
 }
 
+html[data-input-mode="controller"] .tool-hotbar::before {
+  content: "A jump  \2022  X interact  \2022  RT use  \2022  LB/RB tools  \2022  Select inventory";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(78vw, 620px);
+  padding: 5px 10px;
+  border: 1px solid rgba(236, 231, 216, 0.18);
+  border-radius: 999px;
+  background: rgba(5, 12, 22, 0.52);
+  color: rgba(255, 242, 207, 0.88);
+  font: 800 11px/1 var(--font-ui);
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
 .tool-hotbar-slot {
   position: relative;
   width: 100%;

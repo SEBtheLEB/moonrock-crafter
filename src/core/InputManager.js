@@ -39,14 +39,14 @@ const GAMEPAD_DEADZONE = 0.18;
 const GAMEPAD_TRIGGER_THRESHOLD = 0.34;
 
 const GAMEPAD_BUTTONS = {
-  confirm: 0,
+  jumpFace: 0,
   cancel: 1,
-  mineFace: 2,
+  interactFace: 2,
   stabilize: 3,
-  tool: 4,
-  attackShoulder: 5,
-  attackTrigger: 6,
-  mineTrigger: 7,
+  hotbarPrevious: 4,
+  hotbarNext: 5,
+  leftTrigger: 6,
+  rightTrigger: 7,
   select: 8,
   pause: 9,
   dpadUp: 12,
@@ -655,18 +655,20 @@ export class InputManager {
       return Boolean(button.pressed || button.value > threshold);
     };
 
-    if (buttonHeld(GAMEPAD_BUTTONS.confirm)) {
+    if (buttonHeld(GAMEPAD_BUTTONS.jumpFace)) {
+      actions.add('jump');
+    }
+    if (buttonHeld(GAMEPAD_BUTTONS.interactFace)) {
       actions.add('confirm');
       actions.add('interact');
     }
     if (buttonHeld(GAMEPAD_BUTTONS.cancel)) {
       actions.add('cancel');
-      actions.add('jump');
     }
-    if (buttonHeld(GAMEPAD_BUTTONS.mineFace) || buttonHeld(GAMEPAD_BUTTONS.mineTrigger)) actions.add('primaryUse');
+    if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) actions.add('primaryUse');
     if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) actions.add('stabilize');
-    if (buttonHeld(GAMEPAD_BUTTONS.tool)) actions.add('hotbarPrevious');
-    if (buttonHeld(GAMEPAD_BUTTONS.attackShoulder) || buttonHeld(GAMEPAD_BUTTONS.attackTrigger)) actions.add('hotbarNext');
+    if (buttonHeld(GAMEPAD_BUTTONS.hotbarPrevious)) actions.add('hotbarPrevious');
+    if (buttonHeld(GAMEPAD_BUTTONS.hotbarNext)) actions.add('hotbarNext');
     if (buttonHeld(GAMEPAD_BUTTONS.select)) actions.add('inventory');
     if (buttonHeld(GAMEPAD_BUTTONS.pause)) actions.add('pause');
 
@@ -676,7 +678,8 @@ export class InputManager {
       x: Number(buttonHeld(GAMEPAD_BUTTONS.dpadRight, 0.1)) - Number(buttonHeld(GAMEPAD_BUTTONS.dpadLeft, 0.1)),
       y: Number(buttonHeld(GAMEPAD_BUTTONS.dpadDown, 0.1)) - Number(buttonHeld(GAMEPAD_BUTTONS.dpadUp, 0.1)),
     };
-    const move = Math.hypot(leftStick.x, leftStick.y) > 0.01 ? leftStick : dpad;
+    const move = Math.hypot(rightStick.x, rightStick.y) > 0.01 ? rightStick : dpad;
+    const aim = leftStick;
     if (move.y < -0.05) actions.add('up');
     if (move.y > 0.05) actions.add('down');
     if (move.x < -0.05) actions.add('left');
@@ -684,7 +687,7 @@ export class InputManager {
 
     const hasActivity = actions.size > 0
       || Math.hypot(move.x, move.y) > 0.06
-      || Math.hypot(rightStick.x, rightStick.y) > 0.06;
+      || Math.hypot(aim.x, aim.y) > 0.06;
     if (hasActivity) {
       this.controllerActivityFrames = 60;
       this.setInputMode('controller');
@@ -692,7 +695,7 @@ export class InputManager {
       this.controllerActivityFrames = Math.max(0, this.controllerActivityFrames - 1);
     }
 
-    return { actions, move, aim: rightStick };
+    return { actions, move, aim };
   }
 
   getActiveGamepad() {

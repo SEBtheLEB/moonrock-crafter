@@ -220,8 +220,9 @@ export class IslandScene {
   findPromptTarget() {
     const shipX = this.terrain?.landingX || 150;
     const shipY = this.terrain?.getSurfaceY(shipX) || this.world.floorY;
+    const interactLabel = document.documentElement.dataset.inputMode === 'controller' ? 'X' : 'E';
     if (Math.abs(this.player.centerX - shipX) < 98 && Math.abs(this.player.centerY - (shipY - 42)) < 120) {
-      return { type: 'ship', label: 'Press E/A to Board Ship', detail: 'Return to space' };
+      return { type: 'ship', label: `Press ${interactLabel} to Board Ship`, detail: 'Return to space' };
     }
     const plant = this.nodes.find((node) => node.active && node.data.type === 'plant' && node.isNear(this.player, 82));
     if (plant) return { type: 'node', node: plant, label: `Gather ${plant.data.name}`, detail: 'Press Interact' };

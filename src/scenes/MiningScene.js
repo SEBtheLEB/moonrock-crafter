@@ -2002,6 +2002,17 @@ export class MiningScene {
     }
   }
 
+  isControllerPromptMode() {
+    return document.documentElement.dataset.inputMode === 'controller'
+      || Boolean(this.game.input.isControllerActive?.());
+  }
+
+  getInteractControlLabel() {
+    if (this.isControllerPromptMode()) return 'X';
+    if (document.documentElement.dataset.inputMode === 'touch') return 'Act';
+    return 'E';
+  }
+
   updateLanding() {
     if (this.islandMode !== 'flight') return;
     let nearest = null;
@@ -2060,7 +2071,7 @@ export class MiningScene {
     this.landingIsland = nearest;
     this.hud?.landingPrompt?.classList.toggle('is-hidden', !nearest);
     if (nearest) {
-      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press E/A to Land - ${nearest.getDisplayName?.() || nearest.name}`);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press ${this.getInteractControlLabel()} to Land - ${nearest.getDisplayName?.() || nearest.name}`);
       if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Land';
       if (this.mineButtonIcon) this.mineButtonIcon.textContent = 'L';
       this.mineButton?.classList.add('is-land-mode');
@@ -2337,7 +2348,7 @@ export class MiningScene {
     this.prewarmIslandTerrain(this.activeIsland);
     this.shipSmoke?.clear();
     this.game.audio.playExitShip?.();
-    this.game.ui.showToast('Landed. Press E/A near the ship to board.', 'success', 1800);
+    this.game.ui.showToast(`Landed. Press ${this.getInteractControlLabel()} near the ship to board.`, 'success', 1800);
   }
 
   updateIslandOnFoot(delta) {
@@ -4582,13 +4593,14 @@ export class MiningScene {
     if (this.isCraftingStationToolSelected()) text = 'Crafting station - aim at ground and click Use';
     if (this.isFurnaceToolSelected()) text = 'Furnace tool - aim at ground and click Use';
     if (this.crashStart && !this.getStoryState().thrustersRepaired) text = this.getCrashObjectiveText();
-    if (this.placedCraftingStation?.overlapsPlayer(this.islandPlayer)) text = 'Press E/A to open crafting station';
+    const interactLabel = this.getInteractControlLabel();
+    if (this.placedCraftingStation?.overlapsPlayer(this.islandPlayer)) text = `Press ${interactLabel} to open crafting station`;
     const nearbyFurnace = this.getNearbyFurnace(this.islandPlayer);
-    if (nearbyFurnace) text = 'Press E/A to open furnace';
+    if (nearbyFurnace) text = `Press ${interactLabel} to open furnace`;
     if (this.activeIsland.isPlayerNearShip(this.islandPlayer)) {
       text = this.crashStart && !this.getStoryState().thrustersRepaired
-        ? 'Press E/A to inspect broken thrusters'
-        : 'Press E/A to Board Ship';
+        ? `Press ${interactLabel} to inspect broken thrusters`
+        : `Press ${interactLabel} to Board Ship`;
     }
     this.setHudText('landingPrompt', this.hud.landingPrompt, text);
     if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Use';
@@ -4971,9 +4983,20 @@ export class MiningScene {
     const magnitude = Math.hypot(aim.x, aim.y);
     if (magnitude < 0.12) return null;
     const distance = Math.max(48, TERRAIN_LASER_RANGE * Math.min(1, magnitude));
+    const localAim = this.rotateScreenVectorToIslandLocal(aim.x / magnitude, aim.y / magnitude);
     return {
-      x: this.islandPlayer.centerX + (aim.x / magnitude) * distance,
-      y: this.islandPlayer.centerY - 7 + (aim.y / magnitude) * distance,
+      x: this.islandPlayer.centerX + localAim.x * distance,
+      y: this.islandPlayer.centerY - 7 + localAim.y * distance,
+    };
+  }
+
+  rotateScreenVectorToIslandLocal(x, y) {
+    const rotation = -this.getIslandViewRotation();
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+      x: x * cos - y * sin,
+      y: x * sin + y * cos,
     };
   }
 
@@ -5011,7 +5034,10 @@ export class MiningScene {
   updateIslandPlayerFacingFromAim(aimPoint) {
     if (!this.islandPlayer || !aimPoint) return;
     const dx = aimPoint.x - this.islandPlayer.centerX;
-    if (Math.abs(dx) > 4) this.islandPlayer.facing = dx >= 0 ? 1 : -1;
+    const dy = aimPoint.y - this.islandPlayer.centerY;
+    const rotation = this.getIslandViewRotation();
+    const screenDx = dx * Math.cos(rotation) - dy * Math.sin(rotation);
+    if (Math.abs(screenDx) > 4) this.islandPlayer.facing = screenDx >= 0 ? 1 : -1;
   }
 
   getIslandTerrainLaserState(aimPoint, { updateFacing = false } = {}) {
@@ -5373,6 +5399,7 @@ export class MiningScene {
       }));
       this.drawLaser(ctx);
       this.drawMouseAimReticle(ctx);
+      this.drawControllerShipAimIndicator(ctx);
     }
     this.drawParticles(ctx);
     ctx.restore();
@@ -5810,6 +5837,7 @@ export class MiningScene {
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
     }
+    this.drawControllerIslandAimIndicator(ctx);
     if (this.islandMiningHitFeedback) {
       this.activeIsland.terrain.drawDamageFeedback(ctx, this.islandMiningHitFeedback, this.time);
     }
@@ -6134,6 +6162,68 @@ export class MiningScene {
       time: this.time,
       inputMode: document.documentElement.dataset.inputMode,
     });
+  }
+
+  isControllerAimIndicatorActive() {
+    if (!this.isControllerPromptMode()) return false;
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    return Math.hypot(aim.x, aim.y) > 0.12;
+  }
+
+  drawControllerShipAimIndicator(ctx) {
+    if (!this.isControllerAimIndicatorActive()) return;
+    const aimWorld = this.getControllerShipAimWorld();
+    if (!aimWorld) return;
+    const start = this.cameraView.worldToScreen(this.ship.x, this.ship.y);
+    const end = this.cameraView.worldToScreen(aimWorld.x, aimWorld.y);
+    this.drawControllerAimBall(ctx, start, end);
+  }
+
+  drawControllerIslandAimIndicator(ctx) {
+    if (!this.isControllerAimIndicatorActive() || !this.islandPlayer) return;
+    const aimPoint = this.getControllerIslandAimPoint();
+    if (!aimPoint) return;
+    const start = {
+      x: this.islandPlayer.centerX,
+      y: this.islandPlayer.centerY - 7,
+    };
+    this.drawControllerAimBall(ctx, start, aimPoint);
+  }
+
+  drawControllerAimBall(ctx, start, end) {
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    const magnitude = clamp01(Math.hypot(aim.x, aim.y));
+    const pulse = 1 + Math.sin(this.time * 9) * 0.08;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.68;
+    ctx.strokeStyle = 'rgba(118, 243, 255, 0.34)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = 'rgba(118, 243, 255, 0.82)';
+    ctx.strokeStyle = 'rgba(9, 20, 34, 0.74)';
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = '#76f3ff';
+    ctx.shadowBlur = 13;
+    ctx.beginPath();
+    ctx.arc(end.x, end.y, (5.5 + magnitude * 4.5) * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.52;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(end.x, end.y, 15 + magnitude * 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   drawParticles(ctx) {
