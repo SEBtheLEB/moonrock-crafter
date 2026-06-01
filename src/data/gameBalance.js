@@ -58,6 +58,9 @@ export const gameBalance = {
     baseFuelDrain: 0.24,
     movingFuelDrain: 0.68,
     miningFuelDrain: 0.18,
+    boostFuelDrain: 1.05,
+    shipBoostPower: 0.75,
+    godShipBoostPower: 3.15,
     depositCreditMultiplier: 0.55,
     mouseAimSnapRadius: 18,
     ringSize: 20000,
@@ -232,6 +235,7 @@ export const gameBalance = {
       lightingCellScale: 0.74,
       darknessFieldScale: 0.26,
       darknessBlur: 18,
+      airExposureRebuildDelay: 0.85,
       surfaceExposureSourceDepth: 0.75,
       airExposureCost: 0.72,
       solidExposureCost: 1.22,
@@ -285,6 +289,9 @@ export const gameBalance = {
     islandViewScale: 0.88,
     hudUpdateInterval: 0.08,
     distanceObjectiveInterval: 0.45,
+  },
+  performance: {
+    maxIslandPickupSurfaceChecksPerFrame: 8,
   },
   earlyGame: {
     crashStart: {

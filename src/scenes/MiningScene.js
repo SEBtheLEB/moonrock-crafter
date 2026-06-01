@@ -345,6 +345,9 @@ export class MiningScene {
     this.islandBoardingTargetRotation = 0;
     this.islandFloatingText = [];
     this.islandTerrainParticles = [];
+    this.pickupSaveDelay = 0;
+    this.pickupSavePending = false;
+    this.pickupSurfaceChecksThisFrame = 0;
     this.torchPlacementPreview = null;
     this.gpsPingTimer = 0;
     this.destinationIndicator = null;
@@ -811,6 +814,7 @@ export class MiningScene {
   }
 
   exit() {
+    this.flushPendingPickupSave();
     this.cancelItemDrag();
     this.closeSurvivalModal();
     this.closeQuickInventory();
@@ -1014,6 +1018,7 @@ export class MiningScene {
   update(delta) {
     if (this.ending) return;
     this.time += delta;
+    this.updateDeferredPickupSave(delta);
     this.hotbar?.update();
     if (this.game.input.actions.justPressed.inventory) this.toggleQuickInventory();
     this.updateQuickInventory();
@@ -1047,7 +1052,10 @@ export class MiningScene {
     }
     this.updateFuel(delta);
     if (this.handleOutOfFuelReturn() || this.ending) return;
-    this.ship.update(delta, this.game.input, this.getShipFuelRatio(), { boost: this.isGodBoosting() });
+    this.ship.update(delta, this.game.input, this.getShipFuelRatio(), {
+      boost: this.isShipBoosting(),
+      boostPower: this.getShipBoostPower(),
+    });
     this.distanceFromStation = this.getDistanceFromStation();
     this.updateEngineAudio();
     this.updateDistanceProgress(delta);
@@ -1070,6 +1078,25 @@ export class MiningScene {
       this.hudRefreshTimer = gameBalance.ui?.hudUpdateInterval || 0.08;
       this.updateHud();
     }
+  }
+
+  schedulePickupSave(delay = 0.8) {
+    this.pickupSavePending = true;
+    this.pickupSaveDelay = Math.max(this.pickupSaveDelay || 0, delay);
+  }
+
+  updateDeferredPickupSave(delta) {
+    if (!this.pickupSavePending) return;
+    this.pickupSaveDelay -= delta;
+    if (this.pickupSaveDelay > 0) return;
+    this.flushPendingPickupSave();
+  }
+
+  flushPendingPickupSave() {
+    if (!this.pickupSavePending) return;
+    this.pickupSavePending = false;
+    this.pickupSaveDelay = 0;
+    this.game.saveGame();
   }
 
   tryAutoCargoDump() {
@@ -1106,7 +1133,10 @@ export class MiningScene {
       this.ship.vx *= Math.max(0, 1 - delta * 7);
       this.ship.vy *= Math.max(0, 1 - delta * 7);
     } else {
-      this.ship.update(delta, this.game.input, this.getShipFuelRatio(), { boost: this.isGodBoosting() });
+      this.ship.update(delta, this.game.input, this.getShipFuelRatio(), {
+        boost: this.isShipBoosting(),
+        boostPower: this.getShipBoostPower(),
+      });
       this.distanceFromStation = this.getDistanceFromStation();
       this.updateEngineAudio();
     }
@@ -1129,10 +1159,18 @@ export class MiningScene {
     return Boolean(this.game.state.debug?.godMode || this.game.state.debug?.invincible);
   }
 
-  isGodBoosting() {
+  isShipBoosting() {
+    if (this.islandMode !== 'flight') return false;
+    const wantsBoost = Boolean(this.game.input.actions.jump || this.game.input.actions.boost);
+    if (!wantsBoost) return false;
+    return this.isGodMode() || this.stats.fuel > 0.05;
+  }
+
+  getShipBoostPower() {
+    if (!this.isShipBoosting()) return 0;
     return this.isGodMode()
-      && this.islandMode === 'flight'
-      && this.game.input.keys.has(' ');
+      ? (gameBalance.mining.godShipBoostPower || 3.15)
+      : (gameBalance.mining.shipBoostPower || 0.75);
   }
 
   getShipFuelRatio() {
@@ -1205,6 +1243,7 @@ export class MiningScene {
     const drain = gameBalance.mining.baseFuelDrain
       + moving * gameBalance.mining.movingFuelDrain * (1 + this.currentZone.difficulty * 0.55)
       + (this.isMiningInputActive() ? gameBalance.mining.miningFuelDrain : 0)
+      + (this.isShipBoosting() ? (gameBalance.mining.boostFuelDrain || 1.05) * (1 + this.currentZone.difficulty * 0.25) : 0)
       + distancePressure * 0.9;
     this.stats.fuel = Math.max(0, this.stats.fuel - drain * delta);
     if (this.stats.fuel <= this.stats.maxFuel * 0.18 && this.lowFuelToastReady) {
@@ -1314,7 +1353,7 @@ export class MiningScene {
       input: this.game.input,
       fuelRatio: this.getShipFuelRatio(),
       viewScale: this.getActiveViewScale(),
-      boosting: this.isGodBoosting(),
+      boosting: this.isShipBoosting(),
     });
   }
 
@@ -1900,7 +1939,8 @@ export class MiningScene {
   }
 
   updateEngineAudio() {
-    const moving = Math.hypot(this.game.input.moveVector.x, this.game.input.moveVector.y) > 0.12;
+    const moving = Math.hypot(this.game.input.moveVector.x, this.game.input.moveVector.y) > 0.12
+      || this.isShipBoosting();
     if (moving && !this.engineBoosting) {
       this.engineBoosting = true;
       this.game.audio.startEngineBoost();
@@ -5560,7 +5600,7 @@ export class MiningScene {
       const preview = this.buildPlacementPreview;
       const itemName = this.game.systems.materials.getDisplayName(preview?.itemId || this.game.systems.building.getSelectedBuildItem(this)?.itemId);
       const mode = preview?.mode === 'backgroundWall' ? 'wall' : 'block';
-      text = `${itemName} ${mode} - hold Use to paint, R toggles walls`;
+      text = `${itemName} ${mode} - click grid cells; hold-drag paints one cell at a time`;
       if (preview && !preview.valid && preview.reason) text = `${itemName} ${mode} - ${preview.reason}`;
     }
     if (this.crashStart && !this.getStoryState().thrustersRepaired) text = this.getCrashObjectiveText();
@@ -5777,6 +5817,7 @@ export class MiningScene {
 
   updateIslandPickups(delta) {
     if (!this.activeIsland || !this.islandPlayer) return;
+    this.pickupSurfaceChecksThisFrame = 0;
     let writeIndex = 0;
     for (let index = 0; index < this.islandPickups.length; index += 1) {
       const pickup = this.islandPickups[index];
@@ -5817,6 +5858,12 @@ export class MiningScene {
     pickup.surfaceCheckTimer = 0.12 + (pickup.seed % 0.07);
     const inside = terrain.containsCollisionPoint?.(pickup.x, pickup.y);
     if (!inside) return;
+    const maxSurfaceChecks = gameBalance.performance?.maxIslandPickupSurfaceChecksPerFrame ?? 8;
+    if ((this.pickupSurfaceChecksThisFrame || 0) >= maxSurfaceChecks) {
+      pickup.surfaceCheckTimer = 0.035 + (pickup.seed % 0.045);
+      return;
+    }
+    this.pickupSurfaceChecksThisFrame += 1;
     const surface = terrain.getClosestTerrainSurfacePoint(pickup.x, pickup.y, pickup.radius + 4);
     if (!surface) return;
     const dx = pickup.x - surface.surfaceX;
@@ -5833,7 +5880,7 @@ export class MiningScene {
   collectIslandPickup(pickup) {
     if (pickup.storagePickup) {
       this.game.systems.inventory.add(pickup.materialId, pickup.amount, { skipSave: true });
-      this.game.saveGame();
+      this.schedulePickupSave();
       this.game.systems.objectives.record('materialCollected', {
         materialId: pickup.materialId,
         amount: pickup.amount,
@@ -5912,7 +5959,7 @@ export class MiningScene {
     );
     if (materialId === 'stoneOre' && !this.getStoryState().furnaceBuilt) this.startCrashTutorialHint('furnaceHint');
     this.game.audio.playIslandPickup?.();
-    this.game.saveGame();
+    this.schedulePickupSave();
   }
 
   handleIslandEnemyDefeated(enemy) {
@@ -6452,7 +6499,7 @@ export class MiningScene {
     ctx.save();
     this.applyWorldScale(ctx, width, height);
     if (this.islandMode !== 'onIsland' && this.islandMode !== 'boarding') {
-      this.ship.draw(ctx, camera, this.game.input, { boost: this.isGodBoosting() });
+      this.ship.draw(ctx, camera, this.game.input, { boost: this.isShipBoosting() });
       this.drawShipDestinationIndicator(ctx);
     }
     if (this.isWeaponToolSelected() && this.islandMode === 'flight') {

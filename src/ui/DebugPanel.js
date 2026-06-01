@@ -79,6 +79,7 @@ export class DebugPanel {
       terrainLightDebugButton,
       terrainDepthDebugButton,
       new Button('Refill Fuel', () => this.refillShip(), { icon: 'F', variant: 'metal' }).element,
+      new Button('Fix Rocket', () => this.fixRocket(), { icon: 'R', variant: 'forge' }).element,
       new Button('Regen Planet', () => this.regenerateCurrentPlanet(), { icon: 'P', variant: 'metal' }).element,
       new Button('Spawn Rare', () => this.spawnRareAsteroid(), { icon: '*', variant: 'metal' }).element,
       new Button('Jump Home', () => this.jumpToStation(), { icon: '<', variant: 'metal' }).element,
@@ -157,7 +158,7 @@ export class DebugPanel {
     scene?.updateHud?.(true);
     this.game.saveGame();
     this.updateToggleButtons();
-    this.note(`God mode ${this.game.state.debug.godMode ? 'on: infinite fuel, invincible, Space boost.' : 'off'}.`);
+    this.note(`God mode ${this.game.state.debug.godMode ? 'on: infinite fuel, invincible, stronger A/Space boost.' : 'off'}.`);
   }
 
   updateToggleButtons() {
@@ -186,6 +187,32 @@ export class DebugPanel {
     }
     this.game.saveGame();
     this.note('Fuel and hull refilled.');
+  }
+
+  fixRocket() {
+    this.game.state.story ||= {};
+    this.game.state.story.thrustersRepaired = true;
+    this.game.state.navigation ||= {};
+    this.game.state.navigation.gpsUnlocked = true;
+    this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+    this.game.state.navigation.selectedDestinationId ||= 'base';
+    this.game.systems.navigation?.refreshLocations?.();
+    this.game.systems.navigation?.discoverLocation?.('base', { notify: false, save: false });
+    this.game.systems.upgrades.applyUpgrades({ refuel: true, repair: true });
+    const scene = this.game.sceneManager.current;
+    if (scene) {
+      scene.crashStart = false;
+      if (scene.stats) {
+        scene.stats.maxFuel = this.game.state.ship.maxFuel;
+        scene.stats.maxHull = this.game.state.ship.maxHull;
+        scene.stats.fuel = scene.stats.maxFuel;
+        scene.stats.hull = scene.stats.maxHull;
+      }
+      scene.updateHud?.(true);
+    }
+    this.game.saveGame();
+    this.game.audio.playSuccess?.();
+    this.note('Rocket repaired. Thrusters and base GPS are online.');
   }
 
   spawnRareAsteroid() {

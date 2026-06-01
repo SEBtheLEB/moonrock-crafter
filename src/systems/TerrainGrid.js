@@ -682,6 +682,8 @@ export class TerrainGrid {
     this.extraLightSignature = '';
     this.airExposureMap = null;
     this.airExposureDirty = true;
+    this.airExposureDirtyDeferred = false;
+    this.airExposureRebuildAt = 0;
     if (cells && wallCells?.length !== cellCount && TERRAIN_WALLS.enabled) this.generateWallLayerForPlanet();
     TERRAIN_TEXTURE_INSTANCES.add(this);
   }
@@ -1404,6 +1406,34 @@ export class TerrainGrid {
     return col >= 0 && col < this.cols && row >= 0 && row < this.rows;
   }
 
+  getClockNow() {
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+  }
+
+  markAirExposureDirty({ defer = false } = {}) {
+    if (!defer || !this.airExposureMap || this.airExposureMap.length !== this.cells.length) {
+      this.airExposureDirty = true;
+      this.airExposureDirtyDeferred = false;
+      this.airExposureRebuildAt = 0;
+      return;
+    }
+    const delay = Math.max(0, TERRAIN_LIGHTING.airExposureRebuildDelay ?? 0.75);
+    this.airExposureDirty = true;
+    this.airExposureDirtyDeferred = true;
+    this.airExposureRebuildAt = this.getClockNow() + delay * 1000;
+  }
+
+  invalidateSurfaceRadiusLookupNear(col, row, spread = 5) {
+    if (!this.surfaceRadiusLookupCache?.size || !this.isInside(col, row)) return;
+    const x = col * this.cellSize + this.cellSize * 0.5 - this.planetCenterX;
+    const y = row * this.cellSize + this.cellSize * 0.5 - this.planetCenterY;
+    const angle = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2);
+    const bucket = Math.round((angle / (Math.PI * 2)) * 720);
+    for (let offset = -spread; offset <= spread; offset += 1) {
+      this.surfaceRadiusLookupCache.delete((bucket + offset + 720) % 720);
+    }
+  }
+
   getCell(col, row) {
     if (!this.isInside(col, row)) return 0;
     return this.cells[this.index(col, row)];
@@ -1423,8 +1453,8 @@ export class TerrainGrid {
     this.damagedCells.delete(index);
     this.invalidateTerrainGeometry({ keepSurfacePath: true });
     if ((previousValue > 0) !== (nextValue > 0)) {
-      this.airExposureDirty = true;
-      this.surfaceRadiusLookupCache?.clear();
+      this.markAirExposureDirty({ defer: true });
+      this.invalidateSurfaceRadiusLookupNear(col, row);
     }
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) {
@@ -1440,7 +1470,7 @@ export class TerrainGrid {
     this.collisionContours = null;
     if (!keepSurfacePath) {
       this.surfaceRadiusLookupCache?.clear();
-      this.airExposureDirty = true;
+      this.markAirExposureDirty({ defer: false });
       this.surfacePathCache = null;
     }
   }
@@ -2249,7 +2279,7 @@ export class TerrainGrid {
         const chip = this.getCellPickupChip(col, row, material);
         this.damage[index] = 0;
         this.damagedCells.delete(index);
-        this.setCell(col, row, 0);
+        this.cells[index] = 0;
         broken.push({
           col,
           row,
@@ -2260,6 +2290,18 @@ export class TerrainGrid {
           chip,
         });
       }
+    }
+    if (broken.length) {
+      this.invalidateTerrainGeometry({ keepSurfacePath: true });
+      this.markAirExposureDirty({ defer: true });
+      for (const cell of broken) {
+        this.invalidateSurfaceRadiusLookupNear(cell.col, cell.row);
+        if (this.renderCanvas && !this.fullRenderDirty) {
+          this.markDirtyCell(cell.col, cell.row, this.getDirtyPaddingCellsForMaterialChange(cell.material, 0));
+        }
+      }
+      this.renderDirty = true;
+      if (!this.renderCanvas || this.fullRenderDirty) this.fullRenderDirty = true;
     }
     return broken;
   }
@@ -2616,6 +2658,13 @@ export class TerrainGrid {
 
   ensureAirExposureMap() {
     if (!this.airExposureDirty && this.airExposureMap?.length === this.cells.length) return this.airExposureMap;
+    if (
+      this.airExposureDirtyDeferred
+      && this.airExposureMap?.length === this.cells.length
+      && this.getClockNow() < this.airExposureRebuildAt
+    ) {
+      return this.airExposureMap;
+    }
     const total = this.cols * this.rows;
     const distances = new Float32Array(total);
     const infinity = 1e6;
@@ -2665,6 +2714,8 @@ export class TerrainGrid {
 
     this.airExposureMap = distances;
     this.airExposureDirty = false;
+    this.airExposureDirtyDeferred = false;
+    this.airExposureRebuildAt = 0;
     return distances;
   }
 
@@ -3140,6 +3191,8 @@ export class TerrainGrid {
     this.lightingFieldCtx = null;
     this.airExposureMap = null;
     this.airExposureDirty = true;
+    this.airExposureDirtyDeferred = false;
+    this.airExposureRebuildAt = 0;
     this.renderDirty = true;
     this.fullRenderDirty = true;
     this.dirtyBounds = null;

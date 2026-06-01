@@ -17,7 +17,8 @@ export class Ship {
     this.steerY = 0;
   }
 
-  update(delta, input, fuelRatio = 1, { boost = false } = {}) {
+  update(delta, input, fuelRatio = 1, { boost = false, boostPower = boost ? 1 : 0 } = {}) {
+    const boostStrength = boost ? Math.max(0.1, boostPower || 1) : 0;
     const rawMove = input.moveVector || { x: 0, y: 0 };
     const inputMode = input.inputMode
       || (typeof document !== 'undefined' ? document.documentElement.dataset.inputMode : 'keyboard')
@@ -43,7 +44,7 @@ export class Ship {
       const moveLength = Math.hypot(move.x, move.y);
       const nx = moveLength > 0.05 ? move.x / moveLength : Math.cos(this.angle);
       const ny = moveLength > 0.05 ? move.y / moveLength : Math.sin(this.angle);
-      const boostAcceleration = boost ? 4.2 : 1;
+      const boostAcceleration = 1 + boostStrength;
       this.vx += nx * this.acceleration * boostAcceleration * fuelFactor * delta;
       this.vy += ny * this.acceleration * boostAcceleration * fuelFactor * delta;
       const along = this.vx * nx + this.vy * ny;
@@ -63,7 +64,7 @@ export class Ship {
     this.vy *= Math.max(0, 1 - this.drag * delta);
 
     const speed = Math.hypot(this.vx, this.vy);
-    const maxSpeed = this.maxSpeed * fuelFactor * (boost ? 5.4 : 1);
+    const maxSpeed = this.maxSpeed * fuelFactor * (1 + boostStrength * 1.4);
     if (speed > maxSpeed) {
       this.vx = (this.vx / speed) * maxSpeed;
       this.vy = (this.vy / speed) * maxSpeed;

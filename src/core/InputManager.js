@@ -142,6 +142,7 @@ export class InputManager {
       debugToggle: false,
       interact: false,
       jump: false,
+      boost: false,
       tool: false,
       primaryUse: false,
       aimUse: false,
@@ -666,6 +667,7 @@ export class InputManager {
     this.virtualButtons.forEach((held, actionName) => {
       if (held) next[actionName] = true;
     });
+    if (next.jump) next.boost = true;
 
     this.pointers.forEach((pointer) => {
       if (pointer.down && pointer.source === 'canvas' && pointer.type === 'mouse') {
@@ -737,6 +739,7 @@ export class InputManager {
 
     if (buttonHeld(GAMEPAD_BUTTONS.jumpFace)) {
       actions.add('jump');
+      actions.add('boost');
     }
     if (buttonHeld(GAMEPAD_BUTTONS.interactFace)) {
       actions.add('confirm');

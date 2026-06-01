@@ -1,19 +1,19 @@
 import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=115';
 
 const DEFAULT_BUILD_RANGE = 178;
-const DEFAULT_PAINT_INTERVAL = 0.065;
 const STARTER_BASE_WALL_MATERIAL = 10;
 const STARTER_BASE_REINFORCED_MATERIAL = 11;
+const SMOOTH_BUILD_MATERIAL_IDS = new Set(['facilityIron', 'reinforcedIron']);
 
 export const BUILDABLE_TERRAIN_ITEMS = {
-  stoneOre: { itemId: 'stoneOre', label: 'Stone', terrainMaterial: 1, wallMaterial: 1 },
-  ironDust: { itemId: 'ironDust', label: 'Iron', terrainMaterial: 2, wallMaterial: 2 },
-  copperShards: { itemId: 'copperShards', label: 'Copper', terrainMaterial: 3, wallMaterial: 3 },
-  glassCrystal: { itemId: 'glassCrystal', label: 'Glass Crystal', terrainMaterial: 4, wallMaterial: 4 },
-  fireCore: { itemId: 'fireCore', label: 'Fire Core', terrainMaterial: 6, wallMaterial: 6 },
-  crystallizedStone: { itemId: 'crystallizedStone', label: 'Crystallized Stone', terrainMaterial: 7, wallMaterial: 7 },
-  redCrystal: { itemId: 'redCrystal', label: 'Red Crystal', terrainMaterial: 8, wallMaterial: 8 },
-  moonCrystal: { itemId: 'moonCrystal', label: 'Moon Crystal', terrainMaterial: 9, wallMaterial: 9 },
+  stoneOre: { itemId: 'stoneOre', label: 'Stone', terrainMaterial: 1, wallMaterial: 1, edgeStyle: 'rough' },
+  ironDust: { itemId: 'ironDust', label: 'Iron', terrainMaterial: 2, wallMaterial: 2, edgeStyle: 'rough' },
+  copperShards: { itemId: 'copperShards', label: 'Copper', terrainMaterial: 3, wallMaterial: 3, edgeStyle: 'rough' },
+  glassCrystal: { itemId: 'glassCrystal', label: 'Glass Crystal', terrainMaterial: 4, wallMaterial: 4, edgeStyle: 'rough' },
+  fireCore: { itemId: 'fireCore', label: 'Fire Core', terrainMaterial: 6, wallMaterial: 6, edgeStyle: 'smooth' },
+  crystallizedStone: { itemId: 'crystallizedStone', label: 'Crystallized Stone', terrainMaterial: 7, wallMaterial: 7, edgeStyle: 'rough' },
+  redCrystal: { itemId: 'redCrystal', label: 'Red Crystal', terrainMaterial: 8, wallMaterial: 8, edgeStyle: 'rough' },
+  moonCrystal: { itemId: 'moonCrystal', label: 'Moon Crystal', terrainMaterial: 9, wallMaterial: 9, edgeStyle: 'rough' },
 };
 
 function clamp01(value) {
@@ -34,6 +34,15 @@ function hexToRgb(hex = '#ffffff') {
   };
 }
 
+function hash2D(x, y, seed = 1, salt = 0) {
+  const value = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7 + salt * 19.19) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function signedHash2D(x, y, seed = 1, salt = 0) {
+  return hash2D(x, y, seed, salt) * 2 - 1;
+}
+
 function drawPolygon(ctx, points) {
   if (!points?.length) return;
   ctx.beginPath();
@@ -45,8 +54,10 @@ function drawPolygon(ctx, points) {
 export class BuildingSystem {
   constructor(game) {
     this.game = game;
-    this.paintCooldown = 0;
+    this.paintHeld = false;
     this.lastPaintKey = '';
+    this.lastPaintTarget = null;
+    this.paintedKeysThisHold = new Set();
     this.lastInvalidReason = '';
     this.invalidToastCooldown = 0;
   }
@@ -226,7 +237,7 @@ export class BuildingSystem {
     terrain.invalidateTerrainGeometry?.({ keepSurfacePath: false });
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
-    terrain.airExposureDirty = true;
+    terrain.markAirExposureDirty?.({ defer: true });
   }
 
   updateMode(scene) {
@@ -324,29 +335,7 @@ export class BuildingSystem {
 
   getTargetTile(terrain, aim, mode) {
     const cursorTile = this.worldToPlanetTile(aim.aimPoint.x, aim.aimPoint.y, { terrain });
-    if (!terrain.isInside(cursorTile.col, cursorTile.row)) return null;
-    if (mode === 'backgroundWall') return cursorTile;
-    if (!terrain.isSolidCell(cursorTile.col, cursorTile.row)) return cursorTile;
-
-    const hit = terrain.raycast(aim.origin.x, aim.origin.y, aim.aimPoint.x, aim.aimPoint.y);
-    if (!hit) return cursorTile;
-    const beforeHit = {
-      x: hit.x - aim.direction.x * Math.max(terrain.cellSize * 0.42, 4),
-      y: hit.y - aim.direction.y * Math.max(terrain.cellSize * 0.42, 4),
-    };
-    const adjacent = this.worldToPlanetTile(beforeHit.x, beforeHit.y, { terrain });
-    if (terrain.isInside(adjacent.col, adjacent.row) && !terrain.isSolidCell(adjacent.col, adjacent.row)) return adjacent;
-
-    const bestNeighbor = this.getTileNeighbors(hit.col, hit.row, { terrain })
-      .filter((neighbor) => terrain.isInside(neighbor.col, neighbor.row) && !terrain.isSolidCell(neighbor.col, neighbor.row))
-      .sort((left, right) => {
-        const leftCenter = this.planetTileToWorld(left.col, left.row, { terrain });
-        const rightCenter = this.planetTileToWorld(right.col, right.row, { terrain });
-        const leftScore = (leftCenter.x - beforeHit.x) ** 2 + (leftCenter.y - beforeHit.y) ** 2;
-        const rightScore = (rightCenter.x - beforeHit.x) ** 2 + (rightCenter.y - beforeHit.y) ** 2;
-        return leftScore - rightScore;
-      })[0];
-    return bestNeighbor || cursorTile;
+    return terrain.isInside(cursorTile.col, cursorTile.row) ? cursorTile : null;
   }
 
   validatePlacement(scene, col, row, { mode, itemId, center, inRange, materialId }) {
@@ -398,7 +387,6 @@ export class BuildingSystem {
   }
 
   update(scene, delta) {
-    this.paintCooldown = Math.max(0, this.paintCooldown - delta);
     this.invalidToastCooldown = Math.max(0, this.invalidToastCooldown - delta);
     this.updateMode(scene);
     const preview = this.getPreview(scene);
@@ -406,22 +394,50 @@ export class BuildingSystem {
 
     const input = this.game.input;
     const isHeld = Boolean(input?.actions?.build || (input?.actions?.primaryUse && preview));
+    const justPressed = Boolean(
+      input?.actions?.justPressed?.build
+      || input?.actions?.justPressed?.primaryUse
+      || input?.actions?.justPressed?.attack
+    );
     if (!preview || !isHeld) {
-      this.lastPaintKey = '';
+      this.resetPaintStroke();
       return;
     }
     scene.updateIslandPlayerFacingFromAim?.(preview.rawAimPoint);
     if (!preview.valid) {
       this.showInvalidPlacement(preview);
-      this.lastPaintKey = '';
       return;
     }
     const key = `${preview.mode}:${preview.target.col}:${preview.target.row}:${preview.itemId}`;
-    if (this.paintCooldown > 0 && key === this.lastPaintKey) return;
-    if (this.place(scene, preview)) {
-      this.paintCooldown = DEFAULT_PAINT_INTERVAL;
-      this.lastPaintKey = key;
+    const shouldStartStroke = justPressed || !this.paintHeld;
+    if (shouldStartStroke) {
+      this.paintHeld = true;
+      this.paintedKeysThisHold.clear();
+      this.lastPaintKey = '';
+      this.lastPaintTarget = null;
     }
+    if (!shouldStartStroke && !this.canContinuePaintStroke(preview, key)) return;
+    if (this.place(scene, preview)) {
+      this.lastPaintKey = key;
+      this.lastPaintTarget = { col: preview.target.col, row: preview.target.row };
+      this.paintedKeysThisHold.add(key);
+    }
+  }
+
+  resetPaintStroke() {
+    this.paintHeld = false;
+    this.lastPaintKey = '';
+    this.lastPaintTarget = null;
+    this.paintedKeysThisHold.clear();
+  }
+
+  canContinuePaintStroke(preview, key) {
+    if (!preview?.target) return false;
+    if (this.paintedKeysThisHold.has(key) || key === this.lastPaintKey) return false;
+    if (!this.lastPaintTarget) return true;
+    const dx = Math.abs(preview.target.col - this.lastPaintTarget.col);
+    const dy = Math.abs(preview.target.row - this.lastPaintTarget.row);
+    return Math.max(dx, dy) <= 1;
   }
 
   place(scene, preview) {
@@ -521,27 +537,72 @@ export class BuildingSystem {
     ctx.shadowColor = color;
     ctx.shadowBlur = preview.valid ? 10 : 4;
     if (preview.mode === 'backgroundWall') this.drawWallPreview(ctx, terrain, col, row, material, rgb, pulse, preview.valid);
-    else this.drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, preview.valid);
+    else this.drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, preview.valid, preview.buildable);
     ctx.restore();
   }
 
-  drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, valid) {
-    const points = terrain.getCellShapePoints?.(col, row, { scale: 0.94 * pulse }) || [];
+  drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, valid, buildable = null) {
+    const size = terrain.cellSize;
+    const x = col * size;
+    const y = row * size;
+    const edgeStyle = this.getBuildPreviewEdgeStyle(material, buildable);
     ctx.globalAlpha = valid ? 0.58 : 0.42;
     ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${valid ? 0.34 : 0.22})`;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${valid ? 0.96 : 0.82})`;
     ctx.lineWidth = Math.max(1.5, terrain.cellSize * 0.09);
-    drawPolygon(ctx, points);
+    if (edgeStyle === 'smooth') this.traceSmoothGridTile(ctx, x, y, size, pulse);
+    else this.traceRoughGridTile(ctx, col, row, x, y, size, material, pulse);
     ctx.fill();
     ctx.stroke();
     ctx.globalAlpha = valid ? 0.28 : 0.18;
     ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.72)`;
     ctx.lineWidth = Math.max(1, terrain.cellSize * 0.04);
-    const size = terrain.cellSize;
     ctx.beginPath();
     ctx.moveTo(col * size + size * 0.22, row * size + size * 0.72);
     ctx.lineTo(col * size + size * 0.72, row * size + size * 0.22);
     ctx.stroke();
+  }
+
+  getBuildPreviewEdgeStyle(material, buildable = null) {
+    if (!material) return 'rough';
+    if (buildable?.edgeStyle) return buildable.edgeStyle;
+    if (SMOOTH_BUILD_MATERIAL_IDS.has(material.id)) return 'smooth';
+    return material.id?.includes('Iron') ? 'smooth' : 'rough';
+  }
+
+  traceSmoothGridTile(ctx, x, y, size, pulse = 1) {
+    const inset = size * (1 - pulse) * 0.5;
+    ctx.beginPath();
+    ctx.rect(x + inset, y + inset, size - inset * 2, size - inset * 2);
+  }
+
+  traceRoughGridTile(ctx, col, row, x, y, size, material, pulse = 1) {
+    const materialSalt = Array.from(material?.id || 'rock').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const inset = size * (1 - pulse) * 0.5;
+    const left = x + inset;
+    const top = y + inset;
+    const right = x + size - inset;
+    const bottom = y + size - inset;
+    const jitter = size * 0.055;
+    const point = (px, py, salt) => ({
+      x: px + signedHash2D(col * 19 + salt, row * 23, 11, materialSalt) * jitter,
+      y: py + signedHash2D(col * 29, row * 31 + salt, 17, materialSalt) * jitter,
+    });
+    const points = [
+      { x: left, y: top },
+      point(left + size * 0.33, top, 1),
+      point(left + size * 0.66, top, 2),
+      { x: right, y: top },
+      point(right, top + size * 0.33, 3),
+      point(right, top + size * 0.66, 4),
+      { x: right, y: bottom },
+      point(left + size * 0.66, bottom, 5),
+      point(left + size * 0.33, bottom, 6),
+      { x: left, y: bottom },
+      point(left, top + size * 0.66, 7),
+      point(left, top + size * 0.33, 8),
+    ];
+    drawPolygon(ctx, points);
   }
 
   drawWallPreview(ctx, terrain, col, row, material, rgb, pulse, valid) {

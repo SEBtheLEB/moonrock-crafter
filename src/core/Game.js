@@ -763,6 +763,7 @@ export class Game {
       'cancel',
       'pause',
       'jump',
+      'boost',
       'interact',
       'primaryUse',
       'aimUse',
