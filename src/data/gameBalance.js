@@ -46,6 +46,8 @@ export const gameBalance = {
     maxAsteroidPool: 16,
     asteroidSpawnMinDistance: 1280,
     asteroidSpawnMaxDistance: 3600,
+    spaceSpawnWarmupDuration: 1.4,
+    backgroundAsteroidFadeDuration: 1.2,
     asteroidCullDistance: 6200,
     pickupCullDistance: 3200,
     stationDockRadius: 155,

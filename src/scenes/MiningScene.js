@@ -265,6 +265,8 @@ export class MiningScene {
     this.atmosphereSurfaceDistance = Infinity;
     this.backgroundAsteroids = [];
     this.backgroundAsteroidSourceId = '';
+    this.backgroundAsteroidFadeTimer = 0;
+    this.spaceSpawnWarmupTimer = 0;
     this.loadedIslandFocusId = '';
     this.spaceObjectsSuspended = false;
     this.landingIsland = null;
@@ -1184,6 +1186,7 @@ export class MiningScene {
   }
 
   updateAsteroids(delta) {
+    this.spaceSpawnWarmupTimer = Math.max(0, this.spaceSpawnWarmupTimer - delta);
     if (this.shouldUnloadSpaceObjects()) {
       this.clearSpaceAsteroidsAndPickups();
       return;
@@ -1207,7 +1210,12 @@ export class MiningScene {
     }
     this.asteroids.length = writeIndex;
     let spawnSafety = 0;
-    while (this.asteroids.length < gameBalance.mining.targetAsteroidCount && spawnSafety < 40) {
+    const spawnWarmupDuration = gameBalance.mining.spaceSpawnWarmupDuration || 1.4;
+    const spawnBlend = this.spaceSpawnWarmupTimer > 0
+      ? clamp01(1 - this.spaceSpawnWarmupTimer / spawnWarmupDuration)
+      : 1;
+    const targetAsteroidCount = Math.max(0, Math.floor(gameBalance.mining.targetAsteroidCount * spawnBlend));
+    while (this.asteroids.length < targetAsteroidCount && spawnSafety < 40) {
       spawnSafety += 1;
       const asteroid = this.createAsteroid(gameBalance.mining.asteroidSpawnMinDistance);
       if (!asteroid) continue;
@@ -2131,8 +2139,9 @@ export class MiningScene {
     return 'E';
   }
 
-  updateLanding() {
+  updateLanding(delta = 0) {
     if (this.islandMode !== 'flight') return;
+    const previousAtmosphereIsland = this.atmosphereIsland;
     let nearest = null;
     let nearestDistanceSq = Infinity;
     let strongestAtmosphereIsland = null;
@@ -2168,6 +2177,17 @@ export class MiningScene {
     this.landingTargetPreview = nearest ? this.getLandingTargetForIsland(nearest) : null;
     this.atmosphereIsland = nearest || strongestAtmosphereIsland;
     this.atmosphereStrength = nearest ? 1 : strongestAtmosphere;
+    if (previousAtmosphereIsland && !this.atmosphereIsland) {
+      this.spaceSpawnWarmupTimer = Math.max(
+        this.spaceSpawnWarmupTimer,
+        gameBalance.mining.spaceSpawnWarmupDuration || 1.4,
+      );
+      this.backgroundAsteroidFadeTimer = Math.max(
+        this.backgroundAsteroidFadeTimer,
+        gameBalance.mining.backgroundAsteroidFadeDuration || 1.2,
+      );
+    }
+    this.backgroundAsteroidFadeTimer = Math.max(0, this.backgroundAsteroidFadeTimer - delta);
     this.atmosphereSurfaceDistance = nearest
       ? Math.max(0, nearest.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
       : strongestSurfaceDistance;
@@ -2181,7 +2201,12 @@ export class MiningScene {
     if (this.atmosphereIsland && !this.spaceObjectsSuspended && this.backgroundAsteroidSourceId !== this.atmosphereIsland.id) {
       this.backgroundAsteroids = this.createIslandBackgroundAsteroids(this.atmosphereIsland);
       this.backgroundAsteroidSourceId = this.atmosphereIsland.id;
-    } else if (!this.atmosphereIsland && !this.spaceObjectsSuspended && this.backgroundAsteroids.length) {
+    } else if (
+      !this.atmosphereIsland
+      && !this.spaceObjectsSuspended
+      && this.backgroundAsteroidFadeTimer <= 0
+      && this.backgroundAsteroids.length
+    ) {
       this.backgroundAsteroids = [];
       this.backgroundAsteroidSourceId = '';
     }
@@ -4864,6 +4889,7 @@ export class MiningScene {
   updateIslandBoarding(delta) {
     this.islandBoardingTimer -= delta;
     if (this.islandBoardingTimer > 0) return;
+    const departingIsland = this.activeIsland;
     if (this.activeIsland) {
       const shipLocal = this.activeIsland.getShipParkLocal();
       const exit = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, this.getIslandViewRotation());
@@ -4881,17 +4907,19 @@ export class MiningScene {
     this.islandPickups.forEach((pickup) => this.releaseIslandPickup(pickup));
     this.islandPickups.length = 0;
     this.activeIsland = null;
-    this.atmosphereIsland = null;
-    this.atmosphereStrength = 0;
-    this.atmosphereSurfaceDistance = Infinity;
-    this.gravityIsland = null;
-    this.gravityFieldStrength = 0;
+    this.atmosphereIsland = departingIsland;
+    this.atmosphereStrength = clamp01(departingIsland?.getAtmosphereStrength?.(this.ship) ?? 1);
+    this.atmosphereSurfaceDistance = departingIsland
+      ? Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
+      : Infinity;
+    this.gravityIsland = departingIsland;
+    this.gravityFieldStrength = this.atmosphereStrength;
     this.islandLandingTarget = null;
     this.islandLandingAnchor = null;
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
     this.islandRotationSettling = false;
-    this.resumeSpaceObjectsAfterIsland();
+    this.resumeSpaceObjectsAfterIsland({ keepAtmosphereBackground: Boolean(departingIsland) });
     this.stopIslandTerrainLaser();
     this.hud?.landingPrompt?.classList.add('is-hidden');
     this.game.audio.playBoardShip?.();
@@ -4983,10 +5011,21 @@ export class MiningScene {
     this.spaceObjectsSuspended = true;
   }
 
-  resumeSpaceObjectsAfterIsland() {
+  resumeSpaceObjectsAfterIsland({ keepAtmosphereBackground = false } = {}) {
     if (!this.spaceObjectsSuspended) return;
-    this.backgroundAsteroids = [];
-    this.backgroundAsteroidSourceId = '';
+    if (keepAtmosphereBackground && this.atmosphereIsland) {
+      if (!this.backgroundAsteroids.length || this.backgroundAsteroidSourceId !== this.atmosphereIsland.id) {
+        this.backgroundAsteroids = this.createIslandBackgroundAsteroids(this.atmosphereIsland);
+      }
+      this.backgroundAsteroidSourceId = this.atmosphereIsland.id;
+    } else {
+      this.backgroundAsteroids = [];
+      this.backgroundAsteroidSourceId = '';
+    }
+    this.spaceSpawnWarmupTimer = Math.max(
+      this.spaceSpawnWarmupTimer,
+      gameBalance.mining.spaceSpawnWarmupDuration || 1.4,
+    );
     this.spaceObjectsSuspended = false;
   }
 
@@ -5442,20 +5481,45 @@ export class MiningScene {
   }
 
   getControllerIslandAimPoint() {
-    const inputMode = document.documentElement.dataset.inputMode;
-    const allowDirectionalAim = this.game.input.isControllerActive?.()
-      || inputMode === 'touch'
-      || document.documentElement.dataset.forceTouchControls === 'true';
-    if (!allowDirectionalAim || !this.islandPlayer) return null;
-    const aim = this.game.input.aimVector || { x: 0, y: 0 };
-    const magnitude = Math.hypot(aim.x, aim.y);
-    if (magnitude < 0.12) return null;
+    const direction = this.getControllerIslandAimVector();
+    if (!direction || !this.islandPlayer) return null;
     const range = this.getControllerToolAimRange('island');
-    const distance = Math.max(Math.min(42, range * 0.36), range * Math.min(1, magnitude));
-    const localAim = this.rotateScreenVectorToIslandLocal(aim.x / magnitude, aim.y / magnitude);
+    const distance = Math.max(Math.min(42, range * 0.36), range * Math.min(1, direction.magnitude));
+    const localAim = this.rotateScreenVectorToIslandLocal(direction.x, direction.y);
     return {
       x: this.islandPlayer.centerX + localAim.x * distance,
       y: this.islandPlayer.centerY - 7 + localAim.y * distance,
+    };
+  }
+
+  getControllerIslandAimVector() {
+    const inputMode = document.documentElement.dataset.inputMode;
+    const controllerActive = Boolean(this.game.input.isControllerActive?.());
+    const forceTouchControls = document.documentElement.dataset.forceTouchControls === 'true';
+    const allowDirectionalAim = controllerActive || inputMode === 'touch' || forceTouchControls;
+    if (!allowDirectionalAim) return null;
+
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    const aimMagnitude = Math.hypot(aim.x, aim.y);
+    if (aimMagnitude > 0.12) {
+      return {
+        x: aim.x / aimMagnitude,
+        y: aim.y / aimMagnitude,
+        magnitude: clamp01(aimMagnitude),
+        source: 'aim',
+      };
+    }
+
+    const move = controllerActive
+      ? (this.game.input.gamepadMove || { x: 0, y: 0 })
+      : (this.game.input.virtualMove || { x: 0, y: 0 });
+    const moveMagnitude = Math.hypot(move.x, move.y);
+    if (moveMagnitude <= 0.18) return null;
+    return {
+      x: move.x / moveMagnitude,
+      y: move.y / moveMagnitude,
+      magnitude: clamp01(moveMagnitude),
+      source: 'move',
     };
   }
 
@@ -5817,6 +5881,8 @@ export class MiningScene {
 
   render(ctx) {
     const { width, height } = this.game.viewport;
+    const dpr = this.game.viewport?.dpr || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     this.drawSpace(ctx, width, height);
     this.drawAmbientParticles(ctx);
@@ -5835,7 +5901,7 @@ export class MiningScene {
         && island !== this.landingIsland
         && island !== this.activeIsland
         && island !== this.gravityIsland
-      ) return;
+      ) continue;
       island.draw(ctx, camera, {
         active: island === this.landingIsland,
         discovered: this.game.systems.navigation.isDiscovered(island.id),
@@ -5898,7 +5964,11 @@ export class MiningScene {
     const centerX = this.game.viewport.width * 0.5;
     const centerY = this.game.viewport.height * 0.5;
     ctx.save();
-    const atmosphere = Math.max(this.atmosphereStrength || 0, this.gravityFieldStrength || 0);
+    const fadeDuration = gameBalance.mining.backgroundAsteroidFadeDuration || 1.2;
+    const fadeStrength = this.backgroundAsteroidFadeTimer > 0
+      ? clamp01(this.backgroundAsteroidFadeTimer / fadeDuration)
+      : 0;
+    const atmosphere = Math.max(this.atmosphereStrength || 0, this.gravityFieldStrength || 0, fadeStrength);
     for (const rock of this.backgroundAsteroids) {
       const parallax = 0.38;
       const driftX = Math.cos(this.time * rock.drift + rock.seed) * 18;
@@ -5948,7 +6018,15 @@ export class MiningScene {
       return this.islandViewScale;
     }
 
-    const gravityZoom = clamp01(this.atmosphereStrength || this.gravityFieldStrength || 0);
+    const warmupDuration = gameBalance.mining.spaceSpawnWarmupDuration || 1.4;
+    const transitionZoom = this.spaceSpawnWarmupTimer > 0
+      ? clamp01(this.spaceSpawnWarmupTimer / warmupDuration)
+      : 0;
+    const gravityZoom = clamp01(Math.max(
+      this.atmosphereStrength || 0,
+      this.gravityFieldStrength || 0,
+      transitionZoom,
+    ));
     if (gravityZoom > 0) {
       const easedZoom = Math.pow(gravityZoom, 0.78);
       return this.viewScale + (this.islandViewScale - this.viewScale) * easedZoom;
@@ -6731,6 +6809,7 @@ export class MiningScene {
 
   isControllerAimIndicatorActive() {
     if (!this.isControllerPromptMode()) return false;
+    if (this.islandMode === 'onIsland') return Boolean(this.getControllerIslandAimVector());
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     return Math.hypot(aim.x, aim.y) > 0.12;
   }
@@ -6746,6 +6825,13 @@ export class MiningScene {
 
   drawControllerIslandAimIndicator(ctx) {
     if (!this.isControllerAimIndicatorActive() || !this.islandPlayer) return;
+    const direction = this.getControllerIslandAimVector();
+    if (
+      direction?.source === 'move'
+      && !this.isTerrainToolSelected()
+      && !this.isWeaponToolSelected()
+      && !this.isLaserGunToolSelected()
+    ) return;
     if (this.isMinerToolSelected()) {
       const state = this.islandMiningBeam
         || this.islandAimPreview
@@ -6754,6 +6840,7 @@ export class MiningScene {
       this.drawControllerAimBall(ctx, state.origin, state.end, {
         subtle: true,
         showDot: false,
+        magnitudeOverride: direction?.magnitude,
       });
       return;
     }
@@ -6763,12 +6850,16 @@ export class MiningScene {
       x: this.islandPlayer.centerX,
       y: this.islandPlayer.centerY - 7,
     };
-    this.drawControllerAimBall(ctx, start, aimPoint);
+    this.drawControllerAimBall(ctx, start, aimPoint, {
+      subtle: direction?.source === 'move',
+      showDot: direction?.source !== 'move',
+      magnitudeOverride: direction?.magnitude,
+    });
   }
 
-  drawControllerAimBall(ctx, start, end, { subtle = false, showDot = true } = {}) {
+  drawControllerAimBall(ctx, start, end, { subtle = false, showDot = true, magnitudeOverride = null } = {}) {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
-    const magnitude = clamp01(Math.hypot(aim.x, aim.y));
+    const magnitude = magnitudeOverride ?? clamp01(Math.hypot(aim.x, aim.y));
     const pulse = 1 + Math.sin(this.time * 9) * 0.08;
     const lineAlpha = subtle ? 0.38 : 0.68;
     const ringAlpha = subtle ? 0.34 : 0.52;
