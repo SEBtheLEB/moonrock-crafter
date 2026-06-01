@@ -265,6 +265,8 @@ export class MiningScene {
     this.hudRefreshTimer = 0;
     this.quickInventoryOpen = false;
     this.quickInventorySignature = '';
+    this.heldItemState = null;
+    this.heldItemMoveHandler = null;
     this.distanceRecordTimer = 0;
     this.spaceBackdrop = null;
     this.rockIslands = this.createSpaceIslands();
@@ -312,6 +314,9 @@ export class MiningScene {
     this.buildPlacementPreview = null;
     this.activeBuildItemId = null;
     this.activeBuildMode = 'foregroundBlock';
+    this.buildSnapCursorEnabled = false;
+    this.buildSnapCursorTile = null;
+    this.buildSnapCursorStepCooldown = 0;
     this.buildSaveDelay = 0;
     this.sword = {
       active: null,
@@ -1019,6 +1024,7 @@ export class MiningScene {
     if (this.ending) return;
     this.time += delta;
     this.updateDeferredPickupSave(delta);
+    this.updateHeldItemState();
     this.hotbar?.update();
     if (this.game.input.actions.justPressed.inventory) this.toggleQuickInventory();
     this.updateQuickInventory();
@@ -2737,6 +2743,7 @@ export class MiningScene {
     if (actions.justPressed.placeFurnace) this.placeFurnaceOnIsland(this.furnacePlacementPreview);
     if (actions.justPressed.placeCraftingStation) this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
     if (actions.justPressed.placeResearchStation) this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
+    this.handleHeldItemWorldUse(actions);
     if (actions.mine && this.isMinerToolSelected()) this.updateIslandTerrainMining(delta, this.islandAimPreview);
     else this.stopIslandTerrainLaser();
     if (actions.justPressed.interact || actions.justPressed.confirm) {
@@ -2812,6 +2819,7 @@ export class MiningScene {
 
   updateGravityStabilizerInput(actions) {
     if (!this.activeIsland || !this.islandPlayer) return;
+    if (this.heldItemState) return;
     if (!actions.justPressed?.stabilize && !actions.stabilize) return;
     if (actions.justPressed?.stabilize) this.engageIslandGravityStabilizer();
     this.islandRotationSettling = true;
@@ -2828,11 +2836,13 @@ export class MiningScene {
   }
 
   isFlagToolSelected() {
-    return this.game.input.getSelectedHotbarSlot?.()?.id === 'flag';
+    return this.heldItemState?.itemId === 'markerFlag'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'flag';
   }
 
   isTorchToolSelected() {
-    return this.game.input.getSelectedHotbarSlot?.()?.id === 'torch';
+    return this.heldItemState?.itemId === 'torch'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'torch';
   }
 
   isWeaponToolSelected() {
@@ -2852,7 +2862,8 @@ export class MiningScene {
   }
 
   isResearchStationToolSelected() {
-    return this.game.input.getSelectedHotbarSlot?.()?.id === 'researchStation';
+    return this.heldItemState?.itemId === 'researchStationKit'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'researchStation';
   }
 
   isTerrainToolSelected() {
@@ -3004,11 +3015,13 @@ export class MiningScene {
   }
 
   isFurnaceToolSelected() {
-    return this.game.input.getSelectedHotbarSlot?.()?.id === 'furnace';
+    return this.heldItemState?.itemId === 'starterFurnace'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'furnace';
   }
 
   isCraftingStationToolSelected() {
-    return this.game.input.getSelectedHotbarSlot?.()?.id === 'craftingStation';
+    return this.heldItemState?.itemId === 'craftingStationKit'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'craftingStation';
   }
 
   getCraftingStationPlacementPreview() {
@@ -3474,7 +3487,10 @@ export class MiningScene {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `quick-inventory-slot ${amount > 0 ? 'has-item' : 'is-empty'}`;
-    button.addEventListener('pointerdown', (event) => event.stopPropagation());
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+      if (event.button === 0) event.preventDefault();
+    });
     if (!itemId || amount <= 0) {
       button.disabled = true;
       button.setAttribute('aria-label', 'Empty inventory slot');
@@ -3500,8 +3516,7 @@ export class MiningScene {
         this.autoAssignItemToHotbar(itemId);
         return;
       }
-      if (event.button !== 0) return;
-      this.beginItemDrag({ itemId, source: 'inventory', pointerEvent: event });
+      if (event.button === 0) event.preventDefault();
     });
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -3514,14 +3529,7 @@ export class MiningScene {
         return;
       }
       event.stopPropagation();
-      if (this.game.systems.building?.isBuildableItem?.(itemId)) {
-        this.autoAssignItemToHotbar(itemId);
-        this.activeBuildItemId = itemId;
-        this.activeBuildMode ||= 'foregroundBlock';
-        return;
-      }
-      this.game.audio.playButtonClick?.();
-      this.game.ui.showToast(`${name} x${amount}`, rarity === 'common' ? 'info' : 'success', 1100);
+      this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
     });
     return button;
   }
@@ -3593,22 +3601,163 @@ export class MiningScene {
         this.autoAssignItemToHotbar(itemId);
         return;
       }
-      if (event.button !== 0) return;
-      this.beginItemDrag({ itemId, source: 'inventory', pointerEvent: event });
+      if (event.button === 0) event.preventDefault();
     });
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.autoAssignItemToHotbar(itemId);
     });
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
       if (this.suppressInventoryClick) {
         this.suppressInventoryClick = false;
         return;
       }
-      this.showItemInfoModal(itemId, amount);
+      event.stopPropagation();
+      this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
     });
     return button;
+  }
+
+  hasHeldInventoryItem() {
+    return Boolean(this.heldItemState?.itemId);
+  }
+
+  beginHeldInventoryItem({ itemId, source = 'inventory', hotbarSlotIndex = -1, pointerEvent = null } = {}) {
+    if (!itemId || this.game.systems.inventory.getStoredAmount(itemId) <= 0) return false;
+    pointerEvent?.preventDefault?.();
+    pointerEvent?.stopPropagation?.();
+    this.cancelItemDrag();
+    const material = this.game.systems.materials.getMaterial(itemId);
+    const ghost = document.createElement('div');
+    ghost.className = 'item-drag-ghost is-dragging is-held';
+    ghost.style.setProperty('--item-color', material?.color || '#fff2cf');
+    ghost.innerHTML = `
+      <span>${material?.icon || '?'}</span>
+      <strong data-held-item-count>${this.game.systems.inventory.getStoredAmount(itemId)}</strong>
+    `;
+    document.body.append(ghost);
+    const startX = pointerEvent?.clientX ?? this.game.input.mousePointer?.x ?? window.innerWidth * 0.5;
+    const startY = pointerEvent?.clientY ?? this.game.input.mousePointer?.y ?? window.innerHeight * 0.5;
+    this.heldItemState = {
+      itemId,
+      source,
+      hotbarSlotIndex,
+      ghost,
+      lastClientX: startX,
+      lastClientY: startY,
+    };
+    this.updateHeldItemGhost(startX, startY);
+    this.heldItemMoveHandler = (event) => this.updateHeldItemGhost(event.clientX, event.clientY);
+    window.addEventListener('pointermove', this.heldItemMoveHandler, { passive: true });
+    if (this.game.systems.building?.isBuildableItem?.(itemId)) {
+      this.activeBuildItemId = itemId;
+      this.activeBuildMode ||= 'foregroundBlock';
+    }
+    this.game.audio.playButtonClick?.();
+    this.game.ui.showToast(`${this.game.systems.materials.getDisplayName(itemId)} held`, 'default', 900);
+    return true;
+  }
+
+  updateHeldItemGhost(clientX, clientY) {
+    const held = this.heldItemState;
+    if (!held?.ghost) return;
+    held.lastClientX = clientX;
+    held.lastClientY = clientY;
+    held.ghost.style.transform = `translate(${clientX}px, ${clientY}px)`;
+    const count = held.ghost.querySelector('[data-held-item-count]');
+    if (count) count.textContent = this.game.systems.inventory.getStoredAmount(held.itemId);
+  }
+
+  updateHeldItemState() {
+    const held = this.heldItemState;
+    if (!held) return;
+    const amount = this.game.systems.inventory.getStoredAmount(held.itemId);
+    if (amount <= 0) {
+      this.clearHeldItemState();
+      return;
+    }
+    const count = held.ghost?.querySelector('[data-held-item-count]');
+    if (count && count.textContent !== String(amount)) count.textContent = String(amount);
+    const actions = this.game.input.actions;
+    if (actions.justPressed?.dropHeldAll) {
+      this.dropHeldInventoryItem('all');
+      return;
+    }
+    if (actions.justPressed?.dropHeldOne) this.dropHeldInventoryItem(1);
+  }
+
+  cleanupHeldItemListeners() {
+    if (this.heldItemMoveHandler) window.removeEventListener('pointermove', this.heldItemMoveHandler);
+    this.heldItemMoveHandler = null;
+  }
+
+  clearHeldItemState() {
+    this.cleanupHeldItemListeners();
+    this.heldItemState?.ghost?.remove();
+    this.heldItemState = null;
+  }
+
+  handleHotbarSlotClick(index, event = null) {
+    const held = this.heldItemState;
+    if (!held) return false;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const assigned = this.assignInventoryItemToHotbar(held.itemId, index, {
+      clearSourceIndex: held.source === 'hotbar' ? held.hotbarSlotIndex : -1,
+    });
+    if (assigned) this.clearHeldItemState();
+    return true;
+  }
+
+  handleHeldItemWorldUse(actions) {
+    const held = this.heldItemState;
+    if (!held || this.game.ui.modalLayer?.children.length) return false;
+    if (!actions.justPressed?.primaryUse && !actions.justPressed?.aimUse) return false;
+    if (this.game.systems.building?.isBuildableItem?.(held.itemId)) return false;
+
+    switch (held.itemId) {
+      case 'markerFlag':
+        this.placeFlagOnIsland(this.flagPlacementPreview);
+        break;
+      case 'torch':
+        this.placeTorchOnIsland(this.torchPlacementPreview);
+        break;
+      case 'starterFurnace':
+        this.placeFurnaceOnIsland(this.furnacePlacementPreview);
+        break;
+      case 'craftingStationKit':
+        this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
+        break;
+      case 'researchStationKit':
+        this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
+        break;
+      default:
+        this.dropHeldInventoryItem(1);
+        break;
+    }
+    this.updateHeldItemState();
+    return true;
+  }
+
+  dropHeldInventoryItem(amount = 1) {
+    const held = this.heldItemState;
+    if (!held) return false;
+    const available = this.game.systems.inventory.getStoredAmount(held.itemId);
+    const dropAmount = amount === 'all' ? available : Math.max(1, Math.min(available, Number(amount) || 1));
+    if (dropAmount <= 0) {
+      this.clearHeldItemState();
+      return false;
+    }
+    const dropped = this.dropInventoryItemToWorld(held.itemId, {
+      source: held.source,
+      hotbarSlotIndex: held.hotbarSlotIndex,
+      amount: dropAmount,
+    });
+    if (!dropped) return false;
+    if (this.game.systems.inventory.getStoredAmount(held.itemId) <= 0 || amount === 'all') this.clearHeldItemState();
+    else this.updateHeldItemGhost(held.lastClientX, held.lastClientY);
+    return true;
   }
 
   beginItemDrag({ itemId, source = 'inventory', hotbarSlotIndex = -1, pointerEvent } = {}) {
@@ -3696,6 +3845,7 @@ export class MiningScene {
     this.cleanupItemDragListeners();
     this.itemDragState?.ghost?.remove();
     this.itemDragState = null;
+    this.clearHeldItemState();
   }
 
   getHotbarSlotIndexFromElement(target) {
@@ -3751,15 +3901,16 @@ export class MiningScene {
     return this.assignInventoryItemToHotbar(itemId, index);
   }
 
-  dropInventoryItemToWorld(itemId, { source = 'inventory', hotbarSlotIndex = -1 } = {}) {
-    if (!this.game.systems.inventory.remove(itemId, 1, { skipSave: true })) {
+  dropInventoryItemToWorld(itemId, { source = 'inventory', hotbarSlotIndex = -1, amount = 1 } = {}) {
+    const dropAmount = Math.max(1, Math.floor(amount));
+    if (!this.game.systems.inventory.remove(itemId, dropAmount, { skipSave: true })) {
       this.game.audio.playError?.();
       return false;
     }
     if (source === 'hotbar' && hotbarSlotIndex >= 0 && this.game.systems.inventory.getStoredAmount(itemId) <= 0) {
       this.game.input.clearHotbarSlot?.(hotbarSlotIndex, { notify: false });
     }
-    this.spawnDroppedInventoryItem(itemId);
+    this.spawnDroppedInventoryItem(itemId, dropAmount);
     this.game.saveGame();
     this.updateQuickInventory(true);
     this.refreshHotbar(true);
@@ -3767,7 +3918,7 @@ export class MiningScene {
     return true;
   }
 
-  spawnDroppedInventoryItem(itemId) {
+  spawnDroppedInventoryItem(itemId, amount = 1) {
     const material = this.game.systems.materials.getMaterial(itemId);
     if (this.islandMode === 'onIsland' && this.activeIsland && this.islandPlayer) {
       const drop = {
@@ -3776,7 +3927,7 @@ export class MiningScene {
       };
       const pickup = this.acquireIslandPickup({
         materialId: itemId,
-        amount: 1,
+        amount,
         x: drop.x,
         y: drop.y,
         seed: Math.random(),
@@ -3788,7 +3939,7 @@ export class MiningScene {
       pickup.vy = -80;
       this.islandPickups.push(pickup);
       const world = this.activeIsland.localToWorldRotated(drop.x, drop.y, this.getIslandViewRotation());
-      this.addFloatingText(world.x, world.y - 22, `${this.game.systems.materials.getDisplayName(itemId)} dropped`, {
+      this.addFloatingText(world.x, world.y - 22, `${this.game.systems.materials.getDisplayName(itemId)} x${amount} dropped`, {
         color: material?.color || '#fff2cf',
         rarity: material?.rarity || 'common',
       });
@@ -3798,7 +3949,7 @@ export class MiningScene {
     const angle = this.ship?.angle || 0;
     const pickup = this.acquirePickup({
       materialId: itemId,
-      amount: 1,
+      amount,
       x: (this.ship?.x || 0) - Math.cos(angle) * 46,
       y: (this.ship?.y || 0) - Math.sin(angle) * 46,
       seed: Math.random(),

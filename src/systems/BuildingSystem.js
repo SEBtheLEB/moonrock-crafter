@@ -14,6 +14,7 @@ export const BUILDABLE_TERRAIN_ITEMS = {
   crystallizedStone: { itemId: 'crystallizedStone', label: 'Crystallized Stone', terrainMaterial: 7, wallMaterial: 7, edgeStyle: 'rough' },
   redCrystal: { itemId: 'redCrystal', label: 'Red Crystal', terrainMaterial: 8, wallMaterial: 8, edgeStyle: 'rough' },
   moonCrystal: { itemId: 'moonCrystal', label: 'Moon Crystal', terrainMaterial: 9, wallMaterial: 9, edgeStyle: 'rough' },
+  metalCaseWall: { itemId: 'metalCaseWall', label: 'Metal Case Wall', terrainMaterial: 10, wallMaterial: 10, edgeStyle: 'smooth' },
 };
 
 function clamp01(value) {
@@ -75,6 +76,8 @@ export class BuildingSystem {
   }
 
   getSelectedBuildItem(scene) {
+    const heldItemId = scene?.heldItemState?.itemId;
+    if (heldItemId && this.isBuildableItem(heldItemId)) return this.getBuildableItem(heldItemId);
     const slot = this.game.input?.getSelectedHotbarSlot?.();
     const slotBuildable = this.getBuildableItem(slot?.inventoryItemId);
     if (slot?.action === 'build' && slotBuildable) return slotBuildable;
@@ -240,14 +243,22 @@ export class BuildingSystem {
     terrain.markAirExposureDirty?.({ defer: true });
   }
 
-  updateMode(scene) {
+  updateMode(scene, delta = 0) {
     if (!scene) return;
+    scene.buildSnapCursorStepCooldown = Math.max(0, (scene.buildSnapCursorStepCooldown || 0) - delta);
     scene.activeBuildMode ||= 'foregroundBlock';
     const input = this.game.input;
     if (input?.actions?.justPressed?.buildModeToggle) {
       scene.activeBuildMode = scene.activeBuildMode === 'backgroundWall' ? 'foregroundBlock' : 'backgroundWall';
       const label = scene.activeBuildMode === 'backgroundWall' ? 'Wall paint' : 'Block paint';
       this.game.ui.showToast(label, 'default', 850);
+      this.game.audio.playButtonClick?.();
+    }
+    if (input?.actions?.justPressed?.buildSnapToggle) {
+      scene.buildSnapCursorEnabled = !scene.buildSnapCursorEnabled;
+      scene.buildSnapCursorTile = null;
+      scene.buildSnapCursorStepCooldown = 0;
+      this.game.ui.showToast(scene.buildSnapCursorEnabled ? 'Grid cursor on' : 'Grid cursor off', 'default', 900);
       this.game.audio.playButtonClick?.();
     }
   }
@@ -261,6 +272,7 @@ export class BuildingSystem {
 
   getAimState(scene) {
     if (!scene?.activeIsland || !scene?.islandPlayer) return null;
+    const terrain = scene.activeIsland.terrain;
     const rawAimPoint = scene.getIslandAimPoint();
     const origin = {
       x: scene.islandPlayer.centerX,
@@ -275,6 +287,25 @@ export class BuildingSystem {
       x: origin.x + (dx / distance) * length,
       y: origin.y + (dy / distance) * length,
     };
+    if (scene.buildSnapCursorEnabled && terrain) {
+      const tile = this.getSnapCursorTile(scene, terrain, aimPoint);
+      if (tile) {
+        const center = this.planetTileToWorld(tile.col, tile.row, { terrain });
+        const snapDx = center.x - origin.x;
+        const snapDy = center.y - origin.y;
+        const snapDistance = Math.hypot(snapDx, snapDy) || 1;
+        return {
+          origin,
+          rawAimPoint: center,
+          aimPoint: center,
+          direction: { x: snapDx / snapDistance, y: snapDy / snapDistance },
+          length: Math.min(snapDistance, range),
+          range,
+          inRange: snapDistance <= range + 0.001,
+          snapped: true,
+        };
+      }
+    }
     return {
       origin,
       rawAimPoint,
@@ -283,7 +314,45 @@ export class BuildingSystem {
       length,
       range,
       inRange: distance <= range + 0.001,
+      snapped: false,
     };
+  }
+
+  getSnapCursorTile(scene, terrain, fallbackPoint) {
+    const fallbackTile = this.worldToPlanetTile(fallbackPoint.x, fallbackPoint.y, { terrain });
+    if (!scene.buildSnapCursorTile || !terrain.isInside(scene.buildSnapCursorTile.col, scene.buildSnapCursorTile.row)) {
+      scene.buildSnapCursorTile = terrain.isInside(fallbackTile.col, fallbackTile.row)
+        ? { col: fallbackTile.col, row: fallbackTile.row }
+        : { col: 0, row: 0 };
+    }
+
+    const controllerActive = Boolean(this.game.input.isControllerActive?.());
+    const inputMode = typeof document !== 'undefined'
+      ? document.documentElement.dataset.inputMode
+      : 'keyboard';
+    if (!controllerActive && inputMode !== 'touch') {
+      scene.buildSnapCursorTile = { col: fallbackTile.col, row: fallbackTile.row };
+      return terrain.isInside(fallbackTile.col, fallbackTile.row) ? scene.buildSnapCursorTile : null;
+    }
+
+    const aim = this.game.input.aimVector || { x: 0, y: 0 };
+    const magnitude = Math.hypot(aim.x, aim.y);
+    if (magnitude > 0.48 && (scene.buildSnapCursorStepCooldown || 0) <= 0) {
+      const localAim = scene.rotateScreenVectorToIslandLocal?.(aim.x / magnitude, aim.y / magnitude) || {
+        x: aim.x / magnitude,
+        y: aim.y / magnitude,
+      };
+      const step = Math.abs(localAim.x) >= Math.abs(localAim.y)
+        ? { col: Math.sign(localAim.x), row: 0 }
+        : { col: 0, row: Math.sign(localAim.y) };
+      const next = {
+        col: scene.buildSnapCursorTile.col + step.col,
+        row: scene.buildSnapCursorTile.row + step.row,
+      };
+      if (terrain.isInside(next.col, next.row)) scene.buildSnapCursorTile = next;
+      scene.buildSnapCursorStepCooldown = magnitude > 0.82 ? 0.09 : 0.14;
+    }
+    return scene.buildSnapCursorTile;
   }
 
   getPreview(scene) {
@@ -330,6 +399,7 @@ export class BuildingSystem {
       end: center || aim.aimPoint,
       range: aim.range,
       length: aim.length,
+      snapCursor: aim.snapped,
     };
   }
 
@@ -388,7 +458,7 @@ export class BuildingSystem {
 
   update(scene, delta) {
     this.invalidToastCooldown = Math.max(0, this.invalidToastCooldown - delta);
-    this.updateMode(scene);
+    this.updateMode(scene, delta);
     const preview = this.getPreview(scene);
     if (scene) scene.buildPlacementPreview = preview;
 
@@ -538,6 +608,36 @@ export class BuildingSystem {
     ctx.shadowBlur = preview.valid ? 10 : 4;
     if (preview.mode === 'backgroundWall') this.drawWallPreview(ctx, terrain, col, row, material, rgb, pulse, preview.valid);
     else this.drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, preview.valid, preview.buildable);
+    if (preview.snapCursor) this.drawSnapCursorFrame(ctx, terrain, col, row, rgb, preview.valid);
+    ctx.restore();
+  }
+
+  drawSnapCursorFrame(ctx, terrain, col, row, rgb, valid) {
+    const size = terrain.cellSize;
+    const x = col * size;
+    const y = row * size;
+    const inset = size * 0.16;
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = valid ? 0.78 : 0.52;
+    ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${valid ? 0.9 : 0.62})`;
+    ctx.lineWidth = Math.max(1.4, size * 0.055);
+    ctx.setLineDash([size * 0.2, size * 0.14]);
+    ctx.strokeRect(x + inset, y + inset, size - inset * 2, size - inset * 2);
+    ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.82)`;
+    const corner = Math.max(2.5, size * 0.09);
+    const corners = [
+      [x + inset, y + inset],
+      [x + size - inset, y + inset],
+      [x + size - inset, y + size - inset],
+      [x + inset, y + size - inset],
+    ];
+    for (const [cx, cy] of corners) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, corner, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 

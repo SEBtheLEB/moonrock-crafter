@@ -231,6 +231,21 @@ export const hotbarSlotCatalog = [
     placedTileType: 9,
     placedWallType: 9,
   },
+  {
+    id: 'buildMetalCaseWall',
+    inventoryItemId: 'metalCaseWall',
+    label: 'Metal Case Wall',
+    shortLabel: 'Metal',
+    icon: 'MW',
+    iconHtml: '<span class="tool-icon-shape icon-build-block icon-build-iron"><i></i></span>',
+    action: 'build',
+    tone: 'metal',
+    description: 'Paint smooth metal case blocks or background walls for clean facility builds.',
+    itemType: 'block',
+    placeable: true,
+    placedTileType: 10,
+    placedWallType: 10,
+  },
 ];
 
 export const DEFAULT_HOTBAR_SLOT_IDS = [
@@ -240,7 +255,7 @@ export const DEFAULT_HOTBAR_SLOT_IDS = [
   'flag',
   'craftingStation',
   'torch',
-  null,
+  'buildMetalCaseWall',
 ];
 
 export const hotbarSlots = DEFAULT_HOTBAR_SLOT_IDS.map((slotId) => getHotbarSlotById(slotId));

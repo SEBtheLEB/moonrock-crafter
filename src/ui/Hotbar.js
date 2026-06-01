@@ -21,13 +21,22 @@ export class Hotbar {
     button.dataset.hotbarIndex = String(index);
     button.addEventListener('click', (event) => {
       if (event.defaultPrevented) return;
+      const scene = this.game.sceneManager?.current;
+      if (scene?.handleHotbarSlotClick?.(index, event)) {
+        this.update(true);
+        return;
+      }
       this.game.input.selectHotbarSlot(index);
       this.update(true);
     });
     button.addEventListener('pointerdown', (event) => {
+      const scene = this.game.sceneManager?.current;
+      if (scene?.hasHeldInventoryItem?.()) {
+        event.preventDefault();
+        return;
+      }
       const slot = this.game.input.getHotbarSlotAt?.(index) || EMPTY_HOTBAR_SLOT;
       if (slot.id === EMPTY_HOTBAR_SLOT.id || !slot.inventoryItemId || event.button !== 0) return;
-      const scene = this.game.sceneManager?.current;
       scene?.beginItemDrag?.({
         itemId: slot.inventoryItemId,
         source: 'hotbar',

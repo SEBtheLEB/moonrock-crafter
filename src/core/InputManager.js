@@ -30,6 +30,10 @@ const KEY_BINDINGS = {
   R: 'buildModeToggle',
   i: 'inventory',
   I: 'inventory',
+  b: 'dropHeldAll',
+  B: 'dropHeldAll',
+  y: 'dropHeldOne',
+  Y: 'dropHeldOne',
   c: 'crafting',
   C: 'crafting',
   k: 'primaryUse',
@@ -56,6 +60,7 @@ const GAMEPAD_BUTTONS = {
   rightTrigger: 7,
   select: 8,
   pause: 9,
+  rightStickClick: 11,
   dpadUp: 12,
   dpadDown: 13,
   dpadLeft: 14,
@@ -157,6 +162,9 @@ export class InputManager {
       build: false,
       buildModeToggle: false,
       buildWallModifier: false,
+      buildSnapToggle: false,
+      dropHeldAll: false,
+      dropHeldOne: false,
       inventory: false,
       crafting: false,
       hotbarNext: false,
@@ -747,12 +755,17 @@ export class InputManager {
     }
     if (buttonHeld(GAMEPAD_BUTTONS.cancel)) {
       actions.add('cancel');
+      actions.add('dropHeldAll');
     }
     if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) actions.add('primaryUse');
     if (buttonHeld(GAMEPAD_BUTTONS.leftTrigger)) actions.add('buildWallModifier');
-    if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) actions.add('stabilize');
+    if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) {
+      actions.add('stabilize');
+      actions.add('dropHeldOne');
+    }
     if (buttonHeld(GAMEPAD_BUTTONS.hotbarPrevious)) actions.add('hotbarPrevious');
     if (buttonHeld(GAMEPAD_BUTTONS.hotbarNext)) actions.add('hotbarNext');
+    if (buttonHeld(GAMEPAD_BUTTONS.rightStickClick, 0.1)) actions.add('buildSnapToggle');
     if (buttonHeld(GAMEPAD_BUTTONS.select)) actions.add('inventory');
     if (buttonHeld(GAMEPAD_BUTTONS.pause)) actions.add('pause');
 

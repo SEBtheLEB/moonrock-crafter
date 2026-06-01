@@ -11,6 +11,7 @@ export const gameBalance = {
     craftingStationKit: 1,
     researchStationKit: 0,
     torch: 20,
+    metalCaseWall: 100,
   },
   miningFuelCost: 12,
   sellMultiplier: 1,

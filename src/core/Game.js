@@ -276,6 +276,18 @@ export class Game {
       merged.progression ||= {};
       merged.progression.starterTorchMigrated = true;
     }
+    if (!savedState.progression?.starterMetalCaseWallMigrated) {
+      merged.inventory.metalCaseWall = Math.max(
+        merged.inventory.metalCaseWall || 0,
+        gameBalance.startingInventory.metalCaseWall || 100,
+      );
+      if (!merged.hotbar.includes('buildMetalCaseWall')) {
+        const emptyIndex = merged.hotbar.findIndex((slot) => !slot);
+        if (emptyIndex >= 0) merged.hotbar[emptyIndex] = 'buildMetalCaseWall';
+      }
+      merged.progression ||= {};
+      merged.progression.starterMetalCaseWallMigrated = true;
+    }
     return merged;
   }
 

@@ -1049,6 +1049,29 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   opacity: 0.95;
 }
 
+.item-drag-ghost.is-held {
+  width: 42px;
+  height: 42px;
+  opacity: 0.96;
+}
+
+.item-drag-ghost strong {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 242, 207, 0.42);
+  background: rgba(5, 12, 22, 0.88);
+  color: #fff2cf;
+  font: 900 10px/1 var(--font-ui);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.35);
+}
+
 .tool-hotbar-slot kbd {
   position: absolute;
   left: 5px;
