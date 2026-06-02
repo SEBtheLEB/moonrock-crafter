@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 const AUTOSAVE_EVENTS = new Set([
   'upgradePurchased',
@@ -67,6 +67,9 @@ export class ObjectiveSystem {
     if (condition.type === 'materialCollected') {
       return (stats.materialsCollected[condition.materialId] || 0) >= condition.amount;
     }
+    if (condition.type === 'inventoryItem') {
+      return (this.game.systems.inventory.getStoredAmount(condition.itemId) || 0) >= condition.amount;
+    }
     if (condition.type === 'upgradePurchased') return stats.upgradesPurchased >= condition.amount;
     if (condition.type === 'docked') return stats.docked >= condition.amount;
     if (condition.type === 'distanceReached') return stats.maxDistance >= condition.amount;
@@ -98,6 +101,7 @@ export class ObjectiveSystem {
     const stats = this.state.stats;
     let current = 0;
     if (condition.type === 'materialCollected') current = stats.materialsCollected[condition.materialId] || 0;
+    if (condition.type === 'inventoryItem') current = this.game.systems.inventory.getStoredAmount(condition.itemId) || 0;
     if (condition.type === 'upgradePurchased') current = stats.upgradesPurchased || 0;
     if (condition.type === 'docked') current = stats.docked || 0;
     if (condition.type === 'distanceReached') current = Math.floor(stats.maxDistance || 0);
@@ -155,6 +159,33 @@ export class ObjectiveSystem {
         `${material?.name || 'This material'} is found around: ${(material?.zoneAvailability || ['nearby space']).join(', ')}.`,
         'Glide through the dock beam to unload cargo and earn assay credits without ending the run.',
       ];
+    }
+
+    if (condition.type === 'inventoryItem') {
+      const item = this.game.systems.materials.getMaterial(condition.itemId);
+      const gravityRecipe = condition.itemId === 'gravityStabilizer'
+        ? gameBalance.earlyGame?.crashStart?.gravityMachineRecipe
+        : null;
+      details.location = gravityRecipe ? 'Starter Planet Base -> Crafting Station' : 'Inventory';
+      details.nextStep = gravityRecipe
+        ? 'Gather stone, iron, and a Fire Core, then open the crafting station and craft the Gravity Machine.'
+        : `Collect or craft ${item?.name || condition.itemId}.`;
+      details.requirements = gravityRecipe
+        ? this.getMaterialRequirements(gravityRecipe.requirements)
+        : [{
+          id: condition.itemId,
+          name: item?.name || condition.itemId,
+          owned: progress.current,
+          required: progress.target,
+          color: item?.color || '#ffd36b',
+          icon: item?.icon || '?',
+          met: progress.current >= progress.target,
+        }];
+      details.tips = gravityRecipe ? [
+        'Fire Cores are larger now and live at the exact center of P01.',
+        'After crafting the Gravity Machine, press G to reorient around P01 and reach the copper patch on the underside.',
+        'The purple Moon Crystal ore is intentionally too hard for the Mark I miner, so mark it and come back later.',
+      ] : [];
     }
 
     if (condition.type === 'upgradePurchased') {

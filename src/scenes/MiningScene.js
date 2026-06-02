@@ -1,31 +1,31 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=131';
-import { Ship } from '../entities/Ship.js?v=131';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=131';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=131';
-import { MineralPickup } from '../entities/MineralPickup.js?v=131';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=131';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=131';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=131';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=131';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=131';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=131';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=131';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=131';
-import { BaseLab } from '../entities/BaseLab.js?v=131';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=131';
-import { EnemySystem } from '../systems/EnemySystem.js?v=131';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=131';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=131';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=131';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=131';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=131';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=131';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=131';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=131';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=131';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=131';
+import { Hotbar } from '../ui/Hotbar.js?v=133';
+import { Ship } from '../entities/Ship.js?v=133';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=133';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=133';
+import { MineralPickup } from '../entities/MineralPickup.js?v=133';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=133';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=133';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=133';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=133';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=133';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=133';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=133';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=133';
+import { BaseLab } from '../entities/BaseLab.js?v=133';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=133';
+import { EnemySystem } from '../systems/EnemySystem.js?v=133';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=133';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=133';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=133';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=133';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=133';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=133';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=133';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=133';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=133';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=133';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -38,9 +38,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=131';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+} from '../systems/MachineSculptingSystem.js?v=133';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -512,6 +512,7 @@ export class MiningScene {
     this.game.state.story.researchStationPlaced ||= false;
     this.game.state.story.researchStation ||= null;
     this.game.state.story.baseLab ||= null;
+    this.game.state.story.gravityMachineBuilt ||= this.game.systems.inventory?.getStoredAmount?.('gravityStabilizer') > 0;
     this.game.state.story.nextObjectiveIslandId ||= null;
     return this.game.state.story;
   }
@@ -520,15 +521,20 @@ export class MiningScene {
     return Math.max(1, Number(this.game.state.ship?.gravityStabilizerLevel) || 1);
   }
 
+  hasGravityMachine() {
+    return this.getAvailableItemAmount('gravityStabilizer') > 0;
+  }
+
   canUseGravityStabilizerOnIsland(island = this.activeIsland) {
     if (!island) return true;
-    return this.getGravityStabilizerLevel() >= (island.gravityStabilizerRequirement || 1);
+    return this.hasGravityMachine() && this.getGravityStabilizerLevel() >= (island.gravityStabilizerRequirement || 1);
   }
 
   getGravityStabilizerBlockMessage(island = this.activeIsland) {
+    if (!this.hasGravityMachine()) return 'Craft a Gravity Machine at the crafting station first.';
     const requirement = island?.gravityStabilizerRequirement || 1;
     const label = island?.getDisplayName?.() || island?.name || 'This planet';
-    return `${label} has dense atmosphere. Gravity Stabilizer Mk ${requirement} required.`;
+    return `${label} has dense atmosphere. Gravity Machine Mk ${requirement} required.`;
   }
 
   getPostRepairObjectiveIsland() {
@@ -2362,7 +2368,7 @@ export class MiningScene {
       this.destinationIndicatorAngle += angleDifference(this.destinationIndicatorAngle, targetAngle) * Math.min(1, delta * 8);
     }
     const warning = (destination.gravityStabilizerRequirement || 1) > this.getGravityStabilizerLevel()
-      ? `Needs Grav Mk ${destination.gravityStabilizerRequirement}`
+      ? `Needs Gravity Machine Mk ${destination.gravityStabilizerRequirement}`
       : (this.stats.fuel < (destination.recommendedFuel || 0) * 0.42 ? 'Fuel risk' : '');
     this.destinationIndicator = {
       id: destination.id,
@@ -2917,7 +2923,7 @@ export class MiningScene {
     this.islandRotationSettling = true;
     if (actions.justPressed?.stabilize) {
       this.game.audio.playSuccess?.();
-      this.game.ui.showToast('Gravity stabilizer engaged', 'success', 900);
+      this.game.ui.showToast('Gravity Machine engaged', 'success', 900);
     }
   }
 
@@ -3979,6 +3985,11 @@ export class MiningScene {
   beginHeldInventoryItem({ itemId, source = 'inventory', hotbarSlotIndex = -1, pointerEvent = null } = {}) {
     const amount = this.game.systems.inventory.getStoredAmount(itemId);
     if (!itemId || amount <= 0) return false;
+    if (source === 'inventory' && this.isItemAssignedToHotbar(itemId)) {
+      this.updateQuickInventory(true);
+      this.game.audio.playError?.();
+      return false;
+    }
     pointerEvent?.preventDefault?.();
     pointerEvent?.stopPropagation?.();
     this.cancelItemDrag({ returnHeldToInventory: true });
@@ -4192,10 +4203,13 @@ export class MiningScene {
       this.refreshHotbar(true);
     } else if (drag.moved) {
       const hotbarIndex = this.getHotbarSlotIndexFromElement(target);
+      const inventoryIndex = this.getInventorySlotIndexFromElement(target);
       if (hotbarIndex >= 0) {
         this.assignInventoryItemToHotbar(drag.itemId, hotbarIndex, {
           clearSourceIndex: drag.source === 'hotbar' ? drag.hotbarSlotIndex : -1,
         });
+      } else if (inventoryIndex >= 0 && drag.source === 'hotbar') {
+        this.returnHotbarSlotToInventory(drag.hotbarSlotIndex);
       } else if (this.isInventoryDropTarget(target)) {
         this.dropInventoryItemToWorld(drag.itemId, {
           source: drag.source,
@@ -4232,9 +4246,30 @@ export class MiningScene {
     return Number.isFinite(index) ? index : -1;
   }
 
+  getInventorySlotIndexFromElement(target) {
+    const slot = target?.closest?.('[data-inventory-slot]');
+    if (!slot) return -1;
+    const siblings = Array.from(slot.parentElement?.querySelectorAll?.('[data-inventory-slot]') || []);
+    const index = siblings.indexOf(slot);
+    return index >= 0 ? index : 0;
+  }
+
   isInventoryDropTarget(target) {
     if (!target) return true;
     if (target.closest?.('.tool-hotbar, .quick-inventory, .survival-panel')) return false;
+    return true;
+  }
+
+  returnHotbarSlotToInventory(hotbarSlotIndex = -1) {
+    if (hotbarSlotIndex < 0) return false;
+    const slot = this.game.input.getHotbarSlotAt?.(hotbarSlotIndex, { ignoreOwnership: true });
+    if (!slot?.inventoryItemId) return false;
+    const cleared = this.game.input.clearHotbarSlot?.(hotbarSlotIndex);
+    if (!cleared) return false;
+    this.updateQuickInventory(true);
+    this.refreshHotbar(true);
+    this.game.audio.playButtonClick?.();
+    this.game.ui.showToast(`${slot.label} moved to inventory`, 'success', 1000);
     return true;
   }
 
@@ -4255,6 +4290,7 @@ export class MiningScene {
       return false;
     }
     this.refreshHotbar(true);
+    this.updateQuickInventory(true);
     if (this.game.systems.building?.isBuildableItem?.(itemId)) {
       this.activeBuildItemId = itemId;
       this.activeBuildMode ||= 'foregroundBlock';
@@ -4451,9 +4487,21 @@ export class MiningScene {
   }
 
   getVoxelCraftRecipes() {
+    const gravityRecipe = gameBalance.earlyGame?.crashStart?.gravityMachineRecipe || {};
     const furnaceRecipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
     const laserGunRecipe = gameBalance.earlyGame?.crashStart?.laserGunRecipe || {};
     return [
+    {
+      id: gravityRecipe.id || 'gravityMachine',
+      name: gravityRecipe.name || 'Gravity Machine',
+      icon: 'GM',
+      category: 'Survival',
+      description: 'Build a compact gravity machine so you can reorient gravity and reach the underside copper patch.',
+      outputItemId: 'gravityStabilizer',
+      requirements: gravityRecipe.requirements || { stoneOre: 10, ironDust: 4, fireCore: 1 },
+      gridSize: gravityRecipe.gridSize || 16,
+      shapeRules: gravityRecipe.shapeRules || { connected: true, mustBeConnected: true, coreMustBeEmbedded: true },
+    },
     {
       id: furnaceRecipe.id || 'starterFurnace',
       name: furnaceRecipe.name || 'Starter Furnace',
@@ -4897,6 +4945,17 @@ export class MiningScene {
       if (!cell.layers.includes(itemId)) cell.layers.push(itemId);
       state.grid[index] = cell;
     };
+    if (recipe.outputItemId === 'gravityStabilizer') {
+      [
+        [6, 7], [7, 7], [8, 7], [9, 7], [7, 8], [8, 8],
+        [6, 9], [7, 9], [8, 9], [9, 9],
+      ].slice(0, recipe.requirements.stoneOre || 0).forEach(([x, y]) => set(x, y, 'stoneOre'));
+      [
+        [5, 8], [10, 8], [7, 10], [8, 10],
+      ].slice(0, recipe.requirements.ironDust || 0).forEach(([x, y]) => set(x, y, 'ironDust'));
+      if (recipe.requirements.fireCore) set(8, 8, 'fireCore');
+      return;
+    }
     if (recipe.outputItemId === 'laserGun') {
       [
         [5, 7], [6, 7], [7, 7], [8, 7], [9, 7],
@@ -4939,8 +4998,10 @@ export class MiningScene {
     if (recipe.outputItemId !== 'starterFurnace') {
       this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
       this.autoAssignItemToHotbar(recipe.outputItemId);
+      if (recipe.outputItemId === 'gravityStabilizer') story.gravityMachineBuilt = true;
       this.game.state.stats ||= {};
       this.game.state.stats.totalItemsCrafted = (this.game.state.stats.totalItemsCrafted || 0) + 1;
+      this.game.systems.objectives?.checkCurrentObjective?.();
       this.game.saveGame();
       this.game.audio.playSuccess?.();
       this.game.ui.showToast(`${recipe.name} crafted`, 'success', 1600);
@@ -5448,10 +5509,16 @@ export class MiningScene {
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
     if (shouldAutoStabilize && !this.islandFreefall) {
+      if (!this.hasGravityMachine()) {
+        this.islandFreefall = true;
+        this.game.audio.playError?.();
+        this.game.ui.showToast('No Gravity Machine installed. Craft one to recover from bad angles.', 'danger', 1600);
+        return state;
+      }
       this.islandFreefall = true;
       this.engageIslandGravityStabilizer();
       this.game.audio.playSuccess?.();
-      this.game.ui.showToast('Gravity device auto-engaged', 'success', 900);
+      this.game.ui.showToast('Gravity Machine auto-engaged', 'success', 900);
       return state;
     }
     if (canReset) {
@@ -6229,9 +6296,12 @@ export class MiningScene {
   updateIslandPrompt() {
     if (!this.hud?.landingPrompt || !this.activeIsland || !this.islandPlayer) return;
     this.hud.landingPrompt.classList.remove('is-hidden');
-    let text = this.islandFreefall ? 'Gravity device auto-engaged - falling back to the planet' : 'Mine terrain - G stabilizes gravity';
+    let text = this.islandFreefall ? 'Gravity Machine auto-engaged - falling back to the planet' : 'Mine terrain - G uses Gravity Machine';
+    if (!this.hasGravityMachine()) text = 'Craft a Gravity Machine to rotate around the planet';
     if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
-      text = `${this.activeIsland.getAtmosphereLabel?.() || 'Dense atmosphere'} - Gravity Stabilizer Mk ${this.activeIsland.gravityStabilizerRequirement || 2} needed`;
+      text = this.hasGravityMachine()
+        ? `${this.activeIsland.getAtmosphereLabel?.() || 'Dense atmosphere'} - Gravity Machine Mk ${this.activeIsland.gravityStabilizerRequirement || 2} needed`
+        : 'Craft a Gravity Machine to rotate around the planet';
     }
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
@@ -6270,6 +6340,19 @@ export class MiningScene {
     const story = this.getStoryState();
     const inventory = this.game.systems.inventory;
     const crash = gameBalance.earlyGame?.crashStart || {};
+    const gravityRecipe = crash.gravityMachineRecipe?.requirements || {};
+    if (!story.gravityMachineBuilt && !this.hasGravityMachine()) {
+      const missing = Object.entries(gravityRecipe).filter(([itemId, amount]) => inventory.getStoredAmount(itemId) < amount);
+      if (!story.craftingStationPlaced) return 'Select Craft slot 5 and place the crafting station';
+      if (missing.length) {
+        const text = Object.entries(gravityRecipe).map(([itemId, amount]) => {
+          const have = inventory.getStoredAmount(itemId);
+          return `${this.game.systems.materials.getDisplayName(itemId)} ${have}/${amount}`;
+        }).join(', ');
+        return `Craft Gravity Machine first - ${text}`;
+      }
+      return 'Open the crafting station and craft a Gravity Machine';
+    }
     if (!story.furnaceBuilt) {
       const recipe = crash.furnaceRecipe?.requirements || {};
       const stoneNeed = recipe.stoneOre || 0;
@@ -6277,7 +6360,8 @@ export class MiningScene {
       const stoneHave = inventory.getStoredAmount('stoneOre');
       const copperHave = inventory.getStoredAmount('copperShards');
       if (!story.craftingStationPlaced) return 'Select Craft slot 5 and place the crafting station';
-      if (stoneHave < stoneNeed || copperHave < copperNeed) return `Mine furnace materials - Stone ${stoneHave}/${stoneNeed}, Copper ${copperHave}/${copperNeed}`;
+      if (copperHave < copperNeed) return `Use the Gravity Machine with G, reach the bottom copper patch - Copper ${copperHave}/${copperNeed}`;
+      if (stoneHave < stoneNeed) return `Mine furnace stone - Stone ${stoneHave}/${stoneNeed}`;
       return 'Open the crafting station and draw a starter furnace';
     }
     if (!this.placedFurnaces.length) return 'Select Furnace slot 6, aim at ground, and click Use';

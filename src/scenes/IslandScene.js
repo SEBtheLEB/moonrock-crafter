@@ -1,13 +1,13 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=131';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=131';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=131';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=131';
-import { MineralPickup } from '../entities/MineralPickup.js?v=131';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=131';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { Hotbar } from '../ui/Hotbar.js?v=133';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=133';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=133';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=133';
+import { MineralPickup } from '../entities/MineralPickup.js?v=133';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=133';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 const TERRAIN_LASER_RANGE = 390;
 const TERRAIN_MINING_BRUSH_RADIUS = 18;

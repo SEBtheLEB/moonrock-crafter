@@ -1,30 +1,30 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=131';
+import { InputManager } from './InputManager.js?v=133';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=131';
+import { AudioManager } from './AudioManager.js?v=133';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=131';
+import { DebugPanel } from '../ui/DebugPanel.js?v=133';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=131';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=131';
-import { EconomySystem } from '../systems/EconomySystem.js?v=131';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=131';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=131';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=131';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=131';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=131';
-import { IslandSystem } from '../systems/IslandSystem.js?v=131';
-import { BuildingSystem } from '../systems/BuildingSystem.js?v=131';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=133';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=133';
+import { EconomySystem } from '../systems/EconomySystem.js?v=133';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=133';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=133';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=133';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=133';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=133';
+import { IslandSystem } from '../systems/IslandSystem.js?v=133';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=133';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=131';
-import { MiningScene } from '../scenes/MiningScene.js?v=131';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=131';
-import { StorageScene } from '../scenes/StorageScene.js?v=131';
-import { IslandScene } from '../scenes/IslandScene.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
-import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=131';
+import { StationScene } from '../scenes/StationScene.js?v=133';
+import { MiningScene } from '../scenes/MiningScene.js?v=133';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=133';
+import { StorageScene } from '../scenes/StorageScene.js?v=133';
+import { IslandScene } from '../scenes/IslandScene.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=133';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -103,6 +103,7 @@ export class Game {
         researchStationPlaced: false,
         researchStation: null,
         baseLab: null,
+        gravityMachineBuilt: false,
         stationRouteUnlocked: false,
         nextObjectiveIslandId: null,
       },
@@ -264,11 +265,19 @@ export class Game {
     if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
     if (merged.story?.researchStationPlaced) delete merged.inventory.researchStationKit;
     if (!savedState.progression?.toolInventoryMigrated) {
-      ['minerTool', 'swordWeapon', 'gravityStabilizer', 'markerFlag'].forEach((itemId) => {
+      ['minerTool', 'swordWeapon', 'markerFlag'].forEach((itemId) => {
         if ((merged.inventory[itemId] || 0) <= 0) merged.inventory[itemId] = 1;
       });
       merged.progression ||= {};
       merged.progression.toolInventoryMigrated = true;
+    }
+    if (!merged.story?.gravityMachineBuilt) {
+      delete merged.inventory.gravityStabilizer;
+      merged.hotbar = merged.hotbar.map((slotId) => (slotId === 'stabilizer' ? null : slotId));
+      merged.progression ||= {};
+      merged.progression.objectiveIndex = 0;
+      merged.progression.completedObjectives ||= {};
+      delete merged.progression.completedObjectives.craftGravityMachine;
     }
     if (!savedState.progression?.starterTorchMigrated) {
       merged.inventory.torch = Math.max(merged.inventory.torch || 0, gameBalance.startingInventory.torch || 20);
@@ -409,6 +418,7 @@ export class Game {
       onChange: (slotIds) => {
         this.state.hotbar = this.normalizeSavedHotbar(slotIds, Array(DEFAULT_HOTBAR_SLOT_IDS.length).fill(null));
         this.sceneManager.current?.refreshHotbar?.(true);
+        this.sceneManager.current?.updateQuickInventory?.(true);
         this.saveGame();
       },
     });

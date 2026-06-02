@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -11,14 +11,14 @@ export const TERRAIN_MATERIALS = {
   6: { id: 'fireCore', name: 'Fire Core', color: '#ff5d3d', edge: '#ffd36b', hardness: 11.2, yield: 1, materialId: 'fireCore', miningPowerRequired: 0 },
   7: { id: 'crystallizedStone', name: 'Crystallized Stone', color: '#445262', edge: '#9ed7ff', hardness: 14.6, yield: 1, materialId: 'crystallizedStone', miningPowerRequired: 1.15 },
   8: { id: 'redCrystal', name: 'Red Crystal', color: '#a9213c', edge: '#ff6f7d', hardness: 9.4, yield: 1, materialId: 'redCrystal', miningPowerRequired: 1.15 },
-  9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 0, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
+  9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 1.25, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
   10: { id: 'facilityIron', name: 'Facility Iron', color: '#465462', edge: '#9fafbd', hardness: 12.2, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
 };
 
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
-const TERRAIN_SAVE_VERSION = 23;
+const TERRAIN_SAVE_VERSION = 24;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -1149,10 +1149,10 @@ export class TerrainGrid {
     if (island.type === 'crashPlanet') {
       const starterVeins = [
         { material: 2, count: Math.round(16 * oreDensity), radius: [42, 86], minDepth: 5, depthBias: 0.5, shallowChance: 0.1 },
-        { material: 3, count: Math.round(15 * oreDensity), radius: [40, 82], minDepth: 5, depthBias: 0.56, shallowChance: 0.1 },
         { material: 9, count: Math.round(5 * oreDensity), radius: [22, 48], minDepth: 7, depthBias: 0.62, shallowChance: 0.04 },
       ];
       this.paintVeinPlan(random, starterVeins, surfaceRows);
+      this.paintStarterBottomCopperPatch(random);
       return;
     }
 
@@ -1201,6 +1201,32 @@ export class TerrainGrid {
     }
   }
 
+  paintStarterBottomCopperPatch(random) {
+    const angle = Math.PI / 2;
+    const surfaceRadius = this.getSurfaceRadiusAtAngle(angle);
+    const normal = { x: Math.cos(angle), y: Math.sin(angle) };
+    const centerX = this.planetCenterX + normal.x * Math.max(0, surfaceRadius - this.cellSize * 1.65);
+    const centerY = this.planetCenterY + normal.y * Math.max(0, surfaceRadius - this.cellSize * 1.65);
+    const tangent = { x: -normal.y, y: normal.x };
+    const blobs = [
+      { offset: -1.8, radius: 1.8 },
+      { offset: 0, radius: 2.25 },
+      { offset: 1.8, radius: 1.65 },
+    ];
+    blobs.forEach((blob) => {
+      const wobble = (random() - 0.5) * this.cellSize * 0.55;
+      const cx = centerX + tangent.x * blob.offset * this.cellSize + normal.x * wobble * 0.35;
+      const cy = centerY + tangent.y * blob.offset * this.cellSize + normal.y * wobble * 0.35;
+      this.paintOreEllipse(
+        cx,
+        cy,
+        this.cellSize * (blob.radius + random() * 0.18),
+        this.cellSize * (blob.radius * 0.74 + random() * 0.14),
+        3,
+      );
+    });
+  }
+
   shouldPlaceFireCore(island) {
     if (!island) return false;
     if (island.type === 'crashPlanet') return true;
@@ -1212,9 +1238,13 @@ export class TerrainGrid {
     if (!this.shouldPlaceFireCore(island)) return;
     const centerCol = clamp(Math.round(this.planetCenterX / this.cellSize), 2, this.cols - 3);
     const centerRow = clamp(Math.round(this.planetCenterY / this.cellSize), 2, this.rows - 3);
-    const offsetCol = clamp(centerCol + Math.round((random() - 0.5) * 5), 2, this.cols - 3);
-    const offsetRow = clamp(centerRow + Math.round((random() - 0.5) * 5), 2, this.rows - 3);
-    const radius = island.type === 'crashPlanet' ? 2 : 1;
+    const offsetCol = island.type === 'crashPlanet'
+      ? centerCol
+      : clamp(centerCol + Math.round((random() - 0.5) * 5), 2, this.cols - 3);
+    const offsetRow = island.type === 'crashPlanet'
+      ? centerRow
+      : clamp(centerRow + Math.round((random() - 0.5) * 5), 2, this.rows - 3);
+    const radius = island.type === 'crashPlanet' ? 4 : 1;
 
     for (let row = offsetRow - radius - 1; row <= offsetRow + radius + 1; row += 1) {
       for (let col = offsetCol - radius - 1; col <= offsetCol + radius + 1; col += 1) {
@@ -1222,7 +1252,7 @@ export class TerrainGrid {
         const dx = col - offsetCol;
         const dy = row - offsetRow;
         const distance = Math.hypot(dx, dy);
-        if (distance <= radius + 0.15) {
+        if (distance <= radius + 0.2) {
           this.setCell(col, row, 6);
         } else if (distance <= radius + 1.1 && this.getCell(col, row) === 0) {
           this.setCell(col, row, 1);

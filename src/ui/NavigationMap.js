@@ -1,5 +1,5 @@
 import { Button } from './Button.js';
-import { locationTabs } from '../data/locations.js?v=131';
+import { locationTabs } from '../data/locations.js?v=133';
 
 const SEARCH_OPTIONS = [
   { label: 'Nearest Iron Ore', materialId: 'ironDust', icon: 'Fe' },

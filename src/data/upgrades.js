@@ -1,4 +1,4 @@
-import { gameBalance } from './gameBalance.js?v=131';
+import { gameBalance } from './gameBalance.js?v=133';
 
 const earlyUpgrades = gameBalance.earlyGame.upgrades;
 

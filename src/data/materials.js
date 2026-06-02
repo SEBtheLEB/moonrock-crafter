@@ -41,14 +41,14 @@ export const materials = [
   },
   {
     id: 'gravityStabilizer',
-    name: 'Gravity Stabilizer',
+    name: 'Gravity Machine',
     rarity: 'common',
-    icon: 'GS',
+    icon: 'GM',
     color: '#b794ff',
     baseValue: 0,
     weight: 0,
-    description: 'Reorients your local gravity when a planet starts making sideways opinions.',
-    zoneAvailability: ['starter'],
+    description: 'A hand-built gravity machine that lets you reorient local gravity on compatible planets.',
+    zoneAvailability: ['crafted'],
   },
   {
     id: 'platformPlacerPp5',

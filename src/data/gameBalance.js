@@ -6,7 +6,6 @@ export const gameBalance = {
   startingInventory: {
     minerTool: 1,
     swordWeapon: 1,
-    gravityStabilizer: 1,
     platformPlacerPp5: 1,
     markerFlag: 1,
     craftingStationKit: 1,
@@ -325,6 +324,17 @@ export const gameBalance = {
           },
         },
       },
+      gravityMachineRecipe: {
+        id: 'gravityMachine',
+        name: 'Gravity Machine',
+        requirements: { stoneOre: 10, ironDust: 4, fireCore: 1 },
+        gridSize: 16,
+        shapeRules: {
+          connected: true,
+          mustBeConnected: true,
+          coreMustBeEmbedded: true,
+        },
+      },
       laserGunRecipe: {
         id: 'laserGun',
         name: 'Laser Gun',
@@ -365,6 +375,13 @@ export const gameBalance = {
       previewZoneDistance: 20000,
     },
     objectives: [
+      {
+        id: 'craftGravityMachine',
+        label: 'Craft a Gravity Machine',
+        description: 'Build the gravity machine first so you can rotate around P01 and reach the underside copper patch.',
+        condition: { type: 'inventoryItem', itemId: 'gravityStabilizer', amount: 1 },
+        reward: { credits: 5 },
+      },
       {
         id: 'mineStoneOre',
         label: 'Mine 5 Stone Ore',

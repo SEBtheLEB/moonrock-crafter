@@ -1,6 +1,6 @@
-import { islands } from '../data/islands.js?v=131';
-import { TerrainGrid } from './TerrainGrid.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { islands } from '../data/islands.js?v=133';
+import { TerrainGrid } from './TerrainGrid.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 const ISLAND_LAYOUT_VERSION = 8;
 const PLANET_TAG_PREFIX = 'P';
@@ -330,7 +330,7 @@ export class IslandSystem {
         animals: [],
         layoutId: index === 0 ? 'forestRock' : 'crystalIsland',
         requiredScannerLevel: 1,
-        description: 'A larger Inner Circle planet with a dense atmosphere. Your Mark I gravity stabilizer cannot reset gravity here yet.',
+        description: 'A larger Inner Circle planet with a dense atmosphere. Your Mark I Gravity Machine cannot reset gravity here yet.',
       });
     });
 

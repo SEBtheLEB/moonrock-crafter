@@ -1,7 +1,7 @@
-import { PlacedFlag } from './PlacedFlag.js?v=131';
-import { PlacedTorch } from './PlacedTorch.js?v=131';
-import { PlacedPlatform } from './PlacedPlatform.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { PlacedFlag } from './PlacedFlag.js?v=133';
+import { PlacedTorch } from './PlacedTorch.js?v=133';
+import { PlacedPlatform } from './PlacedPlatform.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothStep = (value) => {

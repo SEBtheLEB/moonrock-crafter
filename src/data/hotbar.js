@@ -48,13 +48,13 @@ export const hotbarSlotCatalog = [
   {
     id: 'stabilizer',
     inventoryItemId: 'gravityStabilizer',
-    label: 'Gravity',
+    label: 'Gravity Machine',
     shortLabel: 'Grav',
     icon: 'G',
     iconHtml: '<span class="tool-icon-shape icon-gravity"><i></i></span>',
     action: 'stabilize',
     tone: 'utility',
-    description: 'Restabilize island gravity while on foot.',
+    description: 'Use the crafted gravity machine to restabilize island gravity while on foot.',
   },
   {
     id: 'pp5',
@@ -281,7 +281,7 @@ export const hotbarSlotCatalog = [
 export const DEFAULT_HOTBAR_SLOT_IDS = [
   'miner',
   'weapon',
-  'stabilizer',
+  null,
   'flag',
   'craftingStation',
   'torch',

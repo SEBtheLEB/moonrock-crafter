@@ -1,5 +1,5 @@
-import { upgrades } from '../data/upgrades.js?v=131';
-import { gameBalance } from '../data/gameBalance.js?v=131';
+import { upgrades } from '../data/upgrades.js?v=133';
+import { gameBalance } from '../data/gameBalance.js?v=133';
 
 export class UpgradeSystem {
   constructor(game) {
