@@ -548,14 +548,168 @@ export class VoxelAsteroidBody {
       color: mixHex(def.color || '#777d86', '#0d1320', 0.08),
       edge: def.edge || def.color || '#d7e4ff',
       darkEdge: 'rgba(4, 9, 16, 0.78)',
-      size: Math.max(18, this.cellSize * 0.72),
-      lineWidth: Math.max(1.2, this.cellSize * 0.055),
+      size: Math.max(32, this.cellSize * 1.18),
+      lineWidth: Math.max(1.7, this.cellSize * 0.072),
       points,
       surfaceSegments: [
         { a: points[0], b: points[1] },
         { a: points[1], b: points[2] },
         { a: points[4], b: points[5] },
       ],
+    };
+  }
+
+  loadFragment({ data, seed, dropScale = 1, cellSize, cols, rows, cells }) {
+    this.data = data;
+    this.seed = seed;
+    this.dropScale = dropScale;
+    this.cellSize = cellSize;
+    this.padding = this.cellSize * 2;
+    this.cols = cols;
+    this.rows = rows;
+    this.size = Math.max(cols, rows) * this.cellSize;
+    this.originX = this.size / 2;
+    this.originY = this.size / 2;
+    this.cells = new Uint8Array(this.size === cols * this.cellSize && rows === cols ? cells : this.copyFragmentCellsToSquare(cells, cols, rows));
+    this.cols = Math.round(this.size / this.cellSize);
+    this.rows = this.cols;
+    this.damage = new Float32Array(this.cells.length);
+    this.slotDefs = this.createSlotDefs(data);
+    this.initialSolidCount = this.countSolidCells();
+    this.remainingSolidCount = this.initialSolidCount;
+    this.radius = this.calculateCurrentRadius();
+    this.renderDirty = true;
+    return this;
+  }
+
+  copyFragmentCellsToSquare(cells, cols, rows) {
+    const squareCells = Math.max(cols, rows);
+    const target = new Uint8Array(squareCells * squareCells);
+    const colOffset = Math.floor((squareCells - cols) / 2);
+    const rowOffset = Math.floor((squareCells - rows) / 2);
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const value = cells[row * cols + col];
+        if (value <= 0) continue;
+        target[(row + rowOffset) * squareCells + (col + colOffset)] = value;
+      }
+    }
+    return target;
+  }
+
+  calculateCurrentRadius() {
+    let radius = this.cellSize;
+    const half = this.cellSize * 0.5;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        if (!this.isSolidCell(col, row)) continue;
+        const center = this.localCenterOfCell(col, row);
+        radius = Math.max(radius, Math.hypot(center.x, center.y) + half);
+      }
+    }
+    return Math.max(this.cellSize, radius);
+  }
+
+  extractDetachedFragments({ minComponentCells = 2 } = {}) {
+    const components = this.getConnectedComponents();
+    if (components.length <= 1) return [];
+    components.sort((a, b) => b.count - a.count);
+    const main = components[0];
+    const fragments = [];
+
+    for (let index = 1; index < components.length; index += 1) {
+      const component = components[index];
+      if (component.count < minComponentCells) continue;
+      fragments.push(this.createFragmentDescriptor(component));
+      for (const cellIndex of component.indices) {
+        this.cells[cellIndex] = 0;
+        this.damage[cellIndex] = 0;
+      }
+    }
+
+    if (!fragments.length) return [];
+    this.remainingSolidCount = this.countSolidCells();
+    this.renderDirty = true;
+    return fragments;
+  }
+
+  getConnectedComponents() {
+    const visited = new Uint8Array(this.cells.length);
+    const components = [];
+    const stack = [];
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const startIndex = this.index(col, row);
+        if (visited[startIndex] || this.cells[startIndex] <= 0) continue;
+        const component = {
+          indices: [],
+          count: 0,
+          minCol: col,
+          maxCol: col,
+          minRow: row,
+          maxRow: row,
+        };
+        visited[startIndex] = 1;
+        stack.length = 0;
+        stack.push(startIndex);
+        while (stack.length) {
+          const currentIndex = stack.pop();
+          const currentCol = currentIndex % this.cols;
+          const currentRow = Math.floor(currentIndex / this.cols);
+          component.indices.push(currentIndex);
+          component.count += 1;
+          component.minCol = Math.min(component.minCol, currentCol);
+          component.maxCol = Math.max(component.maxCol, currentCol);
+          component.minRow = Math.min(component.minRow, currentRow);
+          component.maxRow = Math.max(component.maxRow, currentRow);
+          this.visitComponentNeighbor(currentCol - 1, currentRow, visited, stack);
+          this.visitComponentNeighbor(currentCol + 1, currentRow, visited, stack);
+          this.visitComponentNeighbor(currentCol, currentRow - 1, visited, stack);
+          this.visitComponentNeighbor(currentCol, currentRow + 1, visited, stack);
+        }
+        components.push(component);
+      }
+    }
+    return components;
+  }
+
+  visitComponentNeighbor(col, row, visited, stack) {
+    if (!this.isInside(col, row)) return;
+    const neighborIndex = this.index(col, row);
+    if (visited[neighborIndex] || this.cells[neighborIndex] <= 0) return;
+    visited[neighborIndex] = 1;
+    stack.push(neighborIndex);
+  }
+
+  createFragmentDescriptor(component) {
+    const padding = 2;
+    const sourceCols = component.maxCol - component.minCol + 1;
+    const sourceRows = component.maxRow - component.minRow + 1;
+    const cols = sourceCols + padding * 2;
+    const rows = sourceRows + padding * 2;
+    const cells = new Uint8Array(cols * rows);
+    const componentSet = new Set(component.indices);
+    for (let row = component.minRow; row <= component.maxRow; row += 1) {
+      for (let col = component.minCol; col <= component.maxCol; col += 1) {
+        const sourceIndex = this.index(col, row);
+        if (!componentSet.has(sourceIndex)) continue;
+        const targetCol = col - component.minCol + padding;
+        const targetRow = row - component.minRow + padding;
+        cells[targetRow * cols + targetCol] = this.cells[sourceIndex];
+      }
+    }
+    const centerCol = (component.minCol + component.maxCol + 1) * 0.5;
+    const centerRow = (component.minRow + component.maxRow + 1) * 0.5;
+    return {
+      cells,
+      cols,
+      rows,
+      cellSize: this.cellSize,
+      cellCount: component.count,
+      localCenter: {
+        x: centerCol * this.cellSize - this.originX,
+        y: centerRow * this.cellSize - this.originY,
+      },
     };
   }
 
@@ -603,7 +757,7 @@ export class VoxelAsteroidBody {
   }
 
   isDepleted() {
-    return this.remainingSolidCount <= Math.max(3, this.initialSolidCount * 0.45);
+    return this.remainingSolidCount <= 0;
   }
 
   countSolidCells() {
@@ -824,8 +978,8 @@ export class VoxelAsteroidBody {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.strokeRoughMarchingEdges(ctx, 'rgba(4, 9, 16, 0.76)', Math.max(3.1, this.cellSize * 0.24), 1);
-    this.strokeRoughMarchingEdges(ctx, withAlpha(this.data.accent || '#d7e4ff', 0.48), Math.max(1.2, this.cellSize * 0.095), 0.42);
+    this.strokeRoughMarchingEdges(ctx, 'rgba(3, 7, 13, 0.84)', Math.max(3.4, this.cellSize * 0.28), 1.15);
+    this.strokeRoughMarchingEdges(ctx, withAlpha(this.data.accent || '#d7e4ff', 0.54), Math.max(1.3, this.cellSize * 0.11), 0.62);
     ctx.restore();
   }
 
@@ -915,7 +1069,7 @@ export class VoxelAsteroidBody {
     const nx = -dy / length;
     const ny = dx / length;
     const steps = Math.max(2, Math.round(length / Math.max(5, this.cellSize * 0.22)));
-    const strength = Math.min(this.cellSize * 0.13, 5.6) * strengthScale;
+    const strength = Math.min(this.cellSize * 0.18, 8.5) * strengthScale;
     for (let index = 0; index <= steps; index += 1) {
       const t = index / steps;
       const endpointFade = Math.sin(Math.PI * t);

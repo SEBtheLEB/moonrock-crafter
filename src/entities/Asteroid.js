@@ -45,8 +45,6 @@ export class Asteroid {
     this.body = this.body
       ? this.body.reset({ data: this.data, radius: this.radius, seed, dropScale: this.dropScale })
       : new VoxelAsteroidBody({ data: this.data, radius: this.radius, seed, dropScale: this.dropScale });
-    this.maxHealth = this.body.initialSolidCount;
-    this.health = this.body.remainingSolidCount;
     this.splitChipTarget = this.getSplitChipTarget();
     return this;
   }
@@ -84,9 +82,8 @@ export class Asteroid {
   }
 
   takeDamage(amount) {
-    this.health = Math.max(0, this.health - amount);
     this.flash = 0.08;
-    return this.health <= 0;
+    return false;
   }
 
   raycast(startX, startY, endX, endY) {
@@ -101,7 +98,6 @@ export class Asteroid {
     const broken = this.body.mineCircleWorld(worldX, worldY, radius, power, delta, this, options);
     if (broken.length) {
       this.chippedCells += broken.length;
-      this.health = this.body.remainingSolidCount;
       this.flash = 0.08;
     }
     return broken;
@@ -141,6 +137,50 @@ export class Asteroid {
     return this.body.isDepleted();
   }
 
+  detachDisconnectedFragments(acquireAsteroid) {
+    const fragments = this.body.extractDetachedFragments({
+      minComponentCells: gameBalance.mining?.asteroidDetachedFragmentMinCells ?? 2,
+    });
+    if (!fragments.length) return [];
+    const children = fragments.map((fragment, index) => {
+      const world = this.body.worldFromLocal(fragment.localCenter.x, fragment.localCenter.y, this);
+      const seed = Math.random();
+      const childDropScale = this.dropScale;
+      const child = acquireAsteroid({
+        x: world.x,
+        y: world.y,
+        type: this.type,
+        seed,
+        fragmentTier: Math.max(0, this.fragmentTier - 1),
+        dropScale: childDropScale,
+      });
+      child.rotation = this.rotation;
+      child.body.loadFragment({
+        data: this.data,
+        seed,
+        dropScale: childDropScale,
+        cellSize: fragment.cellSize,
+        cols: fragment.cols,
+        rows: fragment.rows,
+        cells: fragment.cells,
+      });
+      child.radius = child.body.radius;
+      child.chippedCells = 0;
+      child.splitChipTarget = child.getSplitChipTarget();
+      const angle = Math.atan2(fragment.localCenter.y, fragment.localCenter.x) + this.rotation;
+      const tangent = angle + Math.PI * 0.5 * (index % 2 === 0 ? 1 : -1);
+      const speed = 88 + Math.min(170, fragment.cellCount * 8);
+      child.vx = this.vx * 0.7 + Math.cos(angle) * speed + Math.cos(tangent) * speed * 0.26;
+      child.vy = this.vy * 0.7 + Math.sin(angle) * speed + Math.sin(tangent) * speed * 0.26;
+      child.rotationSpeed = this.rotationSpeed + (seed - 0.5) * 1.35;
+      child.flash = 0.12;
+      child.scannerRevealed = this.scannerRevealed;
+      return child;
+    });
+    this.radius = Math.max(this.body.calculateCurrentRadius(), this.radius * 0.72);
+    return children;
+  }
+
   getDropPayload(scale = this.dropScale) {
     const drops = [];
     this.data.drops.forEach((drop) => {
@@ -163,7 +203,6 @@ export class Asteroid {
 
   draw(ctx, camera, { highlightHit = null, time = 0 } = {}) {
     const screen = camera.worldToScreen(this.x, this.y);
-    const healthRatio = this.getMassRatio();
     ctx.save();
     ctx.translate(screen.x, screen.y);
     ctx.rotate(this.rotation);
@@ -205,7 +244,6 @@ export class Asteroid {
     }
 
     if (this.scannerRevealed && this.data.scannerPing) this.drawScannerPing(ctx);
-    if (healthRatio < 1) this.drawHealthBar(ctx, healthRatio);
     ctx.restore();
   }
 

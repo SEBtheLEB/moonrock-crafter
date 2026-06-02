@@ -8705,36 +8705,39 @@ export class MiningScene {
   }
 
   drawDistanceRings(ctx) {
+    if (this.islandMode !== 'flight') return;
+    const atmosphereFade = 1 - clamp01(((this.atmosphereStrength || 0) - 0.05) / 0.36) * 0.82;
+    if (atmosphereFade <= 0.03) return;
     const maxDistance = gameBalance.mining.miniMapMaxDistance || RING_SIZE * 5;
     const ringCount = Math.ceil(maxDistance / RING_SIZE);
     const center = this.cameraView.worldToScreen(0, 0);
     const distance = this.distanceFromStation;
     const scale = Math.max(0.1, this.getActiveViewScale());
     ctx.save();
-    ctx.lineWidth = Math.max(1.4, 2.4 / scale);
+    ctx.lineWidth = Math.max(0.75, 1.35 / scale);
     ctx.font = `${Math.max(12, 13 / scale)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let ring = 1; ring <= ringCount; ring += 1) {
       const radius = ring * RING_SIZE;
       const distanceToRing = Math.abs(distance - radius);
-      const closeAlpha = clamp01(1 - distanceToRing / 900);
+      const closeAlpha = clamp01(1 - distanceToRing / 1600);
       const pulse = this.ringCrossingPulse > 0 && closeAlpha > 0.35
-        ? Math.sin(this.ringCrossingPulse * 12) * 0.08 + 0.14
+        ? Math.sin(this.ringCrossingPulse * 12) * 0.035 + 0.055
         : 0;
-      const alpha = 0.11 + closeAlpha * 0.32 + pulse;
+      const alpha = (0.028 + closeAlpha * 0.16 + pulse) * atmosphereFade;
       const color = this.getRingColor(ring);
       ctx.strokeStyle = `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
-      ctx.setLineDash(closeAlpha > 0.02 ? [] : [26 / scale, 18 / scale]);
+      ctx.setLineDash(closeAlpha > 0.18 ? [] : [30 / scale, 34 / scale]);
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      if (closeAlpha > 0.08) {
+      if (closeAlpha > 0.28 && atmosphereFade > 0.5) {
         const shipAngle = Math.atan2(this.ship.y, this.ship.x);
         const label = this.cameraView.worldToScreen(Math.cos(shipAngle) * radius, Math.sin(shipAngle) * radius);
         ctx.setLineDash([]);
-        ctx.fillStyle = `rgba(236, 231, 216, ${0.35 + closeAlpha * 0.5})`;
+        ctx.fillStyle = `rgba(236, 231, 216, ${(0.22 + closeAlpha * 0.34) * atmosphereFade})`;
         ctx.fillText(`${Math.round(radius / 1000)}k circle`, label.x, label.y - 18 / scale);
       }
     }

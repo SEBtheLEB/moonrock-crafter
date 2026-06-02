@@ -384,49 +384,49 @@ export class SpaceIsland {
   }
 
   drawGravityField(ctx, active, strength, time) {
-    const alpha = active ? 0.16 + strength * 0.22 : 0.055;
-    const radius = this.gravityFieldRadius;
+    const alpha = active ? 0.045 + strength * 0.075 : 0.018;
+    const radius = this.gravityFieldRadius * 1.55;
     ctx.save();
     const center = this.getCenterLocal();
     ctx.translate(center.x, center.y);
     ctx.rotate(time * 0.11);
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = active ? '#7bd8ff' : '#5e91bb';
-    ctx.lineWidth = active ? 3 : 1.5;
-    ctx.setLineDash([28, 24]);
-    ctx.lineDashOffset = -time * 72;
+    ctx.lineWidth = active ? 1.35 : 0.8;
+    ctx.setLineDash([34, 34]);
+    ctx.lineDashOffset = -time * 38;
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.globalAlpha = alpha * 0.72;
+    ctx.globalAlpha = alpha * 0.42;
     ctx.strokeStyle = active ? '#ffd36b' : '#7bd8ff';
-    ctx.lineWidth = active ? 2 : 1;
-    ctx.setLineDash([10, 34]);
-    ctx.lineDashOffset = time * 54;
+    ctx.lineWidth = active ? 0.95 : 0.65;
+    ctx.setLineDash([8, 46]);
+    ctx.lineDashOffset = time * 28;
     ctx.rotate(-time * 0.24);
     ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.84, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius * 0.94, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
   drawLandingAura(ctx, active, discovered, time) {
     const center = this.getCenterLocal();
-    const radius = this.radius + this.landingZoneRadius * 0.78;
+    const radius = this.radius + this.landingZoneRadius * 1.08;
     ctx.save();
-    ctx.globalAlpha = active ? 0.42 + Math.sin(time * 5) * 0.08 : discovered ? 0.16 : 0.08;
+    ctx.globalAlpha = active ? 0.22 + Math.sin(time * 5) * 0.035 : discovered ? 0.055 : 0.025;
     ctx.strokeStyle = active ? '#ffd36b' : '#76f3ff';
-    ctx.lineWidth = active ? 3 : 1.5;
-    ctx.setLineDash(active ? [20, 14] : [10, 20]);
-    ctx.lineDashOffset = -time * 46;
+    ctx.lineWidth = active ? 1.4 : 0.85;
+    ctx.setLineDash(active ? [22, 22] : [8, 28]);
+    ctx.lineDashOffset = -time * 24;
     ctx.beginPath();
     ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
     ctx.stroke();
     if (active) {
-      ctx.globalAlpha = 0.16 + Math.sin(time * 4) * 0.04;
+      ctx.globalAlpha = 0.055 + Math.sin(time * 4) * 0.018;
       ctx.setLineDash([]);
-      ctx.lineWidth = 18;
+      ctx.lineWidth = 10;
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       ctx.stroke();
