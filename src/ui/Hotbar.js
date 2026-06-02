@@ -1,4 +1,4 @@
-import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=153';
+import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=156';
 
 export class Hotbar {
   constructor(game, { className = '' } = {}) {

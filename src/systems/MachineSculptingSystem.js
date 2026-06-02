@@ -257,6 +257,19 @@ export function isCoreEmbedded(grid = [], size = 16, coreId = 'fireCore') {
   });
 }
 
+export function isCoreMountedOnMaterial(grid = [], size = 16, {
+  coreId = 'fireCore',
+  baseMaterialId = 'ironDust',
+} = {}) {
+  const coreEntries = getVoxelEntries(grid, size).filter((entry) => entry.layers.includes(coreId));
+  if (!coreEntries.length) return false;
+  return coreEntries.every((entry) => {
+    const baseIndex = entry.layers.indexOf(baseMaterialId);
+    const coreIndex = entry.layers.indexOf(coreId);
+    return baseIndex >= 0 && coreIndex >= 0 && baseIndex < coreIndex;
+  });
+}
+
 export function doesCopperTouchChamber(grid = [], size = 16, chambers = detectInternalChambers(grid, size), copperId = 'copperShards') {
   return chambers.some((chamber) => chamber.cells.some((cell) => [
     [1, 0],
@@ -354,7 +367,8 @@ export function validateRecipe(grid = [], recipe = {}, {
   }
 
   if (rules.requiresSingleChamber) {
-    const meaningfulChambers = chambers.filter((chamber) => chamber.cells.length >= (rules.minChamberCells || 2));
+    const splitMinCells = rules.minSplitChamberCells ?? rules.minChamberCells ?? 2;
+    const meaningfulChambers = chambers.filter((chamber) => chamber.cells.length >= splitMinCells);
     const notSplit = meaningfulChambers.length === 1;
     if (!notSplit) ok = false;
     messages.push({ ok: notSplit, text: 'Interior space must stay connected.' });
@@ -364,6 +378,18 @@ export function validateRecipe(grid = [], recipe = {}, {
     const embedded = isCoreEmbedded(grid, size, rules.coreMaterialId || 'fireCore');
     if (!embedded) ok = false;
     messages.push({ ok: embedded, text: 'Fire Core must be inside the machine body.' });
+  }
+
+  if (rules.coreBaseMaterialId) {
+    const mounted = isCoreMountedOnMaterial(grid, size, {
+      coreId: rules.coreMaterialId || 'fireCore',
+      baseMaterialId: rules.coreBaseMaterialId,
+    });
+    if (!mounted) ok = false;
+    messages.push({
+      ok: mounted,
+      text: `Fire Core must sit on ${getDisplayName(rules.coreBaseMaterialId)}.`,
+    });
   }
 
   if (rules.copperShouldTouchChamber) {

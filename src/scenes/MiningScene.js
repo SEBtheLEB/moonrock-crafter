@@ -1,32 +1,32 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=153';
-import { Ship } from '../entities/Ship.js?v=153';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=153';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=153';
-import { MineralPickup } from '../entities/MineralPickup.js?v=153';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=153';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=153';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=153';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=153';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=153';
-import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=153';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=153';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=153';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=153';
-import { BaseLab } from '../entities/BaseLab.js?v=153';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=153';
-import { EnemySystem } from '../systems/EnemySystem.js?v=153';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=153';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=153';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=153';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=153';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=153';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=153';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=153';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=153';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=153';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=153';
+import { Hotbar } from '../ui/Hotbar.js?v=156';
+import { Ship } from '../entities/Ship.js?v=156';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=156';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=156';
+import { MineralPickup } from '../entities/MineralPickup.js?v=156';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=156';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=156';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=156';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=156';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=156';
+import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=156';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=156';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=156';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=156';
+import { BaseLab } from '../entities/BaseLab.js?v=156';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=156';
+import { EnemySystem } from '../systems/EnemySystem.js?v=156';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=156';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=156';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=156';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=156';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=156';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=156';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=156';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=156';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=156';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=156';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -38,11 +38,12 @@ import {
   getShapeStateLabel,
   getTopMaterialId,
   getVoxelEntries,
+  isCoreMountedOnMaterial,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=153';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=153';
-import { gameBalance } from '../data/gameBalance.js?v=153';
+} from '../systems/MachineSculptingSystem.js?v=156';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=156';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -2577,6 +2578,13 @@ export class MiningScene {
         this.backgroundAsteroidFadeTimer,
         gameBalance.mining.backgroundAsteroidFadeDuration || 1.2,
       );
+      this.game.systems.quests?.record?.('enteredSpace', {
+        planetId: previousAtmosphereIsland.id,
+        tag: previousAtmosphereIsland.tag || previousAtmosphereIsland.planetTag || '',
+      }, { save: true, notify: true });
+      this.game.systems.achievements.record('enteredSpace', {
+        planetId: previousAtmosphereIsland.id,
+      });
     }
     this.backgroundAsteroidFadeTimer = Math.max(0, this.backgroundAsteroidFadeTimer - delta);
     this.atmosphereSurfaceDistance = nearest
@@ -2591,6 +2599,12 @@ export class MiningScene {
         || this.atmosphereIsland.planetTag
         || this.game.systems.islands.getPlanetTag(this.atmosphereIsland.id)
         || 'P??';
+      this.game.systems.quests?.record?.('arrivedPlanet', {
+        planetId: this.atmosphereIsland.id,
+        tag,
+        name: this.atmosphereIsland.name || '',
+        starter: this.atmosphereIsland.id === this.getStoryState().starterPlanetId,
+      }, { save: true, notify: true });
       this.game.ui.showToast(`Arrived at ${tag}`, 'success', 1700);
       this.game.audio.playSceneTransition?.();
     }
@@ -3795,6 +3809,7 @@ export class MiningScene {
       completed: {},
     });
     story.furnacePlaced = true;
+    this.game.systems.quests?.refresh?.({ notify: true, save: false });
     this.furnacePlacementPreview = null;
     this.islandTerrainDirty = this.islandTerrainDirty || pad.changed;
     if (this.islandTerrainDirty) {
@@ -3828,15 +3843,27 @@ export class MiningScene {
     const recipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
     const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
     const cells = [];
-    [
-      [4, 6], [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
-      [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [11, 12],
-      [4, 7], [4, 8], [4, 9], [4, 10],
-    ].forEach(([x, y]) => cells.push(this.createCraftCell(x, y, 'stoneOre')));
-    for (let index = 0; index < 10; index += 1) {
-      cells.push(this.createCraftCell(6 + (index % 5), 8 + Math.floor(index / 5), 'copperShards'));
+    const chamberKeys = new Set();
+    for (let x = 6; x <= 8; x += 1) {
+      for (let y = 6; y <= 8; y += 1) chamberKeys.add(`${x},${y}`);
     }
-    cells.push(this.createCraftCell(8, 10, 'fireCore'));
+    const shellCoords = [];
+    for (let x = 5; x <= 9; x += 1) {
+      for (let y = 5; y <= 9; y += 1) {
+        if (!chamberKeys.has(`${x},${y}`)) shellCoords.push([x, y]);
+      }
+    }
+    const coreCell = [5, 7];
+    const coreKey = `${coreCell[0]},${coreCell[1]}`;
+    [
+      ...shellCoords.filter(([x, y]) => `${x},${y}` !== coreKey),
+      [4, 5],
+      [4, 6],
+      [4, 8],
+      [4, 9],
+      [10, 9],
+    ].forEach(([x, y]) => cells.push(this.createCraftCell(x, y, 'stoneOre')));
+    cells.push(this.createCraftCell(coreCell[0], coreCell[1], { layers: ['ironDust', 'fireCore'], shape: 'full' }));
     return {
       id: `furnace-blueprint-${Date.now().toString(36)}`,
       recipeId: recipe.id || 'starterFurnace',
@@ -4819,9 +4846,9 @@ export class MiningScene {
       name: furnaceRecipe.name || 'Starter Furnace',
       icon: 'Fu',
       category: 'Survival',
-      description: 'Sculpt a custom furnace body. Leave an inner chamber, socket the Fire Core into the body, and use copper as a heat path.',
+      description: 'Sculpt a furnace body with 9 connected open spaces, then mount the Fire Core on Iron Dust to heat the chamber.',
       outputItemId: 'starterFurnace',
-      requirements: furnaceRecipe.requirements || { stoneOre: 20, copperShards: 10, fireCore: 1 },
+      requirements: furnaceRecipe.requirements || { stoneOre: 20, ironDust: 1, fireCore: 1 },
       gridSize: furnaceRecipe.gridSize || 16,
       shapeRules: furnaceRecipe.shapeRules || {},
     },
@@ -4851,26 +4878,25 @@ export class MiningScene {
     const chambers = currentValidation.chambers || [];
     const meaningfulChambers = chambers
       .map((chamber) => ({ chamber, bounds: getChamberBounds(chamber) }))
-      .filter((entry) => entry.bounds && entry.chamber.cells.length >= 2)
+      .filter((entry) => entry.bounds && entry.chamber.cells.length >= (recipe.shapeRules?.minSplitChamberCells ?? 2))
       .sort((a, b) => b.chamber.cells.length - a.chamber.cells.length);
     const mainChamber = meaningfulChambers[0] || null;
-    const usage = currentValidation.usage || this.getVoxelCraftUsage(grid);
-    const minWidth = recipe.shapeRules?.minInteriorWidth || 5;
-    const minHeight = recipe.shapeRules?.minInteriorHeight || 5;
-    const minCells = recipe.shapeRules?.minChamberCells || minWidth * minHeight;
+    const minCells = recipe.shapeRules?.minChamberCells || 9;
     const hasClosedStructure = Boolean(mainChamber);
-    const hasCore = (usage.fireCore || 0) >= (recipe.requirements?.fireCore || 1);
-    const hasSizedInterior = Boolean(mainChamber)
-      && mainChamber.bounds.width >= minWidth
-      && mainChamber.bounds.height >= minHeight
-      && mainChamber.chamber.cells.length >= minCells;
+    const hasSizedInterior = Boolean(mainChamber) && mainChamber.chamber.cells.length >= minCells;
     const notSplit = hasClosedStructure && meaningfulChambers.length === 1;
+    const connectedMessage = currentValidation.messages?.find((message) => message.text === 'Machine body must be connected.');
+    const bodyConnected = connectedMessage ? Boolean(connectedMessage.ok) : true;
+    const coreMounted = isCoreMountedOnMaterial(grid, recipe.gridSize || Math.sqrt(grid.length) || 16, {
+      coreId: recipe.shapeRules?.coreMaterialId || 'fireCore',
+      baseMaterialId: recipe.shapeRules?.coreBaseMaterialId || 'ironDust',
+    });
 
     return [
-      { ok: hasClosedStructure, text: 'Closed structure' },
-      { ok: hasCore, text: 'Fire Core placed' },
-      { ok: hasSizedInterior, text: `At least ${minWidth}x${minHeight} open interior` },
-      { ok: notSplit, text: 'Interior space not split by walls' },
+      { id: 'bodyConnected', ok: bodyConnected, text: 'Body connected' },
+      { id: 'openChamber', ok: hasClosedStructure && hasSizedInterior, text: `${minCells}+ connected open spaces` },
+      { id: 'singleChamber', ok: notSplit, text: 'Open space is not split' },
+      { id: 'coreMounted', ok: coreMounted, text: 'Fire Core on Iron Dust' },
     ];
   }
 
@@ -5112,7 +5138,7 @@ export class MiningScene {
     center.className = 'voxel-craft-editor';
     center.innerHTML = '<h2>2. Shape Your Design</h2>';
     const gridFrame = document.createElement('div');
-    gridFrame.className = `voxel-craft-grid-frame ${displayRules.some((rule) => rule.text === 'Fire Core placed' && rule.ok) ? 'has-fire-core' : ''}`;
+    gridFrame.className = `voxel-craft-grid-frame ${displayRules.some((rule) => (rule.id === 'coreMounted' || rule.text.includes('Fire Core')) && rule.ok) ? 'has-fire-core' : ''}`;
     const grid = document.createElement('div');
     grid.className = 'voxel-craft-grid';
     grid.style.setProperty('--voxel-grid-size', recipe.gridSize);
@@ -5392,11 +5418,28 @@ export class MiningScene {
     };
     const existingIndex = cell.layers.indexOf(itemId);
     if (existingIndex >= 0) {
+      const rules = recipe.shapeRules || {};
+      const coreId = rules.coreMaterialId || 'fireCore';
+      if (rules.coreBaseMaterialId === itemId && cell.layers.includes(coreId)) {
+        this.game.audio.playError?.();
+        this.game.ui.showToast('Remove the Fire Core before removing its Iron Dust base', 'danger', 1200);
+        return;
+      }
       cell.layers.splice(existingIndex, 1);
       cell.materialId = cell.layers[cell.layers.length - 1] || itemId;
       cell.itemId = cell.materialId;
       state.grid[index] = cell.layers.length ? cell : null;
       return;
+    }
+    const rules = recipe.shapeRules || {};
+    const coreId = rules.coreMaterialId || 'fireCore';
+    if (itemId === coreId && rules.coreBaseMaterialId) {
+      const hasBase = cell.layers.includes(rules.coreBaseMaterialId);
+      if (!hasBase) {
+        this.game.audio.playError?.();
+        this.game.ui.showToast(`Place Fire Core on ${this.game.systems.materials.getDisplayName(rules.coreBaseMaterialId)}`, 'danger', 1200);
+        return;
+      }
     }
     const usage = this.getVoxelCraftUsage(state.grid);
     const required = recipe.requirements[itemId] || 0;
@@ -5551,26 +5594,29 @@ export class MiningScene {
       if (recipe.requirements.fireCore) set(4, 8, 'fireCore');
       return;
     }
+    const chamberKeys = new Set();
+    for (let x = 6; x <= 8; x += 1) {
+      for (let y = 6; y <= 8; y += 1) chamberKeys.add(`${x},${y}`);
+    }
     const shellCoords = [];
-    for (let x = 4; x <= 12; x += 1) {
-      shellCoords.push([x, 5], [x, 11]);
+    for (let x = 5; x <= 9; x += 1) {
+      for (let y = 5; y <= 9; y += 1) {
+        if (!chamberKeys.has(`${x},${y}`)) shellCoords.push([x, y]);
+      }
     }
-    for (let y = 6; y <= 10; y += 1) {
-      shellCoords.push([4, y], [12, y]);
-    }
-    const copperCoords = [
-      [5, 5], [6, 5], [7, 5], [8, 5], [9, 5],
-      [5, 11], [6, 11], [7, 11], [8, 11], [9, 11],
-    ];
-    const copperKeys = new Set(copperCoords.map(([x, y]) => `${x},${y}`));
+    const coreCell = [5, 7];
+    const coreKey = `${coreCell[0]},${coreCell[1]}`;
     const stoneCoords = [
-      ...shellCoords.filter(([x, y]) => !copperKeys.has(`${x},${y}`)),
-      [4, 4],
-      [12, 4],
+      ...shellCoords.filter(([x, y]) => `${x},${y}` !== coreKey),
+      [4, 5],
+      [4, 6],
+      [4, 8],
+      [4, 9],
+      [10, 9],
     ];
     stoneCoords.slice(0, recipe.requirements.stoneOre || 0).forEach(([x, y]) => set(x, y, 'stoneOre'));
-    copperCoords.slice(0, recipe.requirements.copperShards || 0).forEach(([x, y]) => set(x, y, 'copperShards'));
-    if (recipe.requirements.fireCore) set(4, 8, 'fireCore');
+    if (recipe.requirements.ironDust) set(coreCell[0], coreCell[1], 'ironDust');
+    if (recipe.requirements.fireCore) set(coreCell[0], coreCell[1], 'fireCore');
   }
 
   craftVoxelRecipe(recipe, state) {
@@ -6739,6 +6785,10 @@ export class MiningScene {
     this.islandRotationTarget = 0;
     this.islandRotationSettling = false;
     this.resumeSpaceObjectsAfterIsland({ keepAtmosphereBackground: Boolean(departingIsland) });
+    this.game.systems.quests?.record?.('boardedShip', {
+      planetId: departingIsland?.id || '',
+      tag: departingIsland?.tag || departingIsland?.planetTag || '',
+    }, { save: false, notify: true });
     this.game.saveGame();
     this.stopIslandTerrainLaser();
     this.hud?.landingPrompt?.classList.add('is-hidden');
@@ -6838,6 +6888,7 @@ export class MiningScene {
       this.game.systems.inventory.remove(itemId, amount, { skipSave: true });
     });
     story.thrustersRepaired = true;
+    this.game.systems.quests?.record?.('shipRepaired', {}, { save: false, notify: true });
     this.game.state.navigation.gpsUnlocked = true;
     this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
     const nextTarget = this.assignPostRepairDestination({ save: false });
@@ -6993,14 +7044,16 @@ export class MiningScene {
     }
     if (!story.furnaceBuilt) {
       const recipe = crash.furnaceRecipe?.requirements || {};
-      const stoneNeed = recipe.stoneOre || 0;
-      const copperNeed = recipe.copperShards || 0;
-      const stoneHave = inventory.getStoredAmount('stoneOre');
-      const copperHave = inventory.getStoredAmount('copperShards');
       if (!story.craftingStationPlaced) return 'Select Craft slot 5 and place the crafting station';
-      if (copperHave < copperNeed) return `Use the Gravity Machine with G, reach the bottom copper patch - Copper ${copperHave}/${copperNeed}`;
-      if (stoneHave < stoneNeed) return `Mine furnace stone - Stone ${stoneHave}/${stoneNeed}`;
-      return 'Open the crafting station and draw a starter furnace';
+      const missing = Object.entries(recipe).filter(([itemId, amount]) => inventory.getStoredAmount(itemId) < amount);
+      if (missing.length) {
+        const text = Object.entries(recipe).map(([itemId, amount]) => {
+          const have = inventory.getStoredAmount(itemId);
+          return `${this.game.systems.materials.getDisplayName(itemId)} ${have}/${amount}`;
+        }).join(', ');
+        return `Mine furnace materials - ${text}`;
+      }
+      return 'Open crafting station: make 9 open spaces, Fire Core on Iron Dust';
     }
     if (!this.placedFurnaces.length) return 'Select Furnace slot 6, aim at ground, and click Use';
     const repair = crash.shipRepair?.requirements || {};

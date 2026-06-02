@@ -37,6 +37,7 @@ export class InventorySystem {
     if (this.game.input?.hotbarSlotIds) this.game.state.hotbar = [...this.game.input.hotbarSlotIds];
     this.game.sceneManager?.current?.refreshHotbar?.(true);
     this.game.sceneManager?.current?.updateQuickInventory?.();
+    this.game.systems.quests?.refresh?.({ notify: true, save: false });
   }
 
   getStoredAmount(itemId) {

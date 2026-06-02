@@ -1,4 +1,4 @@
-import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=153';
+import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=156';
 
 const DEFAULT_BUILD_RANGE = 178;
 const STARTER_BASE_WALL_MATERIAL = 10;

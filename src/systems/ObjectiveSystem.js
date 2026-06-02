@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=153';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 const AUTOSAVE_EVENTS = new Set([
   'upgradePurchased',
@@ -35,6 +35,7 @@ export class ObjectiveSystem {
   }
 
   record(eventName, payload = {}) {
+    this.game.systems.quests?.record?.(eventName, payload, { save: false, notify: true });
     const stats = this.state.stats;
     if (eventName === 'materialCollected') {
       stats.materialsCollected[payload.materialId] = (stats.materialsCollected[payload.materialId] || 0) + (payload.amount || 0);

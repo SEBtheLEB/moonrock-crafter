@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=153';
-import { gameBalance } from '../data/gameBalance.js?v=153';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=156';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },

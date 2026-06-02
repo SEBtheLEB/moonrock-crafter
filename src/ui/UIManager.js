@@ -1,8 +1,9 @@
 import { Button } from './Button.js';
 import { Modal } from './Modal.js';
 import { Panel } from './Panel.js';
+import { QuestTracker } from './QuestTracker.js?v=156';
 import { Toast } from './Toast.js';
-import { TooltipManager } from './TooltipManager.js?v=153';
+import { TooltipManager } from './TooltipManager.js?v=156';
 
 export class UIManager {
   constructor(root, events, audio) {
@@ -17,6 +18,7 @@ export class UIManager {
     this.highlightLayer = document.createElement('div');
     this.dialogueOverlay = this.createDialogueOverlay();
     this.dialogueRenderState = {};
+    this.questTracker = null;
     this.layers = [this.sceneLayer, this.controlsLayer, this.globalLayer, this.modalLayer, this.toastLayer];
     this.highlightTarget = null;
     this.game = null;
@@ -44,9 +46,12 @@ export class UIManager {
 
   setupGlobalControls(game) {
     this.game = game;
+    this.questTracker?.destroy?.();
+    this.questTracker = new QuestTracker(game);
     this.globalLayer.replaceChildren(
       this.highlightLayer,
       this.dialogueOverlay,
+      this.questTracker.element,
       new Button('Pause', () => game.togglePause(), {
         icon: 'II',
         className: 'pause-button',

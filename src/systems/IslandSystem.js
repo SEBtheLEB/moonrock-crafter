@@ -1,6 +1,6 @@
-import { islands } from '../data/islands.js?v=153';
-import { TerrainGrid } from './TerrainGrid.js?v=153';
-import { gameBalance } from '../data/gameBalance.js?v=153';
+import { islands } from '../data/islands.js?v=156';
+import { TerrainGrid } from './TerrainGrid.js?v=156';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 const ISLAND_LAYOUT_VERSION = 9;
 const PLANET_TAG_PREFIX = 'P';

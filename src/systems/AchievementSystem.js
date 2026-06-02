@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=153';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 export class AchievementSystem {
   constructor(game) {
@@ -21,6 +21,10 @@ export class AchievementSystem {
 
   unlock(achievement) {
     this.state[achievement.id] = true;
+    this.game.systems.quests?.record?.('achievementUnlocked', {
+      achievementId: achievement.id,
+      label: achievement.label,
+    }, { save: false, notify: true });
     this.grantReward(achievement.reward);
     this.game.ui.showToast(`Achievement: ${achievement.label}`, 'success', 2800);
     this.game.audio.playSuccess();

@@ -1,4 +1,4 @@
-import { StationPlayer } from '../entities/StationPlayer.js?v=153';
+import { StationPlayer } from '../entities/StationPlayer.js?v=156';
 import { StationInteractable } from '../entities/StationInteractable.js';
 import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
 import { Button } from '../ui/Button.js';
@@ -6,10 +6,9 @@ import { InteractPrompt } from '../ui/InteractPrompt.js';
 import { MobileStationControls } from '../ui/MobileStationControls.js';
 import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
-import { createObjectiveModal } from '../ui/ObjectiveModal.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=153';
-import { gameBalance } from '../data/gameBalance.js?v=153';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=156';
+import { gameBalance } from '../data/gameBalance.js?v=156';
 
 const WORLD_WIDTH = 2920;
 
@@ -172,12 +171,7 @@ export class StationScene {
     }).element;
     this.storageQuickButton.setAttribute('aria-label', 'Open storage inventory');
 
-    this.objectiveChip = document.createElement('button');
-    this.objectiveChip.type = 'button';
-    this.objectiveChip.className = 'station-platformer-objective';
-    this.objectiveChip.setAttribute('aria-label', 'Open objective details');
-    this.objectiveChip.addEventListener('click', () => this.showObjectiveDetails());
-    topBar.append(resources, this.objectiveChip);
+    topBar.append(resources);
     this.game.ui.addSceneElement(topBar);
     this.game.ui.addSceneElement(this.storageQuickButton);
     this.updateHud(true);
@@ -258,26 +252,6 @@ export class StationScene {
     this.resourceCounters?.credits.update(this.game.state.credits);
     this.resourceCounters?.research.update(this.game.state.researchPoints);
 
-    const objective = this.game.systems.objectives.getCurrentObjective();
-    const progress = this.game.systems.objectives.getProgress(objective);
-    const key = objective ? `${objective.id}:${progress.text}` : 'complete';
-    if (!force && this.lastObjectiveKey === key) return;
-    this.lastObjectiveKey = key;
-    if (!objective) {
-      this.objectiveChip.innerHTML = '<span>Objective</span><strong>Reach the far planet</strong>';
-      return;
-    }
-    this.objectiveChip.innerHTML = `
-      <span>Objective</span>
-      <strong>${objective.label}</strong>
-      <em>${progress.text}</em>
-    `;
-  }
-
-  showObjectiveDetails() {
-    this.game.ui.showModal(createObjectiveModal(this.game, {
-      onClose: () => this.game.ui.hideModal(),
-    }));
   }
 
   openStorage() {

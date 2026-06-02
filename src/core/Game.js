@@ -1,30 +1,31 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=153';
+import { InputManager } from './InputManager.js?v=156';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=153';
-import { UIManager } from '../ui/UIManager.js?v=153';
-import { DebugPanel } from '../ui/DebugPanel.js?v=153';
+import { AudioManager } from './AudioManager.js?v=156';
+import { UIManager } from '../ui/UIManager.js?v=156';
+import { DebugPanel } from '../ui/DebugPanel.js?v=156';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=153';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=153';
-import { EconomySystem } from '../systems/EconomySystem.js?v=153';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=153';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=153';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=153';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=153';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=153';
-import { IslandSystem } from '../systems/IslandSystem.js?v=153';
-import { BuildingSystem } from '../systems/BuildingSystem.js?v=153';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=156';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=156';
+import { EconomySystem } from '../systems/EconomySystem.js?v=156';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=156';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=156';
+import { QuestSystem } from '../systems/QuestSystem.js?v=156';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=156';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=156';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=156';
+import { IslandSystem } from '../systems/IslandSystem.js?v=156';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=156';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=153';
-import { MiningScene } from '../scenes/MiningScene.js?v=153';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=153';
-import { StorageScene } from '../scenes/StorageScene.js?v=153';
-import { IslandScene } from '../scenes/IslandScene.js?v=153';
-import { gameBalance } from '../data/gameBalance.js?v=153';
-import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=153';
+import { StationScene } from '../scenes/StationScene.js?v=156';
+import { MiningScene } from '../scenes/MiningScene.js?v=156';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=156';
+import { StorageScene } from '../scenes/StorageScene.js?v=156';
+import { IslandScene } from '../scenes/IslandScene.js?v=156';
+import { gameBalance } from '../data/gameBalance.js?v=156';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=156';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -131,6 +132,14 @@ export class Game {
         },
       },
       tutorial: {},
+      quests: {
+        version: 1,
+        completedSteps: {},
+        completedQuests: {},
+        events: {},
+        arrivedPlanets: {},
+        trackedQuestId: null,
+      },
       progression: {
         toolInventoryMigrated: true,
         starterTorchMigrated: true,
@@ -209,6 +218,26 @@ export class Game {
           : defaultState.story.baseLab,
       },
       tutorial: { ...defaultState.tutorial, ...savedState.tutorial },
+      quests: {
+        ...defaultState.quests,
+        ...savedState.quests,
+        completedSteps: {
+          ...(defaultState.quests?.completedSteps || {}),
+          ...(savedState.quests?.completedSteps || {}),
+        },
+        completedQuests: {
+          ...(defaultState.quests?.completedQuests || {}),
+          ...(savedState.quests?.completedQuests || {}),
+        },
+        events: {
+          ...(defaultState.quests?.events || {}),
+          ...(savedState.quests?.events || {}),
+        },
+        arrivedPlanets: {
+          ...(defaultState.quests?.arrivedPlanets || {}),
+          ...(savedState.quests?.arrivedPlanets || {}),
+        },
+      },
       progression: {
         ...defaultState.progression,
         ...savedState.progression,
@@ -379,6 +408,7 @@ export class Game {
       economy: new EconomySystem(this),
       research: new ResearchSystem(this),
       tutorial: new TutorialSystem(this),
+      quests: new QuestSystem(this),
       objectives: new ObjectiveSystem(this),
       achievements: new AchievementSystem(this),
       building: new BuildingSystem(this),
@@ -397,6 +427,7 @@ export class Game {
     this.audio.setMuted(Boolean(this.state.settings?.audioMuted));
     this.applyTouchControlsSetting();
     this.systems.upgrades.applyUpgrades();
+    this.systems.quests.init();
     this.configureInputHotbar();
 
     this.registerScenes();
