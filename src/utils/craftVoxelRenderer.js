@@ -7,7 +7,7 @@ import {
   getTopMaterialId,
   getVoxelEntries,
   isOccupied,
-} from '../systems/MachineSculptingSystem.js?v=133';
+} from '../systems/MachineSculptingSystem.js?v=135';
 
 const CELL_PIXELS = 42;
 

@@ -1,31 +1,31 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=133';
-import { Ship } from '../entities/Ship.js?v=133';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=133';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=133';
-import { MineralPickup } from '../entities/MineralPickup.js?v=133';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=133';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=133';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=133';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=133';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=133';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=133';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=133';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=133';
-import { BaseLab } from '../entities/BaseLab.js?v=133';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=133';
-import { EnemySystem } from '../systems/EnemySystem.js?v=133';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=133';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=133';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=133';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=133';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=133';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=133';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=133';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=133';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=133';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=133';
+import { Hotbar } from '../ui/Hotbar.js?v=135';
+import { Ship } from '../entities/Ship.js?v=135';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=135';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=135';
+import { MineralPickup } from '../entities/MineralPickup.js?v=135';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=135';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=135';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=135';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=135';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=135';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=135';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=135';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=135';
+import { BaseLab } from '../entities/BaseLab.js?v=135';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=135';
+import { EnemySystem } from '../systems/EnemySystem.js?v=135';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=135';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=135';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=135';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=135';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=135';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=135';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=135';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=135';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=135';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=135';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -38,9 +38,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=133';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=133';
-import { gameBalance } from '../data/gameBalance.js?v=133';
+} from '../systems/MachineSculptingSystem.js?v=135';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=135';
+import { gameBalance } from '../data/gameBalance.js?v=135';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -310,6 +310,7 @@ export class MiningScene {
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
     this.islandRotationSettling = false;
+    this.gravityMachineDefaultResetHeld = false;
     this.islandFreefall = false;
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
@@ -2910,7 +2911,9 @@ export class MiningScene {
 
   updateGravityStabilizerInput(actions) {
     if (!this.activeIsland || !this.islandPlayer) return;
+    this.gravityMachineDefaultResetHeld = false;
     if (this.heldItemState) return;
+    this.gravityMachineDefaultResetHeld = this.isGravityMachineDefaultResetInput(actions);
     if (!actions.justPressed?.stabilize && !actions.stabilize) return;
     if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
       if (actions.justPressed?.stabilize) {
@@ -2919,18 +2922,42 @@ export class MiningScene {
       }
       return;
     }
-    if (actions.justPressed?.stabilize) this.engageIslandGravityStabilizer();
+    if (actions.justPressed?.stabilize) {
+      this.engageIslandGravityStabilizer({
+        targetRotation: this.gravityMachineDefaultResetHeld ? this.getDefaultIslandViewRotation() : null,
+      });
+    }
     this.islandRotationSettling = true;
     if (actions.justPressed?.stabilize) {
       this.game.audio.playSuccess?.();
-      this.game.ui.showToast('Gravity Machine engaged', 'success', 900);
+      this.game.ui.showToast(
+        this.gravityMachineDefaultResetHeld ? 'Gravity Machine leveling base rotation' : 'Gravity Machine engaged',
+        'success',
+        900,
+      );
     }
   }
 
-  engageIslandGravityStabilizer() {
+  engageIslandGravityStabilizer({ targetRotation = null } = {}) {
     if (!this.activeIsland || !this.islandPlayer) return;
-    this.islandRotationTarget = this.getIslandTargetViewRotation();
+    this.islandRotationTarget = targetRotation === null
+      ? this.getIslandTargetViewRotation()
+      : normalizeAngle(targetRotation);
     this.islandRotationSettling = true;
+  }
+
+  getDefaultIslandViewRotation() {
+    return 0;
+  }
+
+  isGravityMachineToolSelected() {
+    return this.heldItemState?.itemId === 'gravityStabilizer'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'stabilizer';
+  }
+
+  isGravityMachineDefaultResetInput(actions = this.game.input.actions) {
+    return this.isGravityMachineToolSelected()
+      && Boolean(actions.primaryUse || actions.aimUse);
   }
 
   isFlagToolSelected() {
@@ -6009,8 +6036,9 @@ export class MiningScene {
   updateIslandViewRotationManual(delta, centeredTarget) {
     if (!this.activeIsland || !this.islandPlayer) return;
     const holdingStabilizer = this.game.input.actions.stabilize;
+    const target = this.gravityMachineDefaultResetHeld ? this.getDefaultIslandViewRotation() : centeredTarget;
     if (holdingStabilizer) {
-      const targetDelta = angleDifference(this.islandRotationTarget, centeredTarget);
+      const targetDelta = angleDifference(this.islandRotationTarget, target);
       const targetStep = clamp(
         targetDelta,
         -ISLAND_STABILIZE_TARGET_FOLLOW_SPEED * delta,
@@ -6302,6 +6330,9 @@ export class MiningScene {
       text = this.hasGravityMachine()
         ? `${this.activeIsland.getAtmosphereLabel?.() || 'Dense atmosphere'} - Gravity Machine Mk ${this.activeIsland.gravityStabilizerRequirement || 2} needed`
         : 'Craft a Gravity Machine to rotate around the planet';
+    }
+    if (this.isGravityMachineToolSelected() && this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
+      text = 'Gravity Machine - hold Use to level base rotation, press G to reorient';
     }
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';

@@ -3,7 +3,7 @@ import {
   EMPTY_HOTBAR_SLOT,
   HOTBAR_SLOT_COUNT,
   getHotbarSlotById,
-} from '../data/hotbar.js?v=133';
+} from '../data/hotbar.js?v=135';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',

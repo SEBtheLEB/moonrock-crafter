@@ -1,4 +1,4 @@
-import { PlanetEnemy } from './PlanetEnemy.js?v=133';
+import { PlanetEnemy } from './PlanetEnemy.js?v=135';
 
 export class AlienGoo extends PlanetEnemy {
   constructor(options) {

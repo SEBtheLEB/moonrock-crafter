@@ -1,4 +1,4 @@
-import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=133';
+import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=135';
 
 const DEFAULT_BUILD_RANGE = 178;
 const STARTER_BASE_WALL_MATERIAL = 10;
@@ -226,9 +226,6 @@ export class BuildingSystem {
     const nextValue = Math.max(0, Number(value) || 0);
     if (terrain.cells[index] === nextValue) return false;
     terrain.cells[index] = nextValue;
-    if (nextValue > 0 && terrain.wallCells?.length && !terrain.wallCells[index]) {
-      terrain.wallCells[index] = terrain.getWallTypeForTile(col, row, nextValue);
-    }
     if (terrain.damage) terrain.damage[index] = 0;
     terrain.damagedCells?.delete?.(index);
     if (changed) changed.value = true;

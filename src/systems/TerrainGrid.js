@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=133';
-import { gameBalance } from '../data/gameBalance.js?v=133';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=135';
+import { gameBalance } from '../data/gameBalance.js?v=135';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -18,7 +18,7 @@ export const TERRAIN_MATERIALS = {
 
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
-const TERRAIN_SAVE_VERSION = 24;
+const TERRAIN_SAVE_VERSION = 25;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -1484,7 +1484,7 @@ export class TerrainGrid {
     return material > 0 && !this.isConstructedMaterial(material);
   }
 
-  setCell(col, row, value, { autoWall = true } = {}) {
+  setCell(col, row, value, { autoWall = false } = {}) {
     if (!this.isInside(col, row)) return;
     const index = this.index(col, row);
     const previousValue = this.cells[index];
