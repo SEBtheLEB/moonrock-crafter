@@ -3,7 +3,7 @@ import {
   EMPTY_HOTBAR_SLOT,
   HOTBAR_SLOT_COUNT,
   getHotbarSlotById,
-} from '../data/hotbar.js?v=121';
+} from '../data/hotbar.js?v=130';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',
@@ -156,6 +156,8 @@ export class InputManager {
       attack: false,
       placeFlag: false,
       placeTorch: false,
+      placePlatform: false,
+      placePlatformLine: false,
       placeFurnace: false,
       placeCraftingStation: false,
       placeResearchStation: false,

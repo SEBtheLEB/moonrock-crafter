@@ -57,6 +57,17 @@ export const hotbarSlotCatalog = [
     description: 'Restabilize island gravity while on foot.',
   },
   {
+    id: 'pp5',
+    inventoryItemId: 'platformPlacerPp5',
+    label: 'PP5 Platform Placer',
+    shortLabel: 'PP5',
+    icon: 'P5',
+    iconHtml: '<span class="tool-icon-shape icon-platform-placer"><i></i></span>',
+    action: 'placePlatformLine',
+    tone: 'platform',
+    description: 'Place five thin platforms forward from the aimed tile.',
+  },
+  {
     id: 'flag',
     inventoryItemId: 'markerFlag',
     label: 'Flag',
@@ -252,6 +263,19 @@ export const hotbarSlotCatalog = [
     placedWallType: 10,
     backgroundOnly: true,
   },
+  {
+    id: 'platform',
+    inventoryItemId: 'thinPlatform',
+    label: 'Thin Platform',
+    shortLabel: 'Plat',
+    icon: 'Pf',
+    iconHtml: '<span class="tool-icon-shape icon-platform"><i></i></span>',
+    action: 'placePlatform',
+    tone: 'platform',
+    description: 'Place one jump-through platform on the grid.',
+    itemType: 'platform',
+    placeable: true,
+  },
 ];
 
 export const DEFAULT_HOTBAR_SLOT_IDS = [
@@ -261,7 +285,7 @@ export const DEFAULT_HOTBAR_SLOT_IDS = [
   'flag',
   'craftingStation',
   'torch',
-  'buildMetalCaseWall',
+  'pp5',
 ];
 
 export const hotbarSlots = DEFAULT_HOTBAR_SLOT_IDS.map((slotId) => getHotbarSlotById(slotId));

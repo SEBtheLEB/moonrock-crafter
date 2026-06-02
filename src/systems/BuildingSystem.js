@@ -1,4 +1,4 @@
-import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=121';
+import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=130';
 
 const DEFAULT_BUILD_RANGE = 178;
 const STARTER_BASE_WALL_MATERIAL = 10;
@@ -418,7 +418,8 @@ export class BuildingSystem {
     const terrain = scene?.activeIsland?.terrain;
     if (!terrain?.isInside?.(col, row)) return { ok: false, reason: 'Outside build grid' };
     if (!inRange) return { ok: false, reason: 'Too far' };
-    if (this.game.systems.inventory.getStoredAmount(itemId) <= 0) return { ok: false, reason: `No ${this.getItemName(itemId)}` };
+    const available = scene?.getAvailableItemAmount?.(itemId) ?? this.game.systems.inventory.getStoredAmount(itemId);
+    if (available <= 0) return { ok: false, reason: `No ${this.getItemName(itemId)}` };
     if (mode === 'backgroundWall') {
       if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Clear foreground first' };
       if (terrain.getWallCell(col, row) === materialId) return { ok: false, reason: 'Wall already placed' };
@@ -520,18 +521,24 @@ export class BuildingSystem {
   place(scene, preview) {
     if (!preview?.valid || !preview.target) return false;
     const { terrain, target, mode, materialId, itemId } = preview;
-    const inventory = this.game.systems.inventory;
-    if (!inventory.remove(itemId, 1, { skipSave: true })) return false;
     let changed = false;
+    let previousValue = 0;
     if (mode === 'backgroundWall') {
+      previousValue = terrain.getWallCell?.(target.col, target.row) || 0;
       changed = terrain.setWallCell?.(target.col, target.row, materialId) !== false;
     } else {
-      const before = terrain.getCell(target.col, target.row);
+      previousValue = terrain.getCell(target.col, target.row);
       terrain.setCell(target.col, target.row, materialId, { autoWall: false });
-      changed = before !== terrain.getCell(target.col, target.row);
+      changed = previousValue !== terrain.getCell(target.col, target.row);
     }
-    if (!changed) {
-      inventory.add(itemId, 1, { skipSave: true });
+    if (!changed) return false;
+    const consumed = scene?.consumeHeldOrInventoryItem?.(itemId, 1) || {
+      ok: this.game.systems.inventory.remove(itemId, 1, { skipSave: true }),
+      source: 'inventory',
+    };
+    if (!consumed.ok) {
+      if (mode === 'backgroundWall') terrain.setWallCell?.(target.col, target.row, previousValue);
+      else terrain.setCell(target.col, target.row, previousValue, { autoWall: false });
       return false;
     }
     scene.islandTerrainDirty = true;

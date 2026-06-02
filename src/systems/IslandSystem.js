@@ -1,6 +1,6 @@
-import { islands } from '../data/islands.js?v=121';
-import { TerrainGrid } from './TerrainGrid.js?v=121';
-import { gameBalance } from '../data/gameBalance.js?v=121';
+import { islands } from '../data/islands.js?v=130';
+import { TerrainGrid } from './TerrainGrid.js?v=130';
+import { gameBalance } from '../data/gameBalance.js?v=130';
 
 const ISLAND_LAYOUT_VERSION = 7;
 const PLANET_TAG_PREFIX = 'P';
@@ -54,6 +54,11 @@ export class IslandSystem {
     return Array.isArray(torches) ? torches : [];
   }
 
+  getSavedPlatforms(islandId) {
+    const platforms = this.game.state.islands?.platforms?.[islandId];
+    return Array.isArray(platforms) ? platforms : [];
+  }
+
   getSavedShipAnchor(islandId) {
     return this.game.state.islands?.shipAnchors?.[islandId] || null;
   }
@@ -73,6 +78,15 @@ export class IslandSystem {
     this.game.state.islands.torches[islandId] = torches
       .filter(Boolean)
       .map((torch) => (typeof torch.serialize === 'function' ? torch.serialize() : torch));
+    this.game.saveGame();
+  }
+
+  savePlatforms(islandId, platforms = []) {
+    this.game.state.islands ||= { visited: {} };
+    this.game.state.islands.platforms ||= {};
+    this.game.state.islands.platforms[islandId] = platforms
+      .filter(Boolean)
+      .map((platform) => (typeof platform.serialize === 'function' ? platform.serialize() : platform));
     this.game.saveGame();
   }
 
@@ -117,6 +131,7 @@ export class IslandSystem {
     this.game.state.islands.terrain = {};
     this.game.state.islands.flags = {};
     this.game.state.islands.torches = {};
+    this.game.state.islands.platforms = {};
     this.game.state.islands.shipAnchors = {};
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
@@ -166,6 +181,7 @@ export class IslandSystem {
     if (this.game.state.islands.terrain) delete this.game.state.islands.terrain[island.id];
     if (clearFlags && this.game.state.islands.flags) delete this.game.state.islands.flags[island.id];
     if (clearTorches && this.game.state.islands.torches) delete this.game.state.islands.torches[island.id];
+    if (this.game.state.islands.platforms) delete this.game.state.islands.platforms[island.id];
     if (this.game.state.islands.shipAnchors) delete this.game.state.islands.shipAnchors[island.id];
     if (this.game.state.base?.islandId === island.id) {
       this.game.state.base = { established: false, islandId: null, flagId: null, local: null };

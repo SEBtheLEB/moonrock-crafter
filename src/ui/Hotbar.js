@@ -1,4 +1,4 @@
-import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=121';
+import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=130';
 
 export class Hotbar {
   constructor(game, { className = '' } = {}) {
@@ -50,7 +50,7 @@ export class Hotbar {
   update(force = false) {
     const selectedIndex = this.game.input.selectedHotbarIndex ?? 0;
     const inputMode = document.documentElement.dataset.inputMode || '';
-    const slotSignature = (this.game.input.hotbarSlotIds || []).join('|');
+    const slotSignature = this.getSlotSignature();
     if (!force && selectedIndex === this.lastSelectedIndex && inputMode === this.lastInputMode && slotSignature === this.lastSlotSignature) return;
     this.lastSelectedIndex = selectedIndex;
     this.lastInputMode = inputMode;
@@ -59,12 +59,24 @@ export class Hotbar {
       const selected = index === selectedIndex;
       const slot = this.game.input.getHotbarSlotAt?.(index) || EMPTY_HOTBAR_SLOT;
       const isEmpty = slot.id === EMPTY_HOTBAR_SLOT.id;
+      const amount = !isEmpty && slot.inventoryItemId
+        ? this.game.systems.inventory.getStoredAmount(slot.inventoryItemId)
+        : 0;
+      const itemName = slot.inventoryItemId
+        ? this.game.systems.materials.getDisplayName(slot.inventoryItemId)
+        : slot.label;
+      const tooltip = isEmpty
+        ? `Slot ${index + 1}: Empty`
+        : `${itemName} x${this.formatCount(amount)}`;
       button.className = `tool-hotbar-slot tone-${slot.tone || 'empty'} ${isEmpty ? 'is-empty' : ''}`.trim();
       button.setAttribute('aria-label', isEmpty ? `Empty slot ${index + 1}` : `Select slot ${index + 1}: ${slot.label}`);
-      button.title = isEmpty ? `${index + 1}: Empty slot` : `${index + 1}: ${slot.label} - ${slot.description}`;
+      button.title = tooltip;
+      if (isEmpty) button.removeAttribute('data-item-tooltip');
+      else button.dataset.itemTooltip = tooltip;
       button.innerHTML = `
         <kbd>${index + 1}</kbd>
         <span class="tool-hotbar-icon" aria-hidden="true">${slot.iconHtml || slot.icon || '+'}</span>
+        ${!isEmpty && slot.inventoryItemId ? `<span class="tool-hotbar-count">x${this.formatCount(amount)}</span>` : ''}
         <strong>${slot.shortLabel || slot.label || 'Empty'}</strong>
       `;
       button.classList.toggle('is-selected', selected);
@@ -74,12 +86,31 @@ export class Hotbar {
     this.element.style.setProperty('--selected-tool-color', this.getToneColor(selectedSlot?.tone));
   }
 
+  getSlotSignature() {
+    return (this.game.input.hotbarSlotIds || [])
+      .map((slotId, index) => {
+        const slot = this.game.input.getHotbarSlotAt?.(index, { ignoreOwnership: true })
+          || EMPTY_HOTBAR_SLOT;
+        const amount = slot.inventoryItemId ? this.game.systems.inventory.getStoredAmount(slot.inventoryItemId) : 0;
+        return `${slotId || ''}:${amount}`;
+      })
+      .join('|');
+  }
+
+  formatCount(amount = 0) {
+    const value = Math.max(0, Math.floor(Number(amount) || 0));
+    if (value >= 1000000) return `${Math.floor(value / 100000) / 10}m`;
+    if (value >= 10000) return `${Math.floor(value / 100) / 10}k`;
+    return String(value);
+  }
+
   getToneColor(tone = 'empty') {
     return {
       forge: '#d98642',
       tech: '#66d8e8',
       laser: '#6ee7ff',
       utility: '#b794ff',
+      platform: '#7ee7ff',
       flag: '#ffd36b',
       torch: '#ffb45f',
       crafting: '#76f3ff',

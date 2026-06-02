@@ -993,6 +993,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
 
 .tool-hotbar-slot:hover,
 .tool-hotbar-slot:focus-visible {
+  z-index: 4;
   border-color: rgba(236, 231, 216, 0.34);
   background: rgba(18, 35, 52, 0.46);
   outline: 0;
@@ -1053,6 +1054,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   width: 42px;
   height: 42px;
   opacity: 0.96;
+  translate: 8px 8px;
 }
 
 .item-drag-ghost strong {
@@ -1084,6 +1086,68 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   background: rgba(255, 242, 207, 0.1);
   color: rgba(255, 242, 207, 0.72);
   font: 800 9px/1 var(--font-ui);
+}
+
+.tool-hotbar-count,
+.slot-count {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  max-width: calc(100% - 6px);
+  height: 15px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 242, 207, 0.18);
+  border-radius: 999px;
+  background: rgba(4, 9, 16, 0.78);
+  color: rgba(255, 242, 207, 0.94);
+  font: 900 9px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
+}
+
+.tool-hotbar-count {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  height: 16px;
+  min-width: 18px;
+  font-size: 8px;
+}
+
+[data-item-tooltip]::after {
+  content: attr(data-item-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  z-index: 30;
+  width: max-content;
+  max-width: min(220px, 52vw);
+  padding: 6px 9px;
+  border: 1px solid rgba(236, 231, 216, 0.16);
+  border-radius: 8px;
+  background: rgba(7, 13, 22, 0.92);
+  color: #fff2cf;
+  font: 850 11px/1.1 var(--font-ui);
+  letter-spacing: 0;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.36);
+  transform: translate(-50%, 4px) scale(0.96);
+  transition: opacity 90ms ease, transform 90ms ease;
+}
+
+[data-item-tooltip]:hover::after,
+[data-item-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
 }
 
 .tool-hotbar-icon {
@@ -1242,6 +1306,67 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   border-radius: 999px;
   background: currentColor;
   transform: rotate(42deg);
+}
+
+.icon-platform::before {
+  left: 3px;
+  top: 12px;
+  width: 19px;
+  height: 5px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.icon-platform::after {
+  left: 6px;
+  top: 8px;
+  width: 13px;
+  border-top: 2px solid currentColor;
+  opacity: 0.68;
+}
+
+.icon-platform i {
+  left: 7px;
+  top: 18px;
+  width: 11px;
+  border-top: 2px solid currentColor;
+  opacity: 0.5;
+}
+
+.icon-platform-placer::before {
+  left: 1px;
+  top: 12px;
+  width: 23px;
+  height: 5px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 3px, color-mix(in srgb, currentColor 36%, transparent) 3px 5px),
+    color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.icon-platform-placer::after {
+  right: 2px;
+  top: 3px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-shadow: -6px 5px 0 -4px currentColor;
+}
+
+.icon-platform-placer i {
+  left: 4px;
+  top: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow:
+    5px 0 0 currentColor,
+    10px 0 0 currentColor,
+    15px 0 0 currentColor;
 }
 
 .icon-flag::before {
@@ -1998,11 +2123,27 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   height: 34px;
 }
 
-.survival-inventory-slot strong {
+.survival-inventory-slot .slot-count {
   position: absolute;
-  right: 7px;
+  left: 5px;
   bottom: 5px;
-  font-size: 0.82rem;
+}
+
+.survival-inventory-slot[data-item-tooltip]:hover,
+.survival-inventory-slot[data-item-tooltip]:focus-visible {
+  z-index: 5;
+}
+
+.survival-inventory-slot[data-item-tooltip]::after {
+  left: 0;
+  bottom: calc(100% + 8px);
+  transform: translate(0, 4px) scale(0.96);
+  transform-origin: bottom left;
+}
+
+.survival-inventory-slot[data-item-tooltip]:hover::after,
+.survival-inventory-slot[data-item-tooltip]:focus-visible::after {
+  transform: translate(0, 0) scale(1);
 }
 
 .survival-inventory-summary,

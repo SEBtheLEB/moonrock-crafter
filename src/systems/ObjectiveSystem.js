@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=121';
+import { gameBalance } from '../data/gameBalance.js?v=130';
 
 const AUTOSAVE_EVENTS = new Set([
   'upgradePurchased',

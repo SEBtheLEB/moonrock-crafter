@@ -1,5 +1,5 @@
-import { research } from '../data/research.js?v=121';
-import { gameBalance } from '../data/gameBalance.js?v=121';
+import { research } from '../data/research.js?v=130';
+import { gameBalance } from '../data/gameBalance.js?v=130';
 
 export class ResearchSystem {
   constructor(game) {

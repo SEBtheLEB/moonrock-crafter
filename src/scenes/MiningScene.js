@@ -1,30 +1,31 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=121';
-import { Ship } from '../entities/Ship.js?v=121';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=121';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=121';
-import { MineralPickup } from '../entities/MineralPickup.js?v=121';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=121';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=121';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=121';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=121';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=121';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=121';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=121';
-import { BaseLab } from '../entities/BaseLab.js?v=121';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=121';
-import { EnemySystem } from '../systems/EnemySystem.js?v=121';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=121';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=121';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=121';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=121';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=121';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=121';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=121';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=121';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=121';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=121';
+import { Hotbar } from '../ui/Hotbar.js?v=130';
+import { Ship } from '../entities/Ship.js?v=130';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=130';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=130';
+import { MineralPickup } from '../entities/MineralPickup.js?v=130';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=130';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=130';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=130';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=130';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=130';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=130';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=130';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=130';
+import { BaseLab } from '../entities/BaseLab.js?v=130';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=130';
+import { EnemySystem } from '../systems/EnemySystem.js?v=130';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=130';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=130';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=130';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=130';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=130';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=130';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=130';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=130';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=130';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=130';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -37,9 +38,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=121';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=121';
-import { gameBalance } from '../data/gameBalance.js?v=121';
+} from '../systems/MachineSculptingSystem.js?v=130';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=130';
+import { gameBalance } from '../data/gameBalance.js?v=130';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -54,6 +55,8 @@ const GOD_MODE_MINING_MULTIPLIER = 18;
 const TERRAIN_LASER_RANGE = 390;
 const TERRAIN_MINER_RANGE = 132;
 const TERRAIN_MINING_BRUSH_RADIUS = gameBalance.terrain?.miningBrushRadius || 22;
+const PLATFORM_PLACE_COUNT = 5;
+const PLATFORM_DROP_THROUGH_TIME = 0.28;
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
@@ -289,6 +292,8 @@ export class MiningScene {
     this.islandLandingTarget = null;
     this.islandLandingAnchor = null;
     this.flagPlacementPreview = null;
+    this.platformPlacementPreview = null;
+    this.platformDropTimer = 0;
     this.furnacePlacementPreview = null;
     this.placedFurnace = null;
     this.placedFurnaces = [];
@@ -375,6 +380,7 @@ export class MiningScene {
         ...island,
         placedFlags: this.game.systems.islands.getSavedFlags(island.id),
         placedTorches: this.game.systems.islands.getSavedTorches(island.id),
+        placedPlatforms: this.game.systems.islands.getSavedPlatforms(island.id),
         shipAnchor: this.game.systems.islands.getSavedShipAnchor(island.id),
       }, terrain);
     });
@@ -416,6 +422,7 @@ export class MiningScene {
     runtimeIsland.planetTag = runtimeIsland.tag;
     runtimeIsland.placedFlags = [];
     runtimeIsland.placedTorches = [];
+    runtimeIsland.placedPlatforms = [];
     runtimeIsland.terrain = this.game.systems.islands.createTerrain(islandData, this.createIslandWorld(islandData));
     if (islandData.id === this.getStoryState().starterPlanetId) this.ensureStarterBaseCamp(runtimeIsland);
     if (this.activeIsland?.id === runtimeIsland.id) {
@@ -733,9 +740,10 @@ export class MiningScene {
     quickInventory.className = 'quick-inventory is-hidden';
     quickInventory.setAttribute('aria-label', 'Inventory');
     quickInventory.innerHTML = '<div class="quick-inventory-grid" data-quick-inventory-grid></div>';
-    mapStack.append(this.miniMap.element, playerHealth, vitals, quickInventory);
+    mapStack.append(this.miniMap.element, quickInventory, playerHealth, vitals);
     hud.append(mapStack);
     this.hud = {
+      mapStack,
       playerHealth,
       playerHearts: Array.from(playerHealth.querySelectorAll('[data-player-heart]')),
       hullText: vitals.querySelector('[data-hull-text]'),
@@ -831,7 +839,7 @@ export class MiningScene {
 
   exit() {
     this.flushPendingPickupSave();
-    this.cancelItemDrag();
+    this.cancelItemDrag({ returnHeldToInventory: true });
     this.closeSurvivalModal();
     this.closeQuickInventory();
     this.moveStick?.__inputCleanup?.();
@@ -2740,17 +2748,22 @@ export class MiningScene {
       jumpPressed: actions.justPressed.jump || keyboardJump || spaceJump,
       jumpHeld: actions.jump || actions.up,
       jumpReleased: actions.justReleased.jump || actions.justReleased.up,
+      downHeld: actions.down,
     });
     this.updateGravityStabilizerInput(actions);
     this.islandAimPreview = this.isTerrainToolSelected() ? this.getIslandTerrainPreview({ updateFacing: false }) : null;
     this.game.systems.building?.update?.(this, delta);
     this.flagPlacementPreview = this.isFlagToolSelected() ? this.getFlagPlacementPreview() : null;
     this.torchPlacementPreview = this.isTorchToolSelected() ? this.getTorchPlacementPreview() : null;
+    this.platformPlacementPreview = (this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected())
+      ? this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() })
+      : null;
     this.furnacePlacementPreview = this.isFurnaceToolSelected() ? this.getFurnacePlacementPreview() : null;
     this.craftingStationPlacementPreview = this.isCraftingStationToolSelected() ? this.getCraftingStationPlacementPreview() : null;
     this.researchStationPlacementPreview = this.isResearchStationToolSelected() ? this.getResearchStationPlacementPreview() : null;
     if (actions.justPressed.placeFlag) this.placeFlagOnIsland(this.flagPlacementPreview);
     if (actions.justPressed.placeTorch) this.placeTorchOnIsland(this.torchPlacementPreview);
+    if (actions.justPressed.placePlatform || actions.justPressed.placePlatformLine) this.placePlatformOnIsland(this.platformPlacementPreview);
     if (actions.justPressed.placeFurnace) this.placeFurnaceOnIsland(this.furnacePlacementPreview);
     if (actions.justPressed.placeCraftingStation) this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
     if (actions.justPressed.placeResearchStation) this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
@@ -2856,6 +2869,16 @@ export class MiningScene {
       || this.game.input.getSelectedHotbarSlot?.()?.id === 'torch';
   }
 
+  isPlatformToolSelected() {
+    return this.heldItemState?.itemId === 'thinPlatform'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'platform';
+  }
+
+  isPlatformPlacerToolSelected() {
+    return this.heldItemState?.itemId === 'platformPlacerPp5'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'pp5';
+  }
+
   isWeaponToolSelected() {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'weapon';
   }
@@ -2882,6 +2905,8 @@ export class MiningScene {
     return selectedId === 'miner'
       || selectedId === 'flag'
       || selectedId === 'torch'
+      || selectedId === 'platform'
+      || selectedId === 'pp5'
       || selectedId === 'furnace'
       || selectedId === 'craftingStation'
       || selectedId === 'researchStation'
@@ -2900,6 +2925,9 @@ export class MiningScene {
     if (id === 'laserGun') return context === 'island' ? 150 : 170;
     if ((id === 'weapon' || action === 'attack') && context === 'island') return SWORD_COMBAT.slashRange;
     if (id === 'weapon' || id.includes('gun') || id.includes('blaster') || id.includes('drone') || action === 'shoot' || action === 'attack') return 150;
+    if (id === 'platform' || id === 'pp5' || action === 'placePlatform' || action === 'placePlatformLine') {
+      return this.game.systems.building?.getBuildRange?.(this) || TERRAIN_MINER_RANGE;
+    }
     if (action === 'build' || this.isBuildToolSelected()) return this.game.systems.building?.getBuildRange?.(this) || TERRAIN_MINER_RANGE;
     if (this.isTerrainToolSelected()) return TERRAIN_LASER_RANGE;
     return context === 'ship' ? 150 : 120;
@@ -2911,7 +2939,7 @@ export class MiningScene {
     if (!preview) return null;
     return {
       ...preview,
-      canPlace: Boolean(preview.hit && this.game.systems.inventory.getStoredAmount('markerFlag') > 0),
+      canPlace: Boolean(preview.hit && this.getAvailableItemAmount('markerFlag') > 0),
     };
   }
 
@@ -2926,7 +2954,7 @@ export class MiningScene {
       this.game.ui.showToast('Aim the flag at solid ground', 'danger', 1100);
       return;
     }
-    if (this.game.systems.inventory.getStoredAmount('markerFlag') <= 0) {
+    if (this.getAvailableItemAmount('markerFlag') <= 0) {
       this.game.audio.playError?.();
       this.game.ui.showToast('No marker flag in inventory', 'danger', 1200);
       return;
@@ -2951,7 +2979,7 @@ export class MiningScene {
       accent: material.edge || '#66d8e8',
     });
     flags.push(flag);
-    this.game.systems.inventory.remove('markerFlag', 1, { skipSave: true });
+    this.consumeItemForPlacement('markerFlag', 1);
     this.flagPlacementPreview = null;
     this.islandTerrainDirty = this.islandTerrainDirty || pad.changed;
     if (this.islandTerrainDirty) {
@@ -2982,7 +3010,7 @@ export class MiningScene {
     if (!preview?.hit) return preview ? { ...preview, canPlace: false } : null;
     return {
       ...preview,
-      canPlace: this.game.systems.inventory.getStoredAmount('torch') > 0,
+      canPlace: this.getAvailableItemAmount('torch') > 0,
     };
   }
 
@@ -2991,7 +3019,7 @@ export class MiningScene {
     const island = this.activeIsland;
     const player = this.islandPlayer;
     if (!island || !player || this.islandMode !== 'onIsland') return;
-    if (this.game.systems.inventory.getStoredAmount('torch') <= 0) {
+    if (this.getAvailableItemAmount('torch') <= 0) {
       this.game.audio.playError?.();
       this.game.ui.showToast('No torches in inventory', 'danger', 1100);
       return;
@@ -3016,13 +3044,168 @@ export class MiningScene {
     });
     torches.push(torch);
     this.torchPlacementPreview = null;
-    this.game.systems.inventory.remove('torch', 1, { skipSave: true });
+    this.consumeItemForPlacement('torch', 1);
     this.game.systems.islands.saveTorches(island.id, torches);
     this.refreshHotbar(true);
     const world = island.localToWorldRotated(torch.x, torch.y, viewRotation);
     this.spawnBurst(world.x, world.y - 18, '#ffb45f', 12, 82);
     this.addFloatingText(world.x, world.y - 28, 'Torch placed', { color: '#ffb45f', rarity: 'common' });
     this.game.audio.playSuccess?.();
+  }
+
+  getPlatformPlacementPreview({ line = this.isPlatformPlacerToolSelected() } = {}) {
+    const island = this.activeIsland;
+    const terrain = island?.terrain;
+    const player = this.islandPlayer;
+    const building = this.game.systems.building;
+    if (!island || !terrain || !player || !building) return null;
+    const aim = building.getAimState(this);
+    if (!aim) return null;
+    const target = building.getTargetTile(terrain, aim, 'platform');
+    const direction = this.getPlatformPlacementDirection(aim);
+    const count = line ? PLATFORM_PLACE_COUNT : 1;
+    const available = this.getAvailableItemAmount('thinPlatform');
+    const tileSet = new Set();
+    const tiles = [];
+    for (let index = 0; index < count; index += 1) {
+      if (!target) break;
+      const col = target.col + direction * index;
+      const row = target.row;
+      const key = `${col}:${row}`;
+      if (tileSet.has(key)) continue;
+      tileSet.add(key);
+      const center = terrain.isInside(col, row)
+        ? building.planetTileToWorld(col, row, { terrain })
+        : { x: aim.aimPoint.x, y: aim.aimPoint.y };
+      const validation = this.validatePlatformPlacementTile(col, row, {
+        center,
+        inRange: aim.inRange,
+        needsInventory: index < available,
+      });
+      tiles.push({
+        col,
+        row,
+        center,
+        valid: validation.ok,
+        reason: validation.reason,
+      });
+    }
+    const validTiles = tiles.filter((tile) => tile.valid);
+    return {
+      island,
+      terrain,
+      target,
+      tiles,
+      validTiles,
+      valid: validTiles.length > 0,
+      reason: validTiles.length ? '' : (tiles[0]?.reason || 'No target tile'),
+      itemId: 'thinPlatform',
+      tool: line ? 'pp5' : 'platform',
+      count,
+      available,
+      origin: aim.origin,
+      aimPoint: tiles[0]?.center || aim.aimPoint,
+      rawAimPoint: aim.rawAimPoint,
+      end: tiles[tiles.length - 1]?.center || aim.aimPoint,
+      range: aim.range,
+      length: aim.length,
+      snapCursor: aim.snapped,
+    };
+  }
+
+  getPlatformPlacementDirection(aim) {
+    const basis = this.activeIsland ? this.getIslandGravityBasis(this.activeIsland) : { tangent: { x: 1, y: 0 } };
+    const dx = (aim?.rawAimPoint?.x ?? aim?.aimPoint?.x ?? 0) - (aim?.origin?.x ?? this.islandPlayer?.centerX ?? 0);
+    const dy = (aim?.rawAimPoint?.y ?? aim?.aimPoint?.y ?? 0) - (aim?.origin?.y ?? this.islandPlayer?.centerY ?? 0);
+    const tangentAmount = dx * basis.tangent.x + dy * basis.tangent.y;
+    if (Math.abs(tangentAmount) > 2) return tangentAmount >= 0 ? 1 : -1;
+    return this.islandPlayer?.facing >= 0 ? 1 : -1;
+  }
+
+  validatePlatformPlacementTile(col, row, { center = null, inRange = true, needsInventory = true } = {}) {
+    const terrain = this.activeIsland?.terrain;
+    if (!terrain?.isInside?.(col, row)) return { ok: false, reason: 'Outside build grid' };
+    if (!inRange) return { ok: false, reason: 'Too far' };
+    if (needsInventory && this.getAvailableItemAmount('thinPlatform') <= 0) return { ok: false, reason: 'No thin platforms' };
+    if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Tile occupied' };
+    if (this.isPlatformAtTile(this.activeIsland, col, row)) return { ok: false, reason: 'Platform already placed' };
+    const playerShape = this.getPlanetPlayerCollisionShape?.(this.islandPlayer, this.activeIsland);
+    if (playerShape && center) {
+      const size = terrain.cellSize || 20;
+      const left = center.x - size * 0.5;
+      const top = center.y - size * 0.5;
+      if (this.orientedBoxIntersectsAabb(playerShape, left, top, left + size, top + size)) {
+        return { ok: false, reason: 'Too close to you' };
+      }
+    }
+    return { ok: true, reason: '' };
+  }
+
+  isPlatformAtTile(island, col, row) {
+    return Boolean((island?.placedPlatforms || []).some((platform) => platform.col === col && platform.row === row));
+  }
+
+  createPlatformForTile(col, row) {
+    const island = this.activeIsland;
+    const terrain = island?.terrain;
+    const building = this.game.systems.building;
+    if (!island || !terrain || !building) return null;
+    const center = building.planetTileToWorld(col, row, { terrain });
+    const basis = this.getIslandGravityBasis(island);
+    const angle = Math.atan2(basis.tangent.y, basis.tangent.x);
+    const size = terrain.cellSize || 25;
+    return new PlacedPlatform({
+      col,
+      row,
+      x: center.x,
+      y: center.y,
+      angle,
+      length: size * 0.96,
+      thickness: Math.max(5, size * 0.22),
+    });
+  }
+
+  placePlatformOnIsland(preview = null) {
+    if (this.game.ui.modalLayer?.children.length) return;
+    const island = this.activeIsland;
+    if (!island || !this.islandPlayer || this.islandMode !== 'onIsland') return;
+    const target = preview || this.getPlatformPlacementPreview();
+    const validTiles = (target?.validTiles || []).slice(0, Math.min(target?.count || 1, this.getAvailableItemAmount('thinPlatform')));
+    if (!validTiles.length) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast(target?.reason || 'Aim at open space for a platform', 'danger', 1100);
+      return;
+    }
+
+    this.updateIslandPlayerFacingFromAim(target.rawAimPoint);
+    island.placedPlatforms ||= [];
+    const placed = [];
+    for (const tile of validTiles) {
+      const platform = this.createPlatformForTile(tile.col, tile.row);
+      if (!platform) continue;
+      const consumed = this.consumeHeldOrInventoryItem('thinPlatform', 1);
+      if (!consumed.ok) break;
+      island.placedPlatforms.push(platform);
+      placed.push(platform);
+    }
+    if (!placed.length) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('No thin platforms', 'danger', 1100);
+      return;
+    }
+    this.platformPlacementPreview = null;
+    this.game.systems.islands.savePlatforms(island.id, island.placedPlatforms);
+    this.refreshHotbar(true);
+    this.updateQuickInventory(true);
+    const viewRotation = this.getIslandViewRotation();
+    const mid = placed[Math.floor(placed.length / 2)];
+    const world = island.localToWorldRotated(mid.x, mid.y, viewRotation);
+    this.spawnBurst(world.x, world.y, '#7ee7ff', 8 + placed.length, 82);
+    this.addFloatingText(world.x, world.y - 20, placed.length > 1 ? `+${placed.length} platforms` : 'Platform placed', {
+      color: '#7ee7ff',
+      rarity: 'common',
+    });
+    this.game.audio.playButtonClick?.();
   }
 
   isFurnaceToolSelected() {
@@ -3042,7 +3225,7 @@ export class MiningScene {
     const story = this.getStoryState();
     return {
       ...preview,
-      canPlace: Boolean(!story.craftingStationPlaced && this.game.systems.inventory.getStoredAmount('craftingStationKit') > 0),
+      canPlace: Boolean(!story.craftingStationPlaced && this.getAvailableItemAmount('craftingStationKit') > 0),
     };
   }
 
@@ -3057,7 +3240,7 @@ export class MiningScene {
       this.game.ui.showToast('Crafting station is already placed', 'default', 1200);
       return;
     }
-    if (this.game.systems.inventory.getStoredAmount('craftingStationKit') <= 0) {
+    if (this.getAvailableItemAmount('craftingStationKit') <= 0) {
       this.game.audio.playError?.();
       this.game.ui.showToast('No crafting station in inventory', 'danger', 1200);
       return;
@@ -3077,7 +3260,7 @@ export class MiningScene {
       depth: CRAFTING_STATION_DEPTH,
       material: target.hit.material,
     });
-    this.game.systems.inventory.remove('craftingStationKit', 1, { skipSave: true });
+    this.consumeItemForPlacement('craftingStationKit', 1);
     this.placedCraftingStation = new PlacedCraftingStation({
       x: pad.x,
       y: pad.y,
@@ -3107,7 +3290,7 @@ export class MiningScene {
     const story = this.getStoryState();
     return {
       ...preview,
-      canPlace: Boolean(!story.researchStationPlaced && this.game.systems.inventory.getStoredAmount('researchStationKit') > 0),
+      canPlace: Boolean(!story.researchStationPlaced && this.getAvailableItemAmount('researchStationKit') > 0),
     };
   }
 
@@ -3122,7 +3305,7 @@ export class MiningScene {
       this.game.ui.showToast('Research station is already placed', 'default', 1200);
       return;
     }
-    if (this.game.systems.inventory.getStoredAmount('researchStationKit') <= 0) {
+    if (this.getAvailableItemAmount('researchStationKit') <= 0) {
       this.game.audio.playError?.();
       this.game.ui.showToast('No research station in inventory', 'danger', 1200);
       return;
@@ -3142,7 +3325,7 @@ export class MiningScene {
       depth: 48,
       material: target.hit.material,
     });
-    this.game.systems.inventory.remove('researchStationKit', 1, { skipSave: true });
+    this.consumeItemForPlacement('researchStationKit', 1);
     this.placedResearchStation = new PlacedResearchStation({
       x: pad.x,
       y: pad.y,
@@ -3241,7 +3424,7 @@ export class MiningScene {
 
   getFurnaceBlueprintCount() {
     const story = this.getStoryState();
-    const inventoryCount = this.game.systems.inventory.getStoredAmount('starterFurnace');
+    const inventoryCount = this.getAvailableItemAmount('starterFurnace');
     return Math.max(inventoryCount, story.furnaceInventory?.length || 0);
   }
 
@@ -3250,7 +3433,7 @@ export class MiningScene {
     story.furnaceInventory ||= [];
     let blueprint = story.furnaceInventory.shift();
     if (!blueprint) blueprint = this.createDefaultFurnaceBlueprint();
-    this.game.systems.inventory.remove('starterFurnace', 1, { skipSave: true });
+    if (this.getAvailableItemAmount('starterFurnace') > 0) this.consumeItemForPlacement('starterFurnace', 1);
     return blueprint;
   }
 
@@ -3498,36 +3681,42 @@ export class MiningScene {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `quick-inventory-slot ${amount > 0 ? 'has-item' : 'is-empty'}`;
-    button.addEventListener('pointerdown', (event) => {
-      event.stopPropagation();
-      if (event.button === 0) event.preventDefault();
-    });
+    button.dataset.inventorySlot = 'true';
     if (!itemId || amount <= 0) {
-      button.disabled = true;
       button.setAttribute('aria-label', 'Empty inventory slot');
+      button.setAttribute('aria-disabled', 'true');
+      button.addEventListener('pointerdown', (event) => {
+        if (this.handleInventorySlotPointerDown(event)) return;
+        event.stopPropagation();
+        if (event.button === 0) event.preventDefault();
+      });
       return button;
     }
     const material = this.game.systems.materials.getMaterial(itemId);
     const rarity = material?.rarity || 'common';
     const name = this.game.systems.materials.getDisplayName(itemId);
     button.dataset.itemId = itemId;
-    button.dataset.inventorySlot = 'true';
     button.classList.add(`rarity-${rarity}`);
     button.style.setProperty('--item-color', material?.color || '#fff2cf');
+    button.dataset.itemTooltip = `${name} x${this.formatStackCount(amount)}`;
     button.innerHTML = `
       <span class="slot-icon">${material?.icon || '?'}</span>
-      <strong>${amount}</strong>
+      <strong class="slot-count">x${this.formatStackCount(amount)}</strong>
     `;
-    button.title = `${name} x${amount} | ${this.game.systems.materials.getRarityLabel(rarity)} | ${this.game.systems.materials.getValue(itemId, amount)} cr`;
+    button.title = `${name} x${this.formatStackCount(amount)} | ${this.game.systems.materials.getRarityLabel(rarity)} | ${this.game.systems.materials.getValue(itemId, amount)} cr`;
     button.setAttribute('aria-label', `${name}, ${amount}`);
     button.addEventListener('pointerdown', (event) => {
+      if (this.handleInventorySlotPointerDown(event)) return;
       event.stopPropagation();
       if (event.button === 2) {
         event.preventDefault();
         this.autoAssignItemToHotbar(itemId);
         return;
       }
-      if (event.button === 0) event.preventDefault();
+      if (event.button === 0) {
+        event.preventDefault();
+        this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
+      }
     });
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -3540,7 +3729,6 @@ export class MiningScene {
         return;
       }
       event.stopPropagation();
-      this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
     });
     return button;
   }
@@ -3590,29 +3778,41 @@ export class MiningScene {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `survival-inventory-slot ${amount > 0 ? 'has-item' : 'is-empty'}`;
+    button.dataset.inventorySlot = 'true';
     if (!itemId || amount <= 0) {
       button.innerHTML = '<span class="slot-icon">+</span>';
-      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.setAttribute('aria-label', 'Empty inventory slot');
+      button.addEventListener('pointerdown', (event) => {
+        if (this.handleInventorySlotPointerDown(event)) return;
+        event.stopPropagation();
+        if (event.button === 0) event.preventDefault();
+      });
       return button;
     }
     const material = this.game.systems.materials.getMaterial(itemId);
     const rarity = material?.rarity || 'common';
     button.dataset.itemId = itemId;
-    button.dataset.inventorySlot = 'true';
     button.classList.add(`rarity-${rarity}`);
+    button.style.setProperty('--item-color', material?.color || '#fff2cf');
+    button.dataset.itemTooltip = `${this.game.systems.materials.getDisplayName(itemId)} x${this.formatStackCount(amount)}`;
     button.innerHTML = `
       <span class="slot-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
-      <strong>${amount}</strong>
+      <strong class="slot-count">x${this.formatStackCount(amount)}</strong>
     `;
-    button.title = `${this.game.systems.materials.getDisplayName(itemId)} x${amount}`;
+    button.title = `${this.game.systems.materials.getDisplayName(itemId)} x${this.formatStackCount(amount)}`;
     button.addEventListener('pointerdown', (event) => {
+      if (this.handleInventorySlotPointerDown(event)) return;
       event.stopPropagation();
       if (event.button === 2) {
         event.preventDefault();
         this.autoAssignItemToHotbar(itemId);
         return;
       }
-      if (event.button === 0) event.preventDefault();
+      if (event.button === 0) {
+        event.preventDefault();
+        this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
+      }
     });
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -3625,7 +3825,6 @@ export class MiningScene {
         return;
       }
       event.stopPropagation();
-      this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
     });
     return button;
   }
@@ -3634,18 +3833,70 @@ export class MiningScene {
     return Boolean(this.heldItemState?.itemId);
   }
 
+  handleInventorySlotPointerDown(event) {
+    if (!this.heldItemState || event.button !== 0) return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    this.clearHeldItemState({ returnToInventory: true });
+    this.game.audio.playButtonClick?.();
+    return true;
+  }
+
+  formatStackCount(amount = 0) {
+    const value = Math.max(0, Math.floor(Number(amount) || 0));
+    if (value >= 1000000) return `${Math.floor(value / 100000) / 10}m`;
+    if (value >= 10000) return `${Math.floor(value / 100) / 10}k`;
+    return String(value);
+  }
+
+  getAvailableItemAmount(itemId) {
+    if (!itemId) return 0;
+    const heldAmount = this.heldItemState?.itemId === itemId ? this.heldItemState.amount || 0 : 0;
+    return heldAmount + this.game.systems.inventory.getStoredAmount(itemId);
+  }
+
+  consumeHeldOrInventoryItem(itemId, amount = 1) {
+    const consumeAmount = Math.max(1, Math.floor(amount));
+    const held = this.heldItemState;
+    if (held?.itemId === itemId) {
+      if ((held.amount || 0) < consumeAmount) return { ok: false, source: 'held' };
+      held.amount -= consumeAmount;
+      if (held.amount <= 0) this.clearHeldItemState();
+      else this.updateHeldItemGhost(held.lastClientX, held.lastClientY);
+      this.updateQuickInventory(true);
+      this.refreshHotbar(true);
+      return { ok: true, source: 'held' };
+    }
+    const ok = this.game.systems.inventory.remove(itemId, consumeAmount, { skipSave: true });
+    return { ok, source: 'inventory' };
+  }
+
+  consumeItemForPlacement(itemId, amount = 1) {
+    return this.consumeHeldOrInventoryItem(itemId, amount).ok;
+  }
+
+  returnHeldItemToInventory() {
+    const held = this.heldItemState;
+    if (!held?.itemId || (held.amount || 0) <= 0) return false;
+    this.game.systems.inventory.add(held.itemId, held.amount, { skipSave: true });
+    held.amount = 0;
+    return true;
+  }
+
   beginHeldInventoryItem({ itemId, source = 'inventory', hotbarSlotIndex = -1, pointerEvent = null } = {}) {
-    if (!itemId || this.game.systems.inventory.getStoredAmount(itemId) <= 0) return false;
+    const amount = this.game.systems.inventory.getStoredAmount(itemId);
+    if (!itemId || amount <= 0) return false;
     pointerEvent?.preventDefault?.();
     pointerEvent?.stopPropagation?.();
-    this.cancelItemDrag();
+    this.cancelItemDrag({ returnHeldToInventory: true });
+    if (!this.game.systems.inventory.remove(itemId, amount, { skipSave: true })) return false;
     const material = this.game.systems.materials.getMaterial(itemId);
     const ghost = document.createElement('div');
     ghost.className = 'item-drag-ghost is-dragging is-held';
     ghost.style.setProperty('--item-color', material?.color || '#fff2cf');
     ghost.innerHTML = `
       <span>${material?.icon || '?'}</span>
-      <strong data-held-item-count>${this.game.systems.inventory.getStoredAmount(itemId)}</strong>
+      <strong data-held-item-count>x${this.formatStackCount(amount)}</strong>
     `;
     document.body.append(ghost);
     const startX = pointerEvent?.clientX ?? this.game.input.mousePointer?.x ?? window.innerWidth * 0.5;
@@ -3654,6 +3905,7 @@ export class MiningScene {
       itemId,
       source,
       hotbarSlotIndex,
+      amount,
       ghost,
       lastClientX: startX,
       lastClientY: startY,
@@ -3665,6 +3917,8 @@ export class MiningScene {
       this.activeBuildItemId = itemId;
       this.activeBuildMode ||= 'foregroundBlock';
     }
+    this.updateQuickInventory(true);
+    this.refreshHotbar(true);
     this.game.audio.playButtonClick?.();
     this.game.ui.showToast(`${this.game.systems.materials.getDisplayName(itemId)} held`, 'default', 900);
     return true;
@@ -3677,19 +3931,20 @@ export class MiningScene {
     held.lastClientY = clientY;
     held.ghost.style.transform = `translate(${clientX}px, ${clientY}px)`;
     const count = held.ghost.querySelector('[data-held-item-count]');
-    if (count) count.textContent = this.game.systems.inventory.getStoredAmount(held.itemId);
+    if (count) count.textContent = `x${this.formatStackCount(held.amount || 0)}`;
   }
 
   updateHeldItemState() {
     const held = this.heldItemState;
     if (!held) return;
-    const amount = this.game.systems.inventory.getStoredAmount(held.itemId);
+    const amount = held.amount || 0;
     if (amount <= 0) {
       this.clearHeldItemState();
       return;
     }
     const count = held.ghost?.querySelector('[data-held-item-count]');
-    if (count && count.textContent !== String(amount)) count.textContent = String(amount);
+    const formatted = `x${this.formatStackCount(amount)}`;
+    if (count && count.textContent !== formatted) count.textContent = formatted;
     const actions = this.game.input.actions;
     if (actions.justPressed?.dropHeldAll) {
       this.dropHeldInventoryItem('all');
@@ -3703,10 +3958,13 @@ export class MiningScene {
     this.heldItemMoveHandler = null;
   }
 
-  clearHeldItemState() {
+  clearHeldItemState({ returnToInventory = false } = {}) {
+    if (returnToInventory) this.returnHeldItemToInventory();
     this.cleanupHeldItemListeners();
     this.heldItemState?.ghost?.remove();
     this.heldItemState = null;
+    this.updateQuickInventory(true);
+    this.refreshHotbar(true);
   }
 
   handleHotbarSlotClick(index, event = null) {
@@ -3714,10 +3972,18 @@ export class MiningScene {
     if (!held) return false;
     event?.preventDefault?.();
     event?.stopPropagation?.();
+    const amount = held.amount || 0;
+    if (amount > 0) this.game.systems.inventory.add(held.itemId, amount, { skipSave: true });
+    held.amount = 0;
     const assigned = this.assignInventoryItemToHotbar(held.itemId, index, {
       clearSourceIndex: held.source === 'hotbar' ? held.hotbarSlotIndex : -1,
     });
     if (assigned) this.clearHeldItemState();
+    else {
+      if (amount > 0) this.game.systems.inventory.remove(held.itemId, amount, { skipSave: true });
+      held.amount = amount;
+      this.updateHeldItemGhost(held.lastClientX, held.lastClientY);
+    }
     return true;
   }
 
@@ -3733,6 +3999,10 @@ export class MiningScene {
         break;
       case 'torch':
         this.placeTorchOnIsland(this.torchPlacementPreview);
+        break;
+      case 'thinPlatform':
+      case 'platformPlacerPp5':
+        this.placePlatformOnIsland(this.platformPlacementPreview);
         break;
       case 'starterFurnace':
         this.placeFurnaceOnIsland(this.furnacePlacementPreview);
@@ -3754,19 +4024,22 @@ export class MiningScene {
   dropHeldInventoryItem(amount = 1) {
     const held = this.heldItemState;
     if (!held) return false;
-    const available = this.game.systems.inventory.getStoredAmount(held.itemId);
+    const available = held.amount || 0;
     const dropAmount = amount === 'all' ? available : Math.max(1, Math.min(available, Number(amount) || 1));
     if (dropAmount <= 0) {
       this.clearHeldItemState();
       return false;
     }
-    const dropped = this.dropInventoryItemToWorld(held.itemId, {
-      source: held.source,
-      hotbarSlotIndex: held.hotbarSlotIndex,
-      amount: dropAmount,
-    });
-    if (!dropped) return false;
-    if (this.game.systems.inventory.getStoredAmount(held.itemId) <= 0 || amount === 'all') this.clearHeldItemState();
+    this.spawnDroppedInventoryItem(held.itemId, dropAmount);
+    held.amount -= dropAmount;
+    if (held.source === 'hotbar' && held.hotbarSlotIndex >= 0 && held.amount <= 0 && this.game.systems.inventory.getStoredAmount(held.itemId) <= 0) {
+      this.game.input.clearHotbarSlot?.(held.hotbarSlotIndex, { notify: false });
+    }
+    this.game.saveGame();
+    this.updateQuickInventory(true);
+    this.refreshHotbar(true);
+    this.game.audio.playMineralPickup?.();
+    if (held.amount <= 0 || amount === 'all') this.clearHeldItemState();
     else this.updateHeldItemGhost(held.lastClientX, held.lastClientY);
     return true;
   }
@@ -3775,7 +4048,7 @@ export class MiningScene {
     if (!itemId || !pointerEvent || this.game.systems.inventory.getStoredAmount(itemId) <= 0) return;
     pointerEvent.preventDefault();
     pointerEvent.stopPropagation();
-    this.cancelItemDrag();
+    this.cancelItemDrag({ returnHeldToInventory: true });
     const material = this.game.systems.materials.getMaterial(itemId);
     const ghost = document.createElement('div');
     ghost.className = 'item-drag-ghost';
@@ -3852,11 +4125,11 @@ export class MiningScene {
     this.itemDragUpHandler = null;
   }
 
-  cancelItemDrag() {
+  cancelItemDrag({ returnHeldToInventory = false } = {}) {
     this.cleanupItemDragListeners();
     this.itemDragState?.ghost?.remove();
     this.itemDragState = null;
-    this.clearHeldItemState();
+    this.clearHeldItemState({ returnToInventory: returnHeldToInventory });
   }
 
   getHotbarSlotIndexFromElement(target) {
@@ -4847,6 +5120,15 @@ export class MiningScene {
     const dt = Math.min(delta, 0.05);
     this.initializePlanetPlayerFeel(player);
     player.hitCooldown = Math.max(0, player.hitCooldown - dt);
+    this.platformDropTimer = Math.max(0, (this.platformDropTimer || 0) - dt);
+    if (input.downHeld && player.standingPlatformId) {
+      this.platformDropTimer = PLATFORM_DROP_THROUGH_TIME;
+      player.standingPlatformId = '';
+      player.onGround = false;
+      const dropBasis = this.getIslandGravityBasis(island);
+      player.x += dropBasis.inward.x * 3;
+      player.y += dropBasis.inward.y * 3;
+    }
     this.resolvePlanetPlayerOverlap(player, island);
 
     const rawBasis = this.getIslandGravityBasis(island);
@@ -4946,7 +5228,10 @@ export class MiningScene {
       player.vy *= scale;
     }
 
+    const previousX = player.x;
+    const previousY = player.y;
     player.onGround = false;
+    player.standingPlatformId = '';
     this.movePlanetPlayer(player, player.vx * dt, player.vy * dt, island, {
       canStep: startedOnGround && !didJump,
       groundSpeedLimit: PLANET_PLAYER_FEEL.maxGroundSpeed,
@@ -4954,6 +5239,12 @@ export class MiningScene {
     });
     this.resolvePlanetPlayerOverlap(player, island);
     const nextBasis = this.getIslandGravityBasis(island);
+    if (!didJump) {
+      this.resolvePlanetPlayerPlatformContact(player, island, nextBasis, {
+        previousX,
+        previousY,
+      });
+    }
     if (!didJump && this.isPlanetPlayerGrounded(player, island, nextBasis)) {
       const landSpeed = Math.max(player.pendingLandingSpeed || 0, inwardSpeed);
       if (!wasGrounded && landSpeed > PLANET_PLAYER_FEEL.landingImpactThreshold) this.playPlanetLandingFeedback(player, island, null, landSpeed);
@@ -5250,12 +5541,95 @@ export class MiningScene {
   isPlanetPlayerGrounded(player, island, basis = this.getIslandGravityBasis(island), x = player.x, y = player.y) {
     if (this.planetPlayerCollidesAt(player, island, x, y)) return false;
     const probeDistance = Math.min(4, Math.max(2, PLANET_PLAYER_GROUND_PROBE * 0.35));
-    return this.planetPlayerCollidesAt(
+    if (this.planetPlayerCollidesAt(
       player,
       island,
       x + basis.inward.x * probeDistance,
       y + basis.inward.y * probeDistance,
-    );
+    )) return true;
+    return Boolean(this.getPlanetPlayerPlatformContact(player, island, basis, {
+      x,
+      y,
+      probeDistance: PLANET_PLAYER_GROUND_PROBE,
+      requireCrossing: false,
+    }));
+  }
+
+  getPlanetPlayerFootPoint(player, island, x = player.x, y = player.y, basis = this.getIslandGravityBasis(island)) {
+    return {
+      x: x + player.width * 0.5 + basis.inward.x * PLANET_PLAYER_FOOT_OFFSET,
+      y: y + player.height * 0.5 + basis.inward.y * PLANET_PLAYER_FOOT_OFFSET,
+    };
+  }
+
+  getPlanetPlayerPlatformContact(player, island, basis = this.getIslandGravityBasis(island), {
+    x = player.x,
+    y = player.y,
+    previousX = x,
+    previousY = y,
+    probeDistance = PLANET_PLAYER_GROUND_PROBE,
+    requireCrossing = true,
+  } = {}) {
+    if (!island?.placedPlatforms?.length || (this.platformDropTimer || 0) > 0) return null;
+    const foot = this.getPlanetPlayerFootPoint(player, island, x, y, basis);
+    const previousFoot = this.getPlanetPlayerFootPoint(player, island, previousX, previousY, basis);
+    const playerHalfWidth = PLANET_PLAYER_HALF_WIDTH + 3;
+    let best = null;
+    for (const platform of island.placedPlatforms) {
+      const frame = platform.getFrame();
+      const surface = platform.getSurfacePoint();
+      const currentDx = foot.x - surface.x;
+      const currentDy = foot.y - surface.y;
+      const previousDx = previousFoot.x - surface.x;
+      const previousDy = previousFoot.y - surface.y;
+      const currentHeight = currentDx * frame.outward.x + currentDy * frame.outward.y;
+      const previousHeight = previousDx * frame.outward.x + previousDy * frame.outward.y;
+      const tangentOffset = currentDx * frame.tangent.x + currentDy * frame.tangent.y;
+      if (Math.abs(tangentOffset) > platform.length * 0.5 + playerHalfWidth) continue;
+      const approachSpeed = player.vx * frame.outward.x + player.vy * frame.outward.y;
+      if (approachSpeed > 70) continue;
+      if (requireCrossing) {
+        if (previousHeight < -2 || currentHeight > probeDistance || currentHeight < -Math.max(16, platform.thickness * 2.8)) continue;
+      } else if (currentHeight < -Math.max(8, platform.thickness * 1.5) || currentHeight > probeDistance) continue;
+      const score = Math.abs(currentHeight) + Math.abs(tangentOffset) * 0.025;
+      if (!best || score < best.score) {
+        best = {
+          platform,
+          frame,
+          surface,
+          currentHeight,
+          tangentOffset,
+          score,
+        };
+      }
+    }
+    return best;
+  }
+
+  resolvePlanetPlayerPlatformContact(player, island, basis = this.getIslandGravityBasis(island), {
+    previousX = player.x,
+    previousY = player.y,
+  } = {}) {
+    const contact = this.getPlanetPlayerPlatformContact(player, island, basis, {
+      previousX,
+      previousY,
+      probeDistance: PLANET_PLAYER_GROUND_PROBE + 5,
+      requireCrossing: true,
+    });
+    if (!contact) return false;
+    const correction = 0.5 - contact.currentHeight;
+    player.x += contact.frame.outward.x * correction;
+    player.y += contact.frame.outward.y * correction;
+    const intoPlatformSpeed = player.vx * contact.frame.outward.x + player.vy * contact.frame.outward.y;
+    if (intoPlatformSpeed < 0) {
+      player.vx -= contact.frame.outward.x * intoPlatformSpeed;
+      player.vy -= contact.frame.outward.y * intoPlatformSpeed;
+    }
+    player.onGround = true;
+    player.standingPlatformId = contact.platform.id;
+    player.coyoteTimer = PLANET_PLAYER_FEEL.coyoteTime;
+    player.groundGraceTimer = PLANET_PLAYER_FEEL.coyoteTime;
+    return true;
   }
 
   planetPlayerCollidesAt(player, island, x, y) {
@@ -5755,6 +6129,8 @@ export class MiningScene {
     let text = this.islandFreefall ? 'Gravity device auto-engaged - falling back to the planet' : 'Mine terrain - G stabilizes gravity';
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
+    if (this.isPlatformToolSelected()) text = 'Platform - aim at open grid space and click Use';
+    if (this.isPlatformPlacerToolSelected()) text = 'PP5 - click to place five thin platforms forward';
     if (this.isCraftingStationToolSelected()) text = 'Crafting station - aim at ground and click Use';
     if (this.isResearchStationToolSelected()) text = 'Research station - aim at ground and click Use';
     if (this.isFurnaceToolSelected()) text = 'Furnace tool - aim at ground and click Use';
@@ -6490,6 +6866,7 @@ export class MiningScene {
     this.setHudHeight('fuelFill', this.hud.fuelFill, Math.round(fuelRatio * 100), force);
     this.setHudHeight('cargoFill', this.hud.cargoFill, Math.round(cargoRatio * 100), force);
     this.updatePlayerHealthHud(force);
+    this.updateModeHud(force);
 
     const distance = this.distanceFromStation;
     this.setHudText('distanceText', this.hud.distanceText, `${Math.round(distance)}m`, force);
@@ -6553,6 +6930,12 @@ export class MiningScene {
       this.hud.playerHealth?.setAttribute('aria-label', `Player health ${Math.ceil(health)} of ${Math.ceil(maxHealth)}`);
     }
     this.setHudClass('playerHealthLow', this.hud.playerHealth, 'is-low', health / maxHealth <= 0.3, force);
+  }
+
+  updateModeHud(force = false) {
+    const onFoot = this.islandMode === 'onIsland' || this.islandMode === 'boarding';
+    this.setHudClass('mapStackOnFoot', this.hud.mapStack, 'is-on-foot', onFoot, force);
+    this.setHudClass('mapStackShip', this.hud.mapStack, 'is-ship', !onFoot, force);
   }
 
   getPlanetVisorState() {
@@ -6653,6 +7036,7 @@ export class MiningScene {
         anchorWorld: island === this.activeIsland && this.islandLandingAnchor?.island === island ? this.islandLandingAnchor.world : null,
         placedFlags: island.placedFlags || [],
         placedTorches: island.placedTorches || [],
+        placedPlatforms: island.placedPlatforms || [],
         baseLab: island === this.activeIsland && this.baseLab?.id ? this.baseLab : null,
         placedCraftingStations: island === this.activeIsland && this.placedCraftingStation ? [this.placedCraftingStation] : [],
         placedResearchStations: island === this.activeIsland && this.placedResearchStation ? [this.placedResearchStation] : [],
@@ -7128,12 +7512,14 @@ export class MiningScene {
     ctx.translate(-this.activeIsland.width / 2, -this.activeIsland.height / 2);
     const flagPlacementMode = this.isFlagToolSelected();
     const torchPlacementMode = this.isTorchToolSelected();
+    const platformPlacementMode = this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected();
     const furnacePlacementMode = this.isFurnaceToolSelected();
     const craftingStationPlacementMode = this.isCraftingStationToolSelected();
     const researchStationPlacementMode = this.isResearchStationToolSelected();
     const buildPlacementMode = this.isBuildToolSelected();
     const placementMode = flagPlacementMode
       || torchPlacementMode
+      || platformPlacementMode
       || furnacePlacementMode
       || craftingStationPlacementMode
       || researchStationPlacementMode
@@ -7145,13 +7531,15 @@ export class MiningScene {
           ? (this.flagPlacementPreview || this.getFlagPlacementPreview())
           : torchPlacementMode
             ? (this.torchPlacementPreview || this.getTorchPlacementPreview())
-            : furnacePlacementMode
-            ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
-            : craftingStationPlacementMode
-              ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
-              : researchStationPlacementMode
-                ? (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
-                : (this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this))
+            : platformPlacementMode
+              ? (this.platformPlacementPreview || this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() }))
+              : furnacePlacementMode
+                ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
+                : craftingStationPlacementMode
+                  ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
+                  : researchStationPlacementMode
+                    ? (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
+                    : (this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this))
       )
       : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
@@ -7166,6 +7554,7 @@ export class MiningScene {
       if (!this.islandMiningBeam && !buildPlacementMode) this.drawIslandTerrainTargetGlow(ctx, state);
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
+      if (platformPlacementMode) this.drawPlatformPlacementPreview(ctx, state);
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
       if (researchStationPlacementMode) this.drawResearchStationPlacementPreview(ctx, state);
@@ -7537,6 +7926,35 @@ export class MiningScene {
     });
   }
 
+  drawPlatformPlacementPreview(ctx, state) {
+    if (!state?.tiles?.length || !this.activeIsland?.terrain) return;
+    const terrain = this.activeIsland.terrain;
+    const basis = this.getIslandGravityBasis(this.activeIsland);
+    const angle = Math.atan2(basis.tangent.y, basis.tangent.x);
+    const size = terrain.cellSize || 25;
+    ctx.save();
+    state.tiles.forEach((tile) => {
+      const platform = new PlacedPlatform({
+        col: tile.col,
+        row: tile.row,
+        x: tile.center.x,
+        y: tile.center.y,
+        angle,
+        length: size * 0.96,
+        thickness: Math.max(5, size * 0.22),
+        color: '#a9c7d8',
+        edge: '#273647',
+      });
+      platform.draw(ctx, { time: this.time, ghost: true, valid: tile.valid });
+    });
+    if (state.snapCursor && state.tiles[0]) {
+      const tile = state.tiles[0];
+      const rgb = tile.valid ? { r: 126, g: 231, b: 255 } : { r: 255, g: 117, b: 111 };
+      this.game.systems.building?.drawSnapCursorFrame?.(ctx, terrain, tile.col, tile.row, rgb, tile.valid);
+    }
+    ctx.restore();
+  }
+
   drawFurnacePlacementPreview(ctx, state) {
     if (!state?.hit || !this.activeIsland?.terrain) return;
     const viewRotation = this.getIslandViewRotation();
@@ -7679,6 +8097,9 @@ export class MiningScene {
     }
     if (this.isFlagToolSelected()) return this.flagPlacementPreview || this.getFlagPlacementPreview();
     if (this.isTorchToolSelected()) return this.torchPlacementPreview || this.getTorchPlacementPreview();
+    if (this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected()) {
+      return this.platformPlacementPreview || this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() });
+    }
     if (this.isFurnaceToolSelected()) return this.furnacePlacementPreview || this.getFurnacePlacementPreview();
     if (this.isCraftingStationToolSelected()) return this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview();
     if (this.isBuildToolSelected()) return this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this);
