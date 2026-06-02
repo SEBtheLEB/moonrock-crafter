@@ -2,7 +2,7 @@ import { Button } from './Button.js';
 import { Modal } from './Modal.js';
 import { Panel } from './Panel.js';
 import { Toast } from './Toast.js';
-import { TooltipManager } from './TooltipManager.js?v=141';
+import { TooltipManager } from './TooltipManager.js?v=153';
 
 export class UIManager {
   constructor(root, events, audio) {

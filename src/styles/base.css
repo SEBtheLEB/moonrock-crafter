@@ -37,6 +37,25 @@
   --safe-left: max(env(safe-area-inset-left), 7px);
   --desktop-edge-pad: clamp(12px, 1.5vw, 22px);
   --mobile-landscape-edge-pad: max(env(safe-area-inset-left), 8px);
+  --ui-edge-pad: clamp(8px, 1.05vw, 18px);
+  --ui-compact-gap: clamp(5px, 0.7vw, 10px);
+  --ui-control-height: clamp(34px, 4.9vh, 42px);
+  --hud-map-size: clamp(148px, 9.2vw, 174px);
+  --hud-map-top: calc(var(--safe-top) + clamp(72px, 9vh, 108px));
+  --hud-stack-gap: clamp(5px, 0.75vh, 8px);
+  --hotbar-slot-size: clamp(38px, 3.35vw, 52px);
+  --hotbar-gap: clamp(5px, 0.55vw, 8px);
+  --modal-edge-pad: max(12px, var(--safe-top));
+  --modal-panel-gap: clamp(8px, 1.3vh, 14px);
+  --modal-panel-padding: clamp(10px, 1.35vw, 18px);
+  --modal-max-block: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
+  --craft-header-height: clamp(54px, 9.2vh, 78px);
+  --craft-panel-pad: clamp(7px, 1vw, 12px);
+  --craft-column-gap: clamp(7px, 0.8vw, 12px);
+  --craft-side-width: clamp(276px, 24vw, 360px);
+  --craft-tabs-width: clamp(176px, 16vw, 232px);
+  --menu-icon-tile: clamp(58px, 8.6vh, 74px);
+  --inventory-tile: clamp(36px, 5.4vh, 44px);
   color-scheme: dark;
   font-family: var(--font-body);
   background: var(--space-void);
@@ -71,10 +90,10 @@ canvas {
   background: transparent;
 }
 
-html[data-input-mode="mouse"] #game-shell,
-html[data-input-mode="mouse"] #game-shell *,
-html[data-input-mode="keyboard-mouse"] #game-shell,
-html[data-input-mode="keyboard-mouse"] #game-shell * {
+html[data-input-mode="mouse"],
+html[data-input-mode="mouse"] *,
+html[data-input-mode="keyboard-mouse"],
+html[data-input-mode="keyboard-mouse"] * {
   cursor: none !important;
 }
 
@@ -84,13 +103,13 @@ html[data-input-mode="keyboard-mouse"] #game-shell * {
   left: 0;
   top: 0;
   z-index: 2147483647;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   pointer-events: none;
   opacity: 0;
   transform: translate3d(-100px, -100px, 0) scale(1);
-  transition: opacity 35ms linear, filter 80ms ease;
-  filter: drop-shadow(0 0 8px rgba(90, 218, 255, 0.78));
+  transition: opacity 20ms linear, filter 70ms ease;
+  filter: drop-shadow(0 0 10px rgba(90, 218, 255, 0.92));
   mix-blend-mode: screen;
   contain: layout style paint;
   will-change: transform, opacity;
@@ -107,19 +126,19 @@ html[data-input-mode="keyboard-mouse"] #game-shell * {
 }
 
 .game-custom-cursor::before {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   background: #8ee8ff;
   box-shadow:
     0 0 10px rgba(101, 214, 255, 0.95),
-    0 0 22px rgba(101, 214, 255, 0.42);
+    0 0 24px rgba(101, 214, 255, 0.56);
 }
 
 .game-custom-cursor::after {
-  width: 22px;
-  height: 22px;
-  border: 1px solid rgba(142, 232, 255, 0.34);
-  background: radial-gradient(circle, rgba(102, 216, 232, 0.16), rgba(102, 216, 232, 0.02) 58%, transparent 70%);
+  width: 25px;
+  height: 25px;
+  border: 1px solid rgba(142, 232, 255, 0.58);
+  background: radial-gradient(circle, rgba(102, 216, 232, 0.24), rgba(102, 216, 232, 0.05) 58%, transparent 72%);
   transform: translate(-50%, -50%) scale(calc(0.82 + var(--cursor-speed) * 0.28));
 }
 
@@ -138,7 +157,8 @@ html[data-input-mode="keyboard-mouse"] #game-shell * {
     0 0 24px rgba(255, 117, 111, 0.36);
 }
 
-html[data-input-mode="touch"] .game-custom-cursor {
+html[data-input-mode="touch"] .game-custom-cursor,
+html[data-input-mode="controller"] .game-custom-cursor {
   display: none;
 }
 
@@ -147,7 +167,7 @@ html[data-input-mode="touch"] .game-custom-cursor {
 }
 
 .game-shell {
-  width: 100vw;
+  width: 100dvw;
   height: 100dvh;
   min-width: 420px;
   min-height: 260px;
@@ -157,6 +177,63 @@ html[data-input-mode="touch"] .game-custom-cursor {
     radial-gradient(circle at 18% 88%, rgba(217, 134, 66, 0.12), transparent 34%),
     radial-gradient(circle at 82% 20%, rgba(102, 216, 232, 0.08), transparent 30%),
     linear-gradient(135deg, var(--space-navy), var(--space-purple) 58%, var(--space-void));
+}
+
+@media (min-width: 1600px) and (min-height: 880px) {
+  :root {
+    --hud-map-size: 176px;
+    --hotbar-slot-size: 52px;
+    --ui-control-height: 42px;
+  }
+}
+
+@media (max-height: 820px) {
+  :root {
+    --hud-map-size: clamp(138px, calc(11.2vh + 58px), 158px);
+    --hud-map-top: calc(var(--safe-top) + clamp(62px, 8vh, 88px));
+    --hotbar-slot-size: clamp(38px, 5.6vh, 46px);
+    --modal-panel-padding: 12px;
+    --craft-header-height: clamp(48px, 8vh, 62px);
+    --craft-tabs-width: clamp(164px, 15vw, 198px);
+    --craft-side-width: clamp(248px, 25vw, 318px);
+    --menu-icon-tile: clamp(56px, 7.8vh, 68px);
+    --inventory-tile: clamp(34px, 5vh, 40px);
+  }
+}
+
+@media (max-height: 620px), (max-width: 980px) {
+  :root {
+    --ui-edge-pad: 8px;
+    --hud-map-size: clamp(126px, 24vh, 146px);
+    --hud-map-top: calc(var(--safe-top) + 60px);
+    --hud-stack-gap: 6px;
+    --hotbar-slot-size: clamp(36px, 7.2vh, 42px);
+    --hotbar-gap: 5px;
+    --modal-edge-pad: max(8px, var(--safe-top));
+    --modal-panel-gap: 8px;
+    --modal-panel-padding: 9px;
+    --modal-max-block: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 14px);
+    --craft-header-height: 50px;
+    --craft-column-gap: 7px;
+    --menu-icon-tile: clamp(52px, 10vh, 62px);
+    --inventory-tile: clamp(32px, 7vh, 38px);
+  }
+}
+
+@media (max-height: 460px) and (orientation: landscape) {
+  :root {
+    --hud-map-size: clamp(112px, 25vh, 132px);
+    --hud-map-top: calc(var(--safe-top) + 50px);
+    --hotbar-slot-size: clamp(33px, 8.1vh, 38px);
+    --hotbar-gap: 4px;
+    --ui-control-height: 32px;
+    --craft-header-height: 42px;
+    --craft-panel-pad: 6px;
+    --craft-side-width: min(250px, 31vw);
+    --craft-tabs-width: min(158px, 20vw);
+    --menu-icon-tile: clamp(48px, 13vh, 58px);
+    --inventory-tile: clamp(30px, 8.5vh, 34px);
+  }
 }
 
 #game-canvas {

@@ -1,37 +1,38 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=141';
-import { Ship } from '../entities/Ship.js?v=141';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=141';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=141';
-import { MineralPickup } from '../entities/MineralPickup.js?v=141';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=141';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=141';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=141';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=141';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=141';
-import { PlacedDoor } from '../entities/PlacedDoor.js?v=141';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=141';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=141';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=141';
-import { BaseLab } from '../entities/BaseLab.js?v=141';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=141';
-import { EnemySystem } from '../systems/EnemySystem.js?v=141';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=141';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=141';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=141';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=141';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=141';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=141';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=141';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=141';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=141';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=141';
+import { Hotbar } from '../ui/Hotbar.js?v=153';
+import { Ship } from '../entities/Ship.js?v=153';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=153';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=153';
+import { MineralPickup } from '../entities/MineralPickup.js?v=153';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=153';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=153';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=153';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=153';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=153';
+import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=153';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=153';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=153';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=153';
+import { BaseLab } from '../entities/BaseLab.js?v=153';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=153';
+import { EnemySystem } from '../systems/EnemySystem.js?v=153';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=153';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=153';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=153';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=153';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=153';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=153';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=153';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=153';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=153';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=153';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
   getCellLayers,
   getAutoShapeType,
+  getChamberBounds,
   getNextShapeState,
   getShapeState,
   getShapeStateLabel,
@@ -39,9 +40,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=141';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=141';
-import { gameBalance } from '../data/gameBalance.js?v=141';
+} from '../systems/MachineSculptingSystem.js?v=153';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=153';
+import { gameBalance } from '../data/gameBalance.js?v=153';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -73,9 +74,10 @@ const PLANET_PLAYER_GROUND_PROBE = 11;
 const PLANET_PLAYER_COYOTE_TIME = 0.13;
 const PLANET_PLAYER_COLLISION_STEP = 4;
 const PLANET_PLAYER_STEP_UP = 14;
-const PLANET_PLAYER_HALF_WIDTH = 12;
-const PLANET_PLAYER_HEAD_OFFSET = 29;
-const PLANET_PLAYER_FOOT_OFFSET = 30;
+const PLANET_PLAYER_DEFAULT_SIZE = IslandPlayer.getDefaultSize();
+const PLANET_PLAYER_HALF_WIDTH = Math.max(10, Math.round(PLANET_PLAYER_DEFAULT_SIZE.width * 0.34));
+const PLANET_PLAYER_HEAD_OFFSET = Math.max(10, Math.floor(PLANET_PLAYER_DEFAULT_SIZE.height * 0.48));
+const PLANET_PLAYER_FOOT_OFFSET = Math.max(10, Math.floor(PLANET_PLAYER_DEFAULT_SIZE.height * 0.49));
 const PLANET_PLAYER_WALL_SLIDE_DAMPING = 0.18;
 const PLANET_PLAYER_FEEL = {
   groundAcceleration: 2600,
@@ -670,7 +672,71 @@ export class MiningScene {
       this.game.systems.navigation?.refreshLocations?.();
       this.game.saveGame();
     }
+    if (this.baseLab) this.ensureStarterBaseDoor(island, this.baseLab);
     return this.baseLab;
+  }
+
+  ensureStarterBaseDoor(island, lab = this.baseLab) {
+    if (!island || !lab) return null;
+    const doorCells = lab.doorCells || (
+      Number.isFinite(lab.leftCol) && Number.isFinite(lab.floorRow)
+        ? {
+          left: {
+            col: lab.leftCol,
+            top: lab.floorRow - DOOR_HEIGHT_TILES,
+            bottom: lab.floorRow - 1,
+          },
+        }
+        : null
+    );
+    if (!doorCells) return null;
+    const side = lab.doorSide || 'left';
+    const doorCell = doorCells[side] || doorCells.left || doorCells.right;
+    const col = Number(doorCell?.col);
+    const topRow = Number(doorCell?.top ?? doorCell?.topRow);
+    if (!Number.isFinite(col) || !Number.isFinite(topRow)) return null;
+
+    island.placedDoors ||= [];
+    const tileSize = island.terrain?.cellSize || lab.cellSize || 25;
+    const roundedCol = Math.round(col);
+    const roundedTop = Math.round(topRow);
+    const id = `${island.id}-starter-lab-door-${side}`;
+    const material = TERRAIN_MATERIALS[10] || {};
+    let changed = false;
+    let door = island.placedDoors.find((entry) => entry.id === id);
+    if (!door) {
+      door = island.placedDoors.find((entry) => (
+        Math.round(entry.col) === roundedCol
+        && Math.round(entry.topRow) === roundedTop
+      ));
+    }
+
+    if (door) {
+      if (!door.id || door.id !== id) {
+        door.id = id;
+        changed = true;
+      }
+      if (door.tileSize !== tileSize) {
+        door.tileSize = tileSize;
+        changed = true;
+      }
+    } else {
+      door = new PlacedDoor({
+        id,
+        col: roundedCol,
+        topRow: roundedTop,
+        tileSize,
+        color: material.color || '#9fafbd',
+        edge: material.edge || '#26313d',
+        accent: '#76f3ff',
+        openDirection: side === 'right' ? -1 : 1,
+      });
+      island.placedDoors.push(door);
+      changed = true;
+    }
+
+    if (changed) this.game.systems.islands.saveDoors(island.id, island.placedDoors);
+    return door;
   }
 
   loadCrashFurnace() {
@@ -3389,8 +3455,9 @@ export class MiningScene {
       ? this.findDoorPlacementForTile(target.col, target.row, { inRange: aim.inRange })
       : { ok: false, reason: 'No target tile' };
     const topRow = placement.topRow ?? target?.row ?? 0;
-    const center = target && terrain.isInside(target.col, topRow + 1)
-      ? building.planetTileToWorld(target.col, topRow + 1, { terrain })
+    const centerRow = topRow + (DOOR_HEIGHT_TILES - 1) * 0.5;
+    const center = target && terrain.isInside(target.col, Math.round(centerRow))
+      ? building.planetTileToWorld(target.col, centerRow, { terrain })
       : aim.aimPoint;
     return {
       island,
@@ -3414,7 +3481,16 @@ export class MiningScene {
   findDoorPlacementForTile(col, row, { inRange = true } = {}) {
     const terrain = this.activeIsland?.terrain;
     if (!terrain?.isInside?.(col, row)) return { ok: false, reason: 'Outside build grid' };
-    const candidates = [row - 2, row - 1, row, row - 3, row + 1];
+    const preferredTop = row - Math.floor(DOOR_HEIGHT_TILES * 0.5);
+    const candidates = [
+      preferredTop,
+      preferredTop - 1,
+      preferredTop + 1,
+      row - DOOR_HEIGHT_TILES + 1,
+      row,
+      preferredTop - 2,
+      preferredTop + 2,
+    ];
     let best = null;
     for (const topRow of candidates) {
       const validation = this.validateDoorPlacement(col, topRow, { inRange });
@@ -3429,9 +3505,9 @@ export class MiningScene {
     const island = this.activeIsland;
     const terrain = island?.terrain;
     if (!terrain) return { ok: false, reason: 'No terrain' };
-    const bottomRow = topRow + 2;
+    const bottomRow = topRow + DOOR_HEIGHT_TILES - 1;
     if (!terrain.isInside(col, topRow) || !terrain.isInside(col, bottomRow)) {
-      return { ok: false, reason: 'Door needs three clear tiles' };
+      return { ok: false, reason: 'Door needs four clear tiles' };
     }
     if (!terrain.isInside(col, topRow - 1) || !terrain.isInside(col, bottomRow + 1)) {
       return { ok: false, reason: 'Needs solid blocks above and below' };
@@ -3442,7 +3518,7 @@ export class MiningScene {
       return { ok: false, reason: 'Needs solid blocks above and below' };
     }
     for (let row = topRow; row <= bottomRow; row += 1) {
-      if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Clear a three-tile doorway first' };
+      if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Clear a four-tile doorway first' };
       if (this.isPlatformAtTile(island, col, row)) return { ok: false, reason: 'Clear platforms first' };
       if (this.isDoorAtTile(island, col, row)) return { ok: false, reason: 'Door already placed' };
     }
@@ -3458,7 +3534,7 @@ export class MiningScene {
     const left = col * size + padding;
     const top = topRow * size + padding;
     const right = (col + 1) * size - padding;
-    const bottom = (topRow + 3) * size - padding;
+    const bottom = (topRow + DOOR_HEIGHT_TILES) * size - padding;
     return this.orientedBoxIntersectsAabb(playerShape, left, top, right, bottom);
   }
 
@@ -3486,7 +3562,7 @@ export class MiningScene {
     const target = preview || this.getDoorPlacementPreview();
     if (!target?.valid) {
       this.game.audio.playError?.();
-      this.game.ui.showToast(target?.reason || 'Aim at a supported three-tile doorway', 'danger', 1300);
+      this.game.ui.showToast(target?.reason || 'Aim at a supported four-tile doorway', 'danger', 1300);
       return;
     }
     const consumed = this.consumeHeldOrInventoryItem('metalDoor', 1);
@@ -4678,15 +4754,11 @@ export class MiningScene {
     content.className = 'survival-crafting voxel-crafting';
     this.populateVoxelCraftingContent(content);
     const modal = this.createSurvivalModal({
-      title: 'Crafting Station',
-      subtitle: 'Pick a recipe, layer materials into a connected voxel shape, and right-click voxels to cycle ramps.',
+      title: 'CRAFTING STATION',
+      subtitle: 'Design and build structures from the ground up.',
       className: 'crafting-survival-modal',
       content,
-      actions: [
-        new Button('Inventory', () => this.showInventoryModal(), { icon: 'I', variant: 'metal' }).element,
-        new Button('Pack Up Station', () => this.packUpCraftingStation(), { icon: '<', variant: 'metal' }).element,
-        new Button('Close', () => this.closeSurvivalModal(), { icon: 'x', variant: 'metal' }).element,
-      ],
+      actions: [],
     });
     this.survivalModal = modal;
     this.survivalModalKind = 'crafting';
@@ -4697,7 +4769,7 @@ export class MiningScene {
     const recipes = this.getVoxelCraftRecipes();
     const existingRecipe = recipes.find((recipe) => recipe.id === this.voxelCraftState?.recipeId);
     if (existingRecipe) return this.voxelCraftState;
-    const recipe = recipes[0];
+    const recipe = recipes.find((item) => item.outputItemId === 'starterFurnace') || recipes[0];
     this.voxelCraftState = {
       recipeId: recipe.id,
       selectedMaterialId: Object.keys(recipe.requirements)[0],
@@ -4767,7 +4839,42 @@ export class MiningScene {
     ];
   }
 
-  populateVoxelCraftingContent(content) {
+  getVoxelCraftDisplayRules(recipe, grid, validation = null) {
+    const currentValidation = validation || this.validateVoxelCraft(recipe, grid);
+    if (recipe.outputItemId !== 'starterFurnace') {
+      return (currentValidation.messages || []).map((message) => ({
+        ok: Boolean(message.ok),
+        text: message.text,
+      }));
+    }
+
+    const chambers = currentValidation.chambers || [];
+    const meaningfulChambers = chambers
+      .map((chamber) => ({ chamber, bounds: getChamberBounds(chamber) }))
+      .filter((entry) => entry.bounds && entry.chamber.cells.length >= 2)
+      .sort((a, b) => b.chamber.cells.length - a.chamber.cells.length);
+    const mainChamber = meaningfulChambers[0] || null;
+    const usage = currentValidation.usage || this.getVoxelCraftUsage(grid);
+    const minWidth = recipe.shapeRules?.minInteriorWidth || 5;
+    const minHeight = recipe.shapeRules?.minInteriorHeight || 5;
+    const minCells = recipe.shapeRules?.minChamberCells || minWidth * minHeight;
+    const hasClosedStructure = Boolean(mainChamber);
+    const hasCore = (usage.fireCore || 0) >= (recipe.requirements?.fireCore || 1);
+    const hasSizedInterior = Boolean(mainChamber)
+      && mainChamber.bounds.width >= minWidth
+      && mainChamber.bounds.height >= minHeight
+      && mainChamber.chamber.cells.length >= minCells;
+    const notSplit = hasClosedStructure && meaningfulChambers.length === 1;
+
+    return [
+      { ok: hasClosedStructure, text: 'Closed structure' },
+      { ok: hasCore, text: 'Fire Core placed' },
+      { ok: hasSizedInterior, text: `At least ${minWidth}x${minHeight} open interior` },
+      { ok: notSplit, text: 'Interior space not split by walls' },
+    ];
+  }
+
+  populateVoxelCraftingContentLegacy(content) {
     const recipes = this.getVoxelCraftRecipes();
     const state = this.ensureVoxelCraftState();
     const recipe = recipes.find((item) => item.id === state.recipeId) || recipes[0];
@@ -4950,6 +5057,244 @@ export class MiningScene {
 
     side.append(palette, tools, detailPalette, rules, actions);
     shell.append(tabs, grid, side);
+    content.append(shell);
+  }
+
+  populateVoxelCraftingContent(content) {
+    const recipes = this.getVoxelCraftRecipes();
+    const state = this.ensureVoxelCraftState();
+    const recipe = recipes.find((item) => item.id === state.recipeId) || recipes[0];
+    state.detailGrid ||= this.createEmptyVoxelGrid(recipe.gridSize);
+    const usage = this.getVoxelCraftUsage(state.grid);
+    const validation = this.validateVoxelCraft(recipe, state.grid);
+    const displayRules = this.getVoxelCraftDisplayRules(recipe, state.grid, validation);
+    const renderGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
+    content.replaceChildren();
+
+    const shell = document.createElement('div');
+    shell.className = 'voxel-craft-layout';
+
+    const tabs = document.createElement('div');
+    tabs.className = 'voxel-craft-tabs';
+    tabs.innerHTML = '<h2>1. Select Recipe</h2>';
+    const recipeList = document.createElement('div');
+    recipeList.className = 'voxel-craft-recipe-list';
+    recipes.forEach((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `voxel-recipe-card ${item.id === recipe.id ? 'is-active' : ''}`;
+      button.innerHTML = `
+        <span class="voxel-recipe-icon">${item.icon}</span>
+        <span class="voxel-recipe-copy"><strong>${item.name}</strong><em>${item.category}</em></span>
+        <i aria-hidden="true"></i>
+      `;
+      button.addEventListener('click', () => {
+        this.voxelCraftState = {
+          recipeId: item.id,
+          selectedMaterialId: Object.keys(item.requirements)[0],
+          selectedShapeState: 'full',
+          selectedDetailId: null,
+          detailMode: false,
+          eraseMode: false,
+          grid: this.createEmptyVoxelGrid(item.gridSize),
+          detailGrid: this.createEmptyVoxelGrid(item.gridSize),
+        };
+        this.populateVoxelCraftingContent(content);
+      });
+      recipeList.append(button);
+    });
+    const tip = document.createElement('div');
+    tip.className = 'voxel-craft-tip';
+    tip.innerHTML = '<strong>i</strong><span>Select a recipe, then choose materials and shape your design.</span>';
+    tabs.append(recipeList, tip);
+
+    const center = document.createElement('section');
+    center.className = 'voxel-craft-editor';
+    center.innerHTML = '<h2>2. Shape Your Design</h2>';
+    const gridFrame = document.createElement('div');
+    gridFrame.className = `voxel-craft-grid-frame ${displayRules.some((rule) => rule.text === 'Fire Core placed' && rule.ok) ? 'has-fire-core' : ''}`;
+    const grid = document.createElement('div');
+    grid.className = 'voxel-craft-grid';
+    grid.style.setProperty('--voxel-grid-size', recipe.gridSize);
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.className = 'voxel-craft-preview';
+    previewCanvas.setAttribute('aria-hidden', 'true');
+    grid.append(previewCanvas);
+    for (let index = 0; index < recipe.gridSize * recipe.gridSize; index += 1) {
+      const craftCell = this.getVoxelCraftGridCell(renderGrid, index);
+      const layers = this.getVoxelCraftCellLayers(craftCell);
+      const itemId = layers[layers.length - 1] || null;
+      const shapeLabel = craftCell ? getShapeStateLabel(craftCell.shapeState) : 'Full Block';
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = this.getVoxelCraftCellClassName(index, recipe.gridSize, renderGrid);
+      cell.title = itemId
+        ? `${layers.map((layerId) => this.game.systems.materials.getDisplayName(layerId)).join(' + ')} - ${shapeLabel}. Right-click cycles shape. Middle-click erases.`
+        : 'Empty voxel. Left-click places material.';
+      cell.setAttribute('aria-label', cell.title);
+      cell.addEventListener('click', (event) => {
+        if (state.detailMode) this.paintVoxelCraftDetail(index, event.shiftKey ? null : state.selectedDetailId);
+        else this.paintVoxelCraftCell(index, event.shiftKey || state.eraseMode ? null : state.selectedMaterialId);
+        this.populateVoxelCraftingContent(content);
+      });
+      cell.addEventListener('auxclick', (event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        this.paintVoxelCraftCell(index, null);
+        if (state.detailGrid) state.detailGrid[index] = null;
+        this.populateVoxelCraftingContent(content);
+      });
+      cell.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        this.cycleVoxelCraftCellShape(index);
+        this.populateVoxelCraftingContent(content);
+      });
+      grid.append(cell);
+    }
+    gridFrame.append(grid);
+    drawCraftVoxelPreview(previewCanvas, {
+      grid: renderGrid,
+      size: recipe.gridSize,
+      getMaterialVisual: (itemId) => this.getVoxelCraftMaterialVisual(itemId),
+      seed: `${recipe.id}:${this.game.state.stats?.totalItemsCrafted || 0}`,
+    });
+    const controlStrip = document.createElement('div');
+    controlStrip.className = 'voxel-craft-control-strip';
+    controlStrip.innerHTML = '<span><b>Mouse</b> Place</span><span><b>Right</b> Shape</span><span><b>Mid</b> Erase</span><span><b>R</b> Rotate</span>';
+    center.append(gridFrame, controlStrip);
+
+    const side = document.createElement('aside');
+    side.className = 'voxel-craft-side';
+
+    const palette = document.createElement('div');
+    palette.className = 'voxel-material-palette';
+    palette.innerHTML = '<h2>3. Choose Material</h2>';
+    Object.entries(recipe.requirements).forEach(([itemId, needed]) => {
+      const material = this.game.systems.materials.getMaterial(itemId);
+      const used = usage[itemId] || 0;
+      const have = this.game.systems.inventory.getStoredAmount(itemId);
+      const complete = used === needed && have >= needed;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = [
+        'voxel-material-card',
+        state.selectedMaterialId === itemId ? 'is-selected' : '',
+        itemId === 'fireCore' ? 'is-fire-core' : '',
+        complete ? 'is-complete' : 'is-incomplete',
+      ].filter(Boolean).join(' ');
+      button.innerHTML = `
+        <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
+        <span class="voxel-material-copy"><strong>${material?.name || itemId}</strong><em>${used} / ${needed}</em><small>${have} owned</small></span>
+        <i aria-hidden="true">${complete ? 'OK' : '!'}</i>
+      `;
+      button.addEventListener('click', () => {
+        state.selectedMaterialId = itemId;
+        state.eraseMode = false;
+        state.detailMode = false;
+        this.populateVoxelCraftingContent(content);
+      });
+      palette.append(button);
+    });
+
+    const tools = document.createElement('div');
+    tools.className = 'voxel-craft-tools';
+    tools.innerHTML = '<h2>4. Tools</h2>';
+    const toolGrid = document.createElement('div');
+    toolGrid.className = 'voxel-tool-grid';
+    [
+      { label: 'Full Block', icon: '[]', shape: 'full' },
+      { label: 'Slab', icon: '__', shape: 'halfBlock' },
+      { label: 'Bevel', icon: '/', shape: 'diagonalSlope' },
+      { label: 'Erase', icon: 'X', erase: true },
+    ].forEach((tool) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      const active = tool.erase
+        ? state.eraseMode
+        : !state.eraseMode && getShapeState(state.selectedShapeState) === tool.shape;
+      button.className = `voxel-tool-chip ${active ? 'is-active' : ''}`;
+      button.title = tool.erase ? 'Erase placed voxels.' : `Place ${tool.label.toLowerCase()} voxels.`;
+      button.innerHTML = `<span>${tool.icon}</span><strong>${tool.label}</strong>`;
+      button.addEventListener('click', () => {
+        state.eraseMode = Boolean(tool.erase);
+        state.detailMode = false;
+        if (!tool.erase) state.selectedShapeState = tool.shape;
+        this.populateVoxelCraftingContent(content);
+      });
+      toolGrid.append(button);
+    });
+    tools.append(toolGrid);
+
+    const rules = document.createElement('div');
+    rules.className = 'voxel-craft-rules';
+    rules.innerHTML = `
+      <h2>5. Validation</h2>
+      <ul>${displayRules.map((message) => `<li class="${message.ok ? 'is-met' : 'is-missing'}"><span aria-hidden="true">${message.ok ? 'OK' : '!'}</span>${message.text}</li>`).join('')}</ul>
+    `;
+
+    const info = document.createElement('div');
+    info.className = 'voxel-craft-info';
+    info.innerHTML = `
+      <h2>6. About This Recipe</h2>
+      <article><strong>${recipe.name}</strong><p>${recipe.description}</p></article>
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'voxel-craft-actions';
+    actions.innerHTML = '<h2>7. Actions</h2>';
+    const actionRow = document.createElement('div');
+    actionRow.className = 'voxel-action-row';
+    const autoButton = document.createElement('button');
+    autoButton.type = 'button';
+    autoButton.className = 'voxel-action-button secondary';
+    autoButton.innerHTML = '<span>A</span><strong>Auto Layout</strong>';
+    autoButton.addEventListener('click', () => {
+      this.autofillVoxelRecipe(recipe, state);
+      this.populateVoxelCraftingContent(content);
+    });
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.className = 'voxel-action-button secondary';
+    clearButton.innerHTML = '<span>X</span><strong>Clear</strong>';
+    clearButton.addEventListener('click', () => {
+      state.grid.fill(null);
+      state.detailGrid?.fill(null);
+      this.populateVoxelCraftingContent(content);
+    });
+    const craftButton = document.createElement('button');
+    craftButton.type = 'button';
+    craftButton.className = 'voxel-action-button craft-primary';
+    craftButton.disabled = !validation.ok;
+    craftButton.innerHTML = `<span>${recipe.icon || 'C'}</span><strong>${recipe.outputItemId === 'starterFurnace' ? 'Craft' : 'Craft Item'}</strong>`;
+    craftButton.addEventListener('click', () => {
+      this.craftVoxelRecipe(recipe, state);
+      this.populateVoxelCraftingContent(content);
+    });
+    actionRow.append(autoButton, clearButton, craftButton);
+    actions.append(actionRow);
+
+    side.append(palette, tools, rules, info, actions);
+
+    const bottomBar = document.createElement('footer');
+    bottomBar.className = 'voxel-craft-bottom';
+    const inventoryButton = document.createElement('button');
+    inventoryButton.type = 'button';
+    inventoryButton.className = 'voxel-bottom-button';
+    inventoryButton.innerHTML = '<span>INV</span><strong>Inventory</strong>';
+    inventoryButton.addEventListener('click', () => this.showInventoryModal());
+    const packButton = document.createElement('button');
+    packButton.type = 'button';
+    packButton.className = 'voxel-bottom-button';
+    packButton.innerHTML = '<span>PK</span><strong>Pack Up</strong>';
+    packButton.addEventListener('click', () => this.packUpCraftingStation());
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'voxel-bottom-button';
+    closeButton.innerHTML = '<span>X</span><strong>Close</strong>';
+    closeButton.addEventListener('click', () => this.closeSurvivalModal());
+    bottomBar.append(inventoryButton, packButton, closeButton);
+
+    shell.append(tabs, center, side, bottomBar);
     content.append(shell);
   }
 
@@ -5206,19 +5551,26 @@ export class MiningScene {
       if (recipe.requirements.fireCore) set(4, 8, 'fireCore');
       return;
     }
+    const shellCoords = [];
+    for (let x = 4; x <= 12; x += 1) {
+      shellCoords.push([x, 5], [x, 11]);
+    }
+    for (let y = 6; y <= 10; y += 1) {
+      shellCoords.push([4, y], [12, y]);
+    }
+    const copperCoords = [
+      [5, 5], [6, 5], [7, 5], [8, 5], [9, 5],
+      [5, 11], [6, 11], [7, 11], [8, 11], [9, 11],
+    ];
+    const copperKeys = new Set(copperCoords.map(([x, y]) => `${x},${y}`));
     const stoneCoords = [
-      [5, 6], [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
-      [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10],
-      [5, 7], [5, 8], [5, 9],
-      [11, 7], [11, 8], [11, 9],
+      ...shellCoords.filter(([x, y]) => !copperKeys.has(`${x},${y}`)),
+      [4, 4],
+      [12, 4],
     ];
     stoneCoords.slice(0, recipe.requirements.stoneOre || 0).forEach(([x, y]) => set(x, y, 'stoneOre'));
-    const copperCoords = [
-      [6, 6], [7, 6], [8, 6], [9, 6], [10, 6],
-      [6, 10], [7, 10], [8, 10], [9, 10], [10, 10],
-    ];
     copperCoords.slice(0, recipe.requirements.copperShards || 0).forEach(([x, y]) => set(x, y, 'copperShards'));
-    if (recipe.requirements.fireCore) set(5, 8, 'fireCore');
+    if (recipe.requirements.fireCore) set(4, 8, 'fireCore');
   }
 
   craftVoxelRecipe(recipe, state) {
@@ -6588,7 +6940,7 @@ export class MiningScene {
     if (this.isPlatformToolSelected()) text = 'Platform - aim at open grid space and click Use';
     if (this.isPlatformPlacerToolSelected()) text = 'PP5 - click to place five thin platforms forward';
     if (this.isDoorToolSelected()) {
-      text = 'Door - aim at a three-tile doorway with solid blocks above and below';
+      text = 'Door - aim at a four-tile doorway with solid blocks above and below';
       if (this.doorPlacementPreview && !this.doorPlacementPreview.valid && this.doorPlacementPreview.reason) {
         text = `Door - ${this.doorPlacementPreview.reason}`;
       }
@@ -8455,9 +8807,9 @@ export class MiningScene {
     ctx.save();
     PlacedDoor.drawGhost(ctx, {
       x: (state.col + 0.5) * (terrain.cellSize || 25),
-      y: (state.topRow + 1.5) * (terrain.cellSize || 25),
+      y: (state.topRow + DOOR_HEIGHT_TILES * 0.5) * (terrain.cellSize || 25),
       width: (terrain.cellSize || 25) * 0.78,
-      height: (terrain.cellSize || 25) * 3,
+      height: (terrain.cellSize || 25) * DOOR_HEIGHT_TILES,
       tileSize: terrain.cellSize || 25,
       color: '#9fafbd',
       edge: '#26313d',
@@ -8466,7 +8818,7 @@ export class MiningScene {
       valid: state.valid,
     });
     const rgb = state.valid ? { r: 126, g: 231, b: 255 } : { r: 255, g: 117, b: 111 };
-    for (let row = state.topRow; row <= state.topRow + 2; row += 1) {
+    for (let row = state.topRow; row < state.topRow + DOOR_HEIGHT_TILES; row += 1) {
       if (terrain.isInside(state.col, row)) {
         this.game.systems.building?.drawSnapCursorFrame?.(ctx, terrain, state.col, row, rgb, state.valid);
       }
@@ -8663,15 +9015,15 @@ export class MiningScene {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = magnitudeOverride ?? clamp01(Math.hypot(aim.x, aim.y));
     const pulse = 1 + Math.sin(this.time * 9) * 0.08;
-    const lineAlpha = subtle ? 0.38 : 0.68;
-    const ringAlpha = subtle ? 0.34 : 0.52;
-    const ringRadius = subtle ? 8 + magnitude * 5 : 15 + magnitude * 8;
+    const lineAlpha = subtle ? 0.54 : 0.72;
+    const ringAlpha = subtle ? 0.62 : 0.58;
+    const ringRadius = subtle ? 9 + magnitude * 6 : 15 + magnitude * 8;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.globalAlpha = lineAlpha;
-    ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.24)' : 'rgba(118, 243, 255, 0.34)';
-    ctx.lineWidth = subtle ? 1.25 : 2;
+    ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.44)' : 'rgba(118, 243, 255, 0.38)';
+    ctx.lineWidth = subtle ? 1.65 : 2;
     ctx.setLineDash(subtle ? [5, 9] : [8, 8]);
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
@@ -8692,8 +9044,8 @@ export class MiningScene {
       ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = ringAlpha;
-    ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.64)' : 'rgba(255, 255, 255, 0.72)';
-    ctx.lineWidth = subtle ? 1 : 1.2;
+    ctx.strokeStyle = subtle ? 'rgba(157, 242, 255, 0.9)' : 'rgba(255, 255, 255, 0.74)';
+    ctx.lineWidth = subtle ? 1.45 : 1.2;
     ctx.beginPath();
     ctx.arc(end.x, end.y, ringRadius * pulse, 0, Math.PI * 2);
     ctx.stroke();

@@ -322,10 +322,11 @@ export const gameBalance = {
           requiresInternalChamber: true,
           coreMustBeEmbedded: true,
           copperShouldTouchChamber: true,
-          minChamberCells: 2,
-          materialBounds: {
-            copperShards: { maxWidth: 5, maxHeight: 5, label: 'Copper heat channel must fit inside a 5x5 chamber.' },
-          },
+          minChamberCells: 25,
+          minInteriorWidth: 5,
+          minInteriorHeight: 5,
+          minChamberSurroundedRatio: 0.14,
+          requiresSingleChamber: true,
         },
       },
       gravityMachineRecipe: {

@@ -289,7 +289,7 @@
 }
 
 .debug-panel-body {
-  width: min(360px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
+  width: min(360px, calc(100dvw - var(--safe-left) - var(--safe-right) - 24px));
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -353,7 +353,7 @@
   left: calc(var(--safe-left) + 18px);
   right: auto;
   bottom: calc(var(--safe-bottom) + 18px);
-  width: min(540px, calc(100vw - var(--safe-left) - var(--safe-right) - 36px));
+  width: min(540px, calc(100dvw - var(--safe-left) - var(--safe-right) - 36px));
   z-index: 24;
   min-height: clamp(72px, 14vh, 104px);
   display: grid;
@@ -575,7 +575,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  padding: var(--modal-edge-pad) max(var(--modal-edge-pad), var(--safe-right)) max(var(--modal-edge-pad), var(--safe-bottom)) max(var(--modal-edge-pad), var(--safe-left));
   background: rgba(5, 6, 20, 0.58);
   overflow: auto;
   overscroll-behavior: contain;
@@ -583,8 +583,8 @@
 }
 
 .modal-panel {
-  width: min(480px, 90vw);
-  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 12px);
+  width: min(480px, calc(100dvw - var(--safe-left) - var(--safe-right) - 20px));
+  max-height: var(--modal-max-block);
   overflow: auto;
   overscroll-behavior: contain;
   padding: 16px;
@@ -924,8 +924,8 @@
 
 .mobile-controls {
   position: absolute;
-  left: var(--safe-left);
-  right: var(--safe-right);
+  left: max(var(--safe-left), var(--ui-edge-pad));
+  right: max(var(--safe-right), var(--ui-edge-pad));
   bottom: var(--safe-bottom);
   display: flex;
   align-items: end;
@@ -937,11 +937,11 @@
   --selected-tool-color: #d98642;
   position: absolute;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 18px);
+  bottom: calc(var(--safe-bottom) + clamp(8px, 2.1vh, 18px));
   z-index: 9;
   display: grid;
-  grid-template-columns: repeat(7, minmax(38px, 52px));
-  gap: 8px;
+  grid-template-columns: repeat(7, var(--hotbar-slot-size));
+  gap: var(--hotbar-gap);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -950,27 +950,6 @@
   backdrop-filter: none;
   pointer-events: auto;
   transform: translateX(-50%);
-}
-
-html[data-input-mode="controller"] .tool-hotbar::before {
-  content: "LS move  \2022  RS aim  \2022  A jump  \2022  X interact  \2022  RT use  \2022  LB/RB tools  \2022  Select inv";
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  width: max-content;
-  max-width: min(78vw, 620px);
-  padding: 5px 10px;
-  border: 1px solid rgba(236, 231, 216, 0.18);
-  border-radius: 999px;
-  background: rgba(5, 12, 22, 0.52);
-  color: rgba(255, 242, 207, 0.88);
-  font: 800 11px/1 var(--font-ui);
-  letter-spacing: 0;
-  text-align: center;
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateX(-50%);
-  backdrop-filter: blur(8px);
 }
 
 .tool-hotbar-slot {
@@ -982,7 +961,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   gap: 1px;
   padding: 4px;
   border: 1px solid rgba(236, 231, 216, 0.15);
-  border-radius: 10px;
+  border-radius: clamp(8px, 1vw, 10px);
   background: rgba(5, 12, 22, 0.28);
   color: rgba(255, 242, 207, 0.82);
   font: 750 10px/1 var(--font-ui);
@@ -1008,6 +987,30 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--selected-tool-color), transparent 38%), 0 0 18px color-mix(in srgb, var(--selected-tool-color), transparent 58%);
   color: #fff2cf;
   transform: translateY(-3px);
+}
+
+.tool-hotbar-slot.is-selected[data-selected-name]::after {
+  content: attr(data-selected-name);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + clamp(5px, 1vh, 8px));
+  z-index: 8;
+  width: max-content;
+  max-width: min(180px, 42vw);
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--selected-tool-color), white 12%);
+  border-radius: 999px;
+  background: rgba(6, 12, 21, 0.82);
+  color: #fff2cf;
+  font: 900 clamp(9px, 1.45vh, 11px)/1 var(--font-ui);
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.34), 0 0 14px color-mix(in srgb, var(--selected-tool-color), transparent 66%);
+  transform: translateX(-50%);
 }
 
 .tool-hotbar-slot.tone-empty {
@@ -1155,7 +1158,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   left: 0;
   top: 0;
   z-index: 2147483646;
-  max-width: min(260px, calc(100vw - 20px));
+  max-width: min(260px, calc(100dvw - 20px));
   padding: 7px 10px;
   border: 1px solid rgba(236, 231, 216, 0.2);
   border-radius: 9px;
@@ -1188,7 +1191,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   display: grid;
   place-items: center;
   color: var(--selected-tool-color);
-  font: 900 17px/1 var(--font-display);
+  font: 900 clamp(14px, 2.2vh, 17px)/1 var(--font-display);
 }
 
 .tool-hotbar-slot strong {
@@ -1784,7 +1787,7 @@ html[data-input-mode="controller"] .tool-hotbar::before {
     left: calc(var(--safe-left) + 8px);
     right: auto;
     bottom: calc(var(--safe-bottom) + 10px);
-    width: min(500px, calc(100vw - var(--safe-left) - var(--safe-right) - 16px));
+    width: min(500px, calc(100dvw - var(--safe-left) - var(--safe-right) - 16px));
     grid-template-columns: 48px minmax(0, 1fr) auto;
     min-height: 72px;
     padding: 7px;
@@ -2067,23 +2070,23 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   left: calc(var(--safe-left) + 22px);
   right: auto;
   bottom: calc(var(--safe-bottom) + 22px);
-  width: min(520px, calc(100vw - var(--safe-left) - var(--safe-right) - 44px));
+  width: min(520px, calc(100dvw - var(--safe-left) - var(--safe-right) - 44px));
   transform: none;
 }
 
 .survival-modal {
   display: grid;
   place-items: center;
-  padding: max(18px, var(--safe-top)) max(18px, var(--safe-right)) max(18px, var(--safe-bottom)) max(18px, var(--safe-left));
+  padding: var(--modal-edge-pad) max(var(--modal-edge-pad), var(--safe-right)) max(var(--modal-edge-pad), var(--safe-bottom)) max(var(--modal-edge-pad), var(--safe-left));
 }
 
 .survival-panel {
-  width: min(920px, calc(100vw - 48px));
-  max-height: min(720px, calc(100vh - 40px));
+  width: min(920px, calc(100dvw - var(--safe-left) - var(--safe-right) - 24px));
+  max-height: min(720px, var(--modal-max-block));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 14px;
-  padding: 18px;
+  gap: var(--modal-panel-gap);
+  padding: var(--modal-panel-padding);
   border: 1px solid rgba(236, 231, 216, 0.16);
   border-radius: 18px;
   background:
@@ -2693,9 +2696,9 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 
 @media (max-width: 760px), (max-height: 460px) {
   .survival-panel {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - 20px);
-    padding: 12px;
+    width: calc(100dvw - var(--safe-left) - var(--safe-right) - 16px);
+    max-height: var(--modal-max-block);
+    padding: var(--modal-panel-padding);
   }
 
   .survival-inventory-grid {
@@ -2735,5 +2738,780 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   .voxel-craft-actions {
     grid-column: 1 / -1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Futuristic crafting station redesign. Scoped so other survival modals keep their field-kit style. */
+.crafting-survival-modal {
+  --craft-cyan: #28d7ff;
+  --craft-cyan-soft: rgba(40, 215, 255, 0.18);
+  --craft-cyan-line: rgba(40, 215, 255, 0.46);
+  --craft-panel: rgba(4, 14, 24, 0.94);
+  --craft-panel-2: rgba(8, 25, 40, 0.9);
+  --craft-text: #e8f5ff;
+  --craft-muted: #8eb6d4;
+  --craft-orange: #ff8b2f;
+  --craft-gold: #ffc83d;
+  --craft-good: #62ff83;
+  --craft-bad: #ff6672;
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(38, 183, 255, 0.14), transparent 34%),
+    radial-gradient(circle at 80% 72%, rgba(255, 139, 47, 0.08), transparent 32%),
+    rgba(0, 4, 9, 0.78);
+  padding: max(6px, var(--safe-top)) max(6px, var(--safe-right)) max(6px, var(--safe-bottom)) max(6px, var(--safe-left));
+}
+
+.crafting-survival-modal .survival-panel {
+  position: relative;
+  width: min(1440px, calc(100dvw - var(--safe-left) - var(--safe-right) - 12px));
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 12px);
+  min-height: min(760px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 12px));
+  gap: clamp(6px, 1vh, 10px);
+  padding: var(--craft-panel-pad);
+  border: 1px solid rgba(40, 215, 255, 0.42);
+  border-radius: 10px;
+  color: var(--craft-text);
+  background:
+    linear-gradient(90deg, rgba(40, 215, 255, 0.1), transparent 12%, transparent 88%, rgba(40, 215, 255, 0.1)),
+    linear-gradient(180deg, rgba(18, 42, 62, 0.98), rgba(1, 8, 14, 0.98));
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.62),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 34px rgba(40, 215, 255, 0.16);
+}
+
+.crafting-survival-modal .survival-panel::before,
+.crafting-survival-modal .survival-panel::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(40, 215, 255, 0.12);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.crafting-survival-modal .survival-panel::after {
+  inset: 9px 16px;
+  border-left-color: transparent;
+  border-right-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(40, 215, 255, 0.24));
+}
+
+.crafting-survival-modal .survival-panel-header {
+  position: relative;
+  min-height: var(--craft-header-height);
+  justify-content: center;
+  padding: clamp(4px, 1vh, 8px) 64px clamp(5px, 1.1vh, 10px);
+  border: 1px solid rgba(40, 215, 255, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(3, 12, 22, 0.86), rgba(13, 40, 60, 0.58), rgba(3, 12, 22, 0.86)),
+    repeating-linear-gradient(0deg, rgba(40, 215, 255, 0.08) 0 1px, transparent 1px 18px);
+  text-align: center;
+  overflow: hidden;
+}
+
+.crafting-survival-modal .survival-panel-header span {
+  display: none;
+}
+
+.crafting-survival-modal .survival-panel-header h1 {
+  margin: 0;
+  color: var(--craft-text);
+  font-size: clamp(1.12rem, 3.2vw, 2.28rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 18px rgba(40, 215, 255, 0.35);
+}
+
+.crafting-survival-modal .survival-panel-header p {
+  max-width: none;
+  margin: 2px 0 0;
+  color: #b7d6ef;
+  font-size: clamp(0.76rem, 1.4vw, 1rem);
+  letter-spacing: 0.02em;
+}
+
+.crafting-survival-modal .survival-close-button {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: clamp(34px, 5.4vh, 44px);
+  height: clamp(34px, 5.4vh, 44px);
+  border-radius: 8px;
+  border-color: rgba(145, 190, 255, 0.5);
+  background: rgba(16, 22, 44, 0.82);
+  color: #cfe8ff;
+  font-size: 1.45rem;
+}
+
+.crafting-survival-modal .survival-panel-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.crafting-survival-modal .survival-panel-actions:empty {
+  display: none;
+}
+
+.crafting-survival-modal .survival-crafting,
+.crafting-survival-modal .voxel-crafting {
+  height: 100%;
+  min-height: 0;
+}
+
+.crafting-survival-modal .voxel-craft-layout {
+  height: min(760px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--craft-header-height) - 46px));
+  display: grid;
+  grid-template-columns: minmax(0, var(--craft-tabs-width)) minmax(300px, 1fr) minmax(0, var(--craft-side-width));
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--craft-column-gap);
+  align-items: stretch;
+}
+
+.crafting-survival-modal .voxel-craft-tabs,
+.crafting-survival-modal .voxel-craft-editor,
+.crafting-survival-modal .voxel-craft-side {
+  min-height: 0;
+  padding: var(--craft-panel-pad);
+  border: 1px solid rgba(40, 215, 255, 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(7, 27, 42, 0.88), rgba(2, 9, 16, 0.9)),
+    rgba(1, 6, 11, 0.86);
+  box-shadow: inset 0 0 22px rgba(40, 215, 255, 0.04);
+}
+
+.crafting-survival-modal .voxel-craft-tabs,
+.crafting-survival-modal .voxel-craft-side {
+  overflow: hidden;
+}
+
+.crafting-survival-modal .voxel-craft-layout h2 {
+  margin: 0 0 6px;
+  color: var(--craft-cyan);
+  font-size: clamp(0.72rem, 1.25vw, 0.95rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(40, 215, 255, 0.32);
+}
+
+.crafting-survival-modal .voxel-craft-recipe-list {
+  display: grid;
+  gap: 10px;
+}
+
+.crafting-survival-modal .voxel-recipe-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: clamp(52px, 5.8vw, 86px) minmax(0, 1fr);
+  gap: clamp(7px, 0.8vw, 12px);
+  align-items: center;
+  min-height: clamp(58px, 10vh, 86px);
+  padding: clamp(6px, 0.8vw, 10px);
+  border: 1px solid rgba(115, 177, 218, 0.32);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(17, 38, 56, 0.9), rgba(5, 17, 29, 0.9));
+  color: var(--craft-text);
+  text-align: left;
+}
+
+.crafting-survival-modal .voxel-recipe-card:hover {
+  border-color: rgba(40, 215, 255, 0.6);
+  box-shadow: 0 0 14px rgba(40, 215, 255, 0.14);
+}
+
+.crafting-survival-modal .voxel-recipe-card.is-active {
+  border-color: rgba(62, 229, 255, 0.95);
+  box-shadow: 0 0 18px rgba(40, 215, 255, 0.34), inset 0 0 20px rgba(40, 215, 255, 0.1);
+}
+
+.crafting-survival-modal .voxel-recipe-card.is-active i {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--craft-cyan);
+  box-shadow: 0 0 12px var(--craft-cyan);
+}
+
+.crafting-survival-modal .voxel-recipe-icon {
+  width: clamp(48px, 5.3vw, 76px);
+  height: clamp(42px, 7.2vh, 66px);
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(122, 174, 214, 0.34);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(40, 215, 255, 0.2), transparent 48%),
+    rgba(8, 22, 34, 0.86);
+  color: #95eaff;
+  font-weight: 900;
+}
+
+.crafting-survival-modal .voxel-recipe-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.crafting-survival-modal .voxel-recipe-copy strong {
+  grid-column: auto;
+  font-size: clamp(0.86rem, 1.25vw, 1.05rem);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.crafting-survival-modal .voxel-recipe-copy em {
+  grid-column: auto;
+  color: var(--craft-cyan);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.crafting-survival-modal .voxel-craft-tip {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: clamp(7px, 1vw, 14px);
+  border: 1px solid rgba(107, 161, 201, 0.24);
+  border-radius: 8px;
+  background: rgba(6, 18, 29, 0.78);
+  color: #8fc9ff;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.crafting-survival-modal .voxel-craft-tip span {
+  display: block;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.crafting-survival-modal .voxel-craft-tip strong {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(77, 180, 255, 0.66);
+  border-radius: 999px;
+}
+
+.crafting-survival-modal .voxel-craft-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.crafting-survival-modal .voxel-craft-grid-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 8px;
+}
+
+.crafting-survival-modal .voxel-craft-grid-frame::before,
+.crafting-survival-modal .voxel-craft-grid-frame::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 2px solid var(--craft-cyan);
+  border-radius: 8px;
+  clip-path: polygon(0 0, 12% 0, 12% 2px, 2px 2px, 2px 12%, 0 12%, 0 0, 100% 0, 88% 0, 88% 2px, calc(100% - 2px) 2px, calc(100% - 2px) 12%, 100% 12%, 100% 0, 100% 100%, 88% 100%, 88% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 88%, 100% 88%, 100% 100%, 0 100%, 12% 100%, 12% calc(100% - 2px), 2px calc(100% - 2px), 2px 88%, 0 88%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 10px rgba(40, 215, 255, 0.64));
+}
+
+.crafting-survival-modal .voxel-craft-grid-frame.has-fire-core::after {
+  border-color: rgba(255, 139, 47, 0.78);
+  filter: drop-shadow(0 0 18px rgba(255, 103, 43, 0.42));
+}
+
+.crafting-survival-modal .voxel-craft-grid {
+  width: min(100%, calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--craft-header-height) - 116px), 610px);
+  min-width: min(280px, 100%);
+  max-width: 100%;
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid rgba(40, 215, 255, 0.36);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(40, 215, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 67% 68%, rgba(255, 139, 47, 0.08), transparent 20%),
+    linear-gradient(rgba(40, 215, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 215, 255, 0.12) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(40, 215, 255, 0.05), transparent 62%),
+    #020910;
+  background-size: auto, auto, calc(100% / var(--voxel-grid-size)) calc(100% / var(--voxel-grid-size)), calc(100% / var(--voxel-grid-size)) calc(100% / var(--voxel-grid-size)), auto, auto;
+  box-shadow:
+    inset 0 0 28px rgba(0, 0, 0, 0.68),
+    inset 0 0 0 1px rgba(40, 215, 255, 0.12);
+}
+
+.crafting-survival-modal .voxel-craft-preview {
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+}
+
+.crafting-survival-modal .voxel-craft-cell:hover,
+.crafting-survival-modal .voxel-craft-cell:focus-visible {
+  background: rgba(40, 215, 255, 0.1);
+  outline-color: rgba(117, 238, 255, 0.9);
+}
+
+.crafting-survival-modal .voxel-craft-control-strip {
+  justify-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  min-height: clamp(32px, 5.4vh, 42px);
+  padding: clamp(5px, 0.9vh, 8px) clamp(10px, 1.4vw, 18px);
+  border: 1px solid rgba(114, 171, 213, 0.38);
+  border-radius: 8px;
+  background: rgba(7, 19, 31, 0.88);
+  color: #afcce1;
+  font-size: 0.78rem;
+}
+
+.crafting-survival-modal .voxel-craft-control-strip b {
+  color: #e6f7ff;
+  margin-right: 5px;
+}
+
+.crafting-survival-modal .voxel-craft-side {
+  display: grid;
+  gap: 6px;
+  grid-template-rows: auto auto auto auto auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.crafting-survival-modal .voxel-material-palette,
+.crafting-survival-modal .voxel-craft-tools,
+.crafting-survival-modal .voxel-craft-rules,
+.crafting-survival-modal .voxel-craft-info,
+.crafting-survival-modal .voxel-craft-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: clamp(6px, 0.75vw, 8px);
+  border: 1px solid rgba(40, 215, 255, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(9, 31, 48, 0.76), rgba(3, 13, 22, 0.82));
+}
+
+.crafting-survival-modal .voxel-material-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 34px;
+  gap: 10px;
+  align-items: center;
+  min-height: 50px;
+  padding: 6px 7px;
+  border: 1px solid rgba(111, 173, 220, 0.34);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(17, 42, 62, 0.78), rgba(5, 20, 33, 0.84));
+  color: var(--craft-text);
+  text-align: left;
+}
+
+.crafting-survival-modal .voxel-material-card.is-selected {
+  border-color: rgba(40, 215, 255, 0.92);
+  box-shadow: 0 0 15px rgba(40, 215, 255, 0.22);
+}
+
+.crafting-survival-modal .voxel-material-card.is-fire-core.is-selected {
+  border-color: rgba(255, 159, 67, 0.96);
+  box-shadow: 0 0 18px rgba(255, 139, 47, 0.38);
+}
+
+.crafting-survival-modal .voxel-material-icon {
+  width: 42px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1px solid rgba(160, 207, 241, 0.24);
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--item-color, #76f3ff) 34%, transparent), transparent 62%),
+    rgba(5, 17, 29, 0.92);
+  color: var(--item-color, #76f3ff);
+  font-weight: 900;
+}
+
+.crafting-survival-modal .voxel-material-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.crafting-survival-modal .voxel-material-copy strong {
+  grid-column: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.crafting-survival-modal .voxel-material-copy em {
+  grid-column: auto;
+  color: #72ff8f;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 0.76rem;
+}
+
+.crafting-survival-modal .voxel-material-copy small {
+  grid-column: auto;
+  color: var(--craft-muted);
+  font-size: 0.66rem;
+}
+
+.crafting-survival-modal .voxel-material-card i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  color: var(--craft-bad);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.crafting-survival-modal .voxel-material-card.is-complete i {
+  color: var(--craft-good);
+}
+
+.crafting-survival-modal .voxel-tool-grid,
+.crafting-survival-modal .voxel-action-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.crafting-survival-modal .voxel-tool-chip {
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  min-height: clamp(44px, 7vh, 54px);
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 173, 220, 0.36);
+  border-radius: 8px;
+  background: rgba(8, 22, 36, 0.88);
+  color: #c9def0;
+  text-align: center;
+}
+
+.crafting-survival-modal .voxel-tool-chip span {
+  width: 26px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: rgba(160, 207, 241, 0.12);
+  color: #d9ecff;
+  font-weight: 900;
+}
+
+.crafting-survival-modal .voxel-tool-chip strong {
+  font-size: 0.62rem;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.crafting-survival-modal .voxel-tool-chip.is-active {
+  border-color: rgba(50, 228, 255, 0.94);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(40, 215, 255, 0.28), inset 0 0 14px rgba(40, 215, 255, 0.12);
+}
+
+.crafting-survival-modal .voxel-craft-rules ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crafting-survival-modal .voxel-craft-rules li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #bcd1e1;
+  font-size: 0.72rem;
+}
+
+.crafting-survival-modal .voxel-craft-rules li span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.crafting-survival-modal .voxel-craft-rules li.is-met {
+  color: var(--craft-good);
+}
+
+.crafting-survival-modal .voxel-craft-rules li.is-missing {
+  color: var(--craft-bad);
+}
+
+.crafting-survival-modal .voxel-craft-info article {
+  max-height: 58px;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid rgba(111, 173, 220, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 22, 36, 0.82);
+}
+
+.crafting-survival-modal .voxel-craft-info strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--craft-text);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.crafting-survival-modal .voxel-craft-info p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin: 0;
+  color: #bdd4e7;
+  font-size: 0.7rem;
+  line-height: 1.22;
+}
+
+.crafting-survival-modal .voxel-action-row {
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 0.72fr) minmax(0, 1.08fr);
+}
+
+.crafting-survival-modal .voxel-action-button,
+.crafting-survival-modal .voxel-bottom-button {
+  min-height: clamp(34px, 5.5vh, 40px);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(111, 173, 220, 0.44);
+  border-radius: 8px;
+  background: rgba(9, 28, 44, 0.9);
+  color: #cde7f8;
+  font-weight: 900;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.crafting-survival-modal .voxel-action-button span,
+.crafting-survival-modal .voxel-bottom-button span {
+  color: var(--craft-cyan);
+}
+
+.crafting-survival-modal .voxel-action-button.craft-primary {
+  border-color: rgba(255, 217, 84, 0.96);
+  background:
+    linear-gradient(180deg, rgba(255, 221, 76, 0.98), rgba(209, 137, 19, 0.98));
+  color: #241303;
+  box-shadow: 0 0 20px rgba(255, 191, 34, 0.42), inset 0 0 0 1px rgba(255, 248, 174, 0.5);
+}
+
+.crafting-survival-modal .voxel-action-button.craft-primary span {
+  color: #371b02;
+}
+
+.crafting-survival-modal .voxel-action-button:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+  box-shadow: none;
+}
+
+.crafting-survival-modal .voxel-craft-bottom {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(108px, 170px) minmax(108px, 170px) 1fr minmax(108px, 170px);
+  gap: 10px;
+  align-items: center;
+  min-height: clamp(36px, 5.8vh, 44px);
+}
+
+.crafting-survival-modal .voxel-craft-bottom .voxel-bottom-button:nth-child(3) {
+  grid-column: 4;
+}
+
+.crafting-survival-modal .voxel-bottom-button {
+  min-height: 38px;
+  background: rgba(9, 28, 44, 0.74);
+}
+
+@media (max-width: 1100px), (max-height: 620px) {
+  .crafting-survival-modal .survival-panel {
+    padding: var(--craft-panel-pad);
+  }
+
+  .crafting-survival-modal .survival-panel-header {
+    min-height: 58px;
+    padding-top: 5px;
+    padding-bottom: 6px;
+  }
+
+  .crafting-survival-modal .voxel-craft-layout {
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--craft-header-height) - 38px);
+    grid-template-columns: minmax(0, var(--craft-tabs-width)) minmax(290px, 1fr) minmax(0, var(--craft-side-width));
+    gap: var(--craft-column-gap);
+  }
+
+  .crafting-survival-modal .voxel-craft-tabs,
+  .crafting-survival-modal .voxel-craft-editor,
+  .crafting-survival-modal .voxel-craft-side,
+  .crafting-survival-modal .voxel-material-palette,
+  .crafting-survival-modal .voxel-craft-tools,
+  .crafting-survival-modal .voxel-craft-rules,
+  .crafting-survival-modal .voxel-craft-info,
+  .crafting-survival-modal .voxel-craft-actions {
+    padding: 7px;
+  }
+
+  .crafting-survival-modal .voxel-recipe-card {
+    grid-template-columns: 56px 1fr;
+    min-height: 64px;
+  }
+
+  .crafting-survival-modal .voxel-recipe-icon {
+    width: 50px;
+    height: 46px;
+  }
+
+  .crafting-survival-modal .voxel-craft-grid {
+    width: min(100%, calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--craft-header-height) - 92px), 520px);
+    min-width: min(270px, 100%);
+  }
+
+  .crafting-survival-modal .voxel-material-card {
+    grid-template-columns: 46px 1fr 30px;
+    min-height: 48px;
+  }
+
+  .crafting-survival-modal .voxel-material-icon {
+    width: 42px;
+    height: 38px;
+  }
+
+  .crafting-survival-modal .voxel-tool-chip {
+    min-height: clamp(42px, 7vh, 52px);
+  }
+
+  .crafting-survival-modal .voxel-craft-tip,
+  .crafting-survival-modal .voxel-craft-info p,
+  .crafting-survival-modal .voxel-craft-rules li {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 820px), (max-height: 430px) and (orientation: landscape) {
+  .crafting-survival-modal {
+    align-items: start;
+  }
+
+  .crafting-survival-modal .voxel-craft-layout {
+    overflow: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--craft-header-height) - 38px);
+  }
+
+  .crafting-survival-modal .voxel-craft-side {
+    overflow: visible;
+  }
+
+  .crafting-survival-modal .voxel-craft-tabs {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 1fr);
+    overflow-x: auto;
+  }
+
+  .crafting-survival-modal .voxel-craft-recipe-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 1fr);
+    overflow-x: auto;
+  }
+
+  .crafting-survival-modal .voxel-craft-tip {
+    display: none;
+  }
+
+  .crafting-survival-modal .voxel-craft-bottom {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .crafting-survival-modal .voxel-craft-bottom .voxel-bottom-button:nth-child(3) {
+    grid-column: auto;
+  }
+}
+
+@media (max-height: 430px) and (orientation: landscape) {
+  .tool-hotbar-slot kbd {
+    display: none;
+  }
+
+  .crafting-survival-modal .survival-panel-header {
+    padding-left: 44px;
+    padding-right: 44px;
+  }
+
+  .crafting-survival-modal .survival-panel-header p {
+    display: none;
+  }
+
+  .crafting-survival-modal .voxel-craft-grid {
+    width: min(100%, 300px);
+  }
+
+  .crafting-survival-modal .voxel-material-card {
+    min-height: 42px;
+  }
+
+  .crafting-survival-modal .voxel-craft-rules li:nth-child(n + 4) {
+    display: none;
   }
 }

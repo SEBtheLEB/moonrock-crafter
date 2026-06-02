@@ -285,7 +285,7 @@ export const hotbarSlotCatalog = [
     iconHtml: '<span class="tool-icon-shape icon-door"><i></i></span>',
     action: 'placeDoor',
     tone: 'metal',
-    description: 'Place a three-tile automatic door inside a supported doorway.',
+    description: 'Place a four-tile automatic door inside a supported doorway.',
     itemType: 'door',
     placeable: true,
   },

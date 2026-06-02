@@ -3,7 +3,7 @@ import {
   EMPTY_HOTBAR_SLOT,
   HOTBAR_SLOT_COUNT,
   getHotbarSlotById,
-} from '../data/hotbar.js?v=141';
+} from '../data/hotbar.js?v=153';
 
 const KEY_BINDINGS = {
   ArrowUp: 'up',
@@ -185,7 +185,7 @@ export class InputManager {
     const hotbarKey = /^[1-7]$/.test(event.key);
     if (mappedAction || hotbarKey) event.preventDefault();
     if (isDown && hotbarKey && !event.repeat) this.selectHotbarSlot(Number(event.key) - 1);
-    if (isDown && (mappedAction || hotbarKey)) this.setInputMode('keyboard');
+    if (isDown && (mappedAction || hotbarKey)) this.setInputMode('keyboard-mouse');
     if (isDown) this.keys.add(event.key);
     else this.keys.delete(event.key);
   }
@@ -244,6 +244,8 @@ export class InputManager {
     this.gamepadIndex = event.gamepad.index;
     this.gamepadLabel = event.gamepad.id || 'Controller';
     this.gamepadConnected = true;
+    document.documentElement.dataset.gamepadConnected = 'true';
+    this.setInputMode('controller');
   }
 
   onGamepadDisconnected(event) {
@@ -255,12 +257,25 @@ export class InputManager {
       this.controllerActivityFrames = 0;
     }
     this.gamepadConnected = this.findConnectedGamepad() !== null;
+    document.documentElement.dataset.gamepadConnected = this.gamepadConnected ? 'true' : 'false';
+    if (!this.gamepadConnected && this.inputMode === 'controller') this.setInputMode('keyboard-mouse');
   }
 
   setInputMode(mode) {
     if (!mode || this.inputMode === mode) return;
     this.inputMode = mode;
     document.documentElement.dataset.inputMode = mode;
+    this.syncCustomCursorVisibility();
+  }
+
+  hideCustomCursor() {
+    this.cursorElement?.classList.remove('is-visible', 'is-pressed');
+    this.cursorVisible = false;
+    this.cursorPressed = false;
+  }
+
+  syncCustomCursorVisibility() {
+    if (this.inputMode === 'controller' || this.inputMode === 'touch') this.hideCustomCursor();
   }
 
   invalidatePointerBounds() {
@@ -325,17 +340,13 @@ export class InputManager {
   }
 
   updateCustomCursor(event, pressed = false) {
-    if (!this.cursorElement || event.pointerType === 'touch') {
-      this.cursorElement?.classList.remove('is-visible', 'is-pressed');
-      this.cursorVisible = false;
-      this.cursorPressed = false;
+    if (!this.cursorElement || event.pointerType === 'touch' || this.inputMode === 'controller') {
+      this.hideCustomCursor();
       return;
     }
     if (!this.cursorElement.parentElement || this.cursorElement.parentElement !== this.cursorHost) this.ensureCursorParent();
     if (!this.isPointerInsideGameViewport(event)) {
-      this.cursorElement.classList.remove('is-visible', 'is-pressed');
-      this.cursorVisible = false;
-      this.cursorPressed = false;
+      this.hideCustomCursor();
       return;
     }
     const previousX = this.cursorVisible ? this.cursorX : event.clientX;
@@ -735,10 +746,12 @@ export class InputManager {
     const gamepad = this.getActiveGamepad();
     if (!gamepad) {
       this.gamepadConnected = false;
+      document.documentElement.dataset.gamepadConnected = 'false';
       return { actions, move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } };
     }
 
     this.gamepadConnected = true;
+    document.documentElement.dataset.gamepadConnected = 'true';
     this.gamepadIndex = gamepad.index;
     this.gamepadLabel = gamepad.id || 'Controller';
 

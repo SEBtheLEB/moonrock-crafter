@@ -1,14 +1,14 @@
 .storage-screen .ui-scene-layer {
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
-  gap: 6px;
+  gap: var(--ui-compact-gap);
 }
 
 .storage-top-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-right: 70px;
+  padding-right: calc(var(--safe-right) + 58px);
   pointer-events: auto;
 }
 
@@ -325,7 +325,7 @@
   }
 
   .storage-top-bar {
-    max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 70px);
+    max-width: calc(100dvw - var(--safe-left) - var(--safe-right) - 70px);
     overflow: auto;
     padding-bottom: 4px;
   }
@@ -388,7 +388,7 @@
 .storage-workshop {
   grid-template-columns: 1fr;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
+  gap: var(--ui-compact-gap);
 }
 
 .storage-sidebar {
@@ -405,7 +405,7 @@
 }
 
 .storage-tabs .tab-button {
-  min-height: 30px;
+  min-height: min(var(--ui-control-height), 32px);
   padding: 0 10px;
   border-color: color-mix(in srgb, var(--tab-rarity-color), var(--glass-border) 64%);
   border-radius: 999px;
@@ -448,7 +448,7 @@
 
 .storage-sort-button,
 .sell-extras-button {
-  min-height: 30px;
+  min-height: min(var(--ui-control-height), 32px);
   padding-inline: 7px;
   border-radius: 999px;
   justify-content: center;
@@ -510,8 +510,8 @@
 }
 
 .storage-card-grid {
-  grid-template-columns: repeat(auto-fill, minmax(36px, 44px));
-  grid-auto-rows: 38px;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--inventory-tile) - 4px), var(--inventory-tile)));
+  grid-auto-rows: max(34px, calc(var(--inventory-tile) - 6px));
   justify-content: start;
   gap: 5px;
 }
@@ -519,7 +519,7 @@
 .storage-material-card.storage-material-tile {
   appearance: none;
   position: relative;
-  min-height: 38px;
+  min-height: max(34px, calc(var(--inventory-tile) - 6px));
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: 1fr;
@@ -747,13 +747,13 @@
   }
 
   .storage-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(32px, 38px));
-    grid-auto-rows: 34px;
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--inventory-tile) - 3px), var(--inventory-tile)));
+    grid-auto-rows: max(32px, calc(var(--inventory-tile) - 4px));
     gap: 4px;
   }
 
   .storage-material-card.storage-material-tile {
-    min-height: 34px;
+    min-height: max(32px, calc(var(--inventory-tile) - 4px));
     border-radius: 8px;
   }
 
@@ -791,5 +791,40 @@
   .storage-detail-stats div {
     min-height: 34px;
     padding: 4px 6px;
+  }
+}
+
+@media (max-height: 430px) and (orientation: landscape) {
+  .storage-top-bar {
+    min-height: 28px;
+  }
+
+  .storage-sidebar {
+    grid-template-columns: minmax(210px, auto) 1fr;
+  }
+
+  .storage-tabs .tab-button,
+  .storage-sort-button,
+  .sell-extras-button {
+    min-height: 28px;
+    font-size: 9px;
+  }
+
+  .storage-rarity-shelf header p,
+  .storage-detail-description,
+  .storage-detail-zones {
+    display: none;
+  }
+
+  .storage-detail-popover {
+    width: min(282px, 42vw);
+    grid-template-rows: auto auto auto;
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .storage-content.has-detail .storage-rarity-shelf,
+  .storage-content.has-detail .storage-empty-note {
+    width: calc(100% - min(282px, 42vw) - 8px);
   }
 }

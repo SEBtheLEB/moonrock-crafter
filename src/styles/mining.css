@@ -1,7 +1,7 @@
 .mining-screen .ui-scene-layer {
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
-  padding-bottom: calc(var(--safe-bottom) + 116px);
+  padding-bottom: calc(var(--safe-bottom) + var(--hotbar-slot-size) + 42px);
 }
 
 .mining-hud {
@@ -199,8 +199,8 @@
   position: absolute;
   left: calc(var(--safe-left) + 12px);
   top: calc(var(--safe-top) + 108px);
-  width: 164px;
-  height: 164px;
+  width: var(--hud-map-size);
+  height: var(--hud-map-size);
   display: grid;
   grid-template-rows: 1fr auto;
   gap: 5px;
@@ -216,8 +216,8 @@
 }
 
 .mining-minimap.is-expanded {
-  width: min(360px, calc(100vw - var(--safe-left) - var(--safe-right) - 32px));
-  height: min(360px, calc(100vh - var(--safe-top) - var(--safe-bottom) - 42px));
+  width: min(360px, calc(100dvw - var(--safe-left) - var(--safe-right) - 32px));
+  height: min(360px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 42px));
   background: rgba(5, 12, 22, 0.72);
 }
 
@@ -336,7 +336,7 @@
 .landing-zone-prompt {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 94px);
+  bottom: calc(var(--safe-bottom) + var(--hotbar-slot-size) + 38px);
   min-width: min(380px, 72vw);
   display: grid;
   place-items: center;
@@ -398,7 +398,7 @@
 .dock-button {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 16px);
+  bottom: calc(var(--safe-bottom) + var(--hotbar-slot-size) + 14px);
   min-width: 150px;
   min-height: 62px;
   pointer-events: auto;
@@ -720,13 +720,17 @@ html[data-layout-profile="pc"] .recall-button {
 .mining-map-stack {
   position: absolute;
   left: calc(var(--safe-left) + 12px);
-  top: calc(var(--safe-top) + 108px);
+  top: var(--hud-map-top);
   z-index: 7;
-  width: 164px;
+  width: var(--hud-map-size);
   display: grid;
   justify-items: start;
-  gap: 8px;
+  gap: var(--hud-stack-gap);
   pointer-events: none;
+}
+
+.mining-map-stack:has(.mining-minimap.is-expanded) {
+  width: min(360px, calc(100dvw - var(--safe-left) - var(--safe-right) - 32px));
 }
 
 .mining-map-stack .mining-minimap {
@@ -738,9 +742,9 @@ html[data-layout-profile="pc"] .recall-button {
 }
 
 .player-health-hearts {
-  width: 164px;
-  max-width: 164px;
-  min-height: 23px;
+  width: var(--hud-map-size);
+  max-width: var(--hud-map-size);
+  min-height: clamp(19px, 2.8vh, 24px);
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
@@ -753,7 +757,7 @@ html[data-layout-profile="pc"] .recall-button {
   --heart-fill: 100%;
   position: relative;
   width: 100%;
-  height: 23px;
+  height: clamp(19px, 2.8vh, 24px);
   min-width: 0;
   filter: drop-shadow(0 2px 0 rgba(3, 7, 12, 0.72));
 }
@@ -816,7 +820,7 @@ html[data-layout-profile="pc"] .recall-button {
 }
 
 .mining-vitals {
-  width: 100%;
+  width: var(--hud-map-size);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
@@ -824,7 +828,7 @@ html[data-layout-profile="pc"] .recall-button {
 }
 
 .mining-vitals .mining-bar {
-  min-height: 104px;
+  min-height: clamp(78px, 13vh, 104px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 5px;
@@ -853,7 +857,7 @@ html[data-layout-profile="pc"] .recall-button {
 .mining-vitals .mining-bar div {
   position: relative;
   width: 100%;
-  height: 72px;
+  height: clamp(50px, 9vh, 72px);
   grid-column: auto;
   border: 1px solid rgba(236, 231, 216, 0.14);
   border-radius: 9px;
@@ -887,7 +891,7 @@ html[data-layout-profile="pc"] .recall-button {
 .quick-inventory {
   position: relative;
   width: 100%;
-  max-width: 164px;
+  max-width: 100%;
   transform: translateY(-4px) scale(0.98);
   transform-origin: top left;
   opacity: 0;
@@ -912,7 +916,7 @@ html[data-layout-profile="pc"] .recall-button {
 .quick-inventory-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: clamp(4px, 0.7vw, 6px);
   width: 100%;
 }
 
@@ -944,8 +948,8 @@ html[data-layout-profile="pc"] .recall-button {
 .quick-inventory-slot .slot-icon {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: clamp(20px, 2vw, 25px);
+  height: clamp(20px, 2vw, 25px);
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
@@ -1006,35 +1010,35 @@ html[data-layout-profile="pc"] .recall-button {
 
 @media (max-width: 760px), (max-height: 460px) {
   .mining-map-stack {
-    top: calc(var(--safe-top) + 72px);
-    width: 142px;
-    gap: 6px;
+    top: var(--hud-map-top);
+    width: var(--hud-map-size);
+    gap: var(--hud-stack-gap);
   }
 
   .mining-map-stack .mining-minimap {
-    width: 142px;
-    height: 142px;
+    width: var(--hud-map-size);
+    height: var(--hud-map-size);
     padding: 7px;
   }
 
   .player-health-hearts {
-    width: 142px;
-    max-width: 142px;
-    min-height: 20px;
+    width: var(--hud-map-size);
+    max-width: var(--hud-map-size);
+    min-height: clamp(18px, 4.3vh, 20px);
     gap: 4px;
   }
 
   .meteor-heart {
-    height: 20px;
+    height: clamp(18px, 4.3vh, 20px);
   }
 
   .mining-vitals .mining-bar {
-    min-height: 82px;
+    min-height: clamp(68px, 17vh, 82px);
     padding: 5px 4px;
   }
 
   .mining-vitals .mining-bar div {
-    height: 54px;
+    height: clamp(42px, 12vh, 54px);
   }
 
   .quick-inventory-grid {

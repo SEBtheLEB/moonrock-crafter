@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=141';
-import { gameBalance } from '../data/gameBalance.js?v=141';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=153';
+import { gameBalance } from '../data/gameBalance.js?v=153';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -2630,7 +2630,7 @@ export class TerrainGrid {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds, { lightingBounds: bounds });
+    this.drawTerrainLayers(ctx, paintBounds, { lightingBounds: paintBounds });
     ctx.restore();
   }
 
@@ -3749,33 +3749,41 @@ export class TerrainGrid {
   }
 
   drawOreFacets(ctx, material, data, bounds = null) {
-    const rect = this.getDrawRect(bounds);
-    const random = createRandom(hashString(`${this.seed}:ore-facets:${material}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`));
-    const count = Math.min(140, Math.max(10, Math.floor((rect.width * rect.height) / 18000)));
+    const scan = this.getRoughnessBounds(bounds, 2);
+    const size = this.cellSize;
     ctx.save();
     this.clipMarchingPath(ctx, (col, row) => this.getCell(col, row) === material, bounds, `ore-mask:${material}`, MATERIAL_CONTOUR_OPTIONS);
-    for (let index = 0; index < count; index += 1) {
-      const x = rect.x + random() * rect.width;
-      const y = rect.y + random() * rect.height;
-      const radius = this.cellSize * (0.08 + random() * 0.18);
-      const angle = random() * Math.PI * 2;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle);
-      ctx.globalAlpha = material >= 4 ? 0.45 : 0.24;
-      ctx.fillStyle = withAlpha(mixHex(data.edge, '#ffffff', 0.22), material >= 4 ? 0.65 : 0.34);
-      ctx.beginPath();
-      if (material === 4 || material === 5 || material === 8 || material === 9) {
-        ctx.moveTo(0, -radius * 1.5);
-        ctx.lineTo(radius * 1.1, 0);
-        ctx.lineTo(0, radius * 1.5);
-        ctx.lineTo(-radius * 0.9, 0);
-      } else {
-        ctx.ellipse(0, 0, radius * 1.8, radius * 0.72, 0, 0, Math.PI * 2);
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        if (this.getCell(col, row) !== material) continue;
+        const baseChance = material >= 4 ? 0.7 : 0.42;
+        if (hash2D(col, row, this.seed, material * 809) > baseChance) continue;
+        const facetCount = 1 + Number(material >= 4 && hash2D(row, col, this.seed, material * 811) > 0.72);
+        for (let index = 0; index < facetCount; index += 1) {
+          const salt = material * 823 + index * 47;
+          const x = col * size + size * (0.18 + hash2D(col, row, this.seed, salt) * 0.64);
+          const y = row * size + size * (0.18 + hash2D(row, col, this.seed, salt + 7) * 0.64);
+          const radius = size * (0.08 + hash2D(col + index, row, this.seed, salt + 13) * 0.18);
+          const angle = hash2D(row, col + index, this.seed, salt + 19) * Math.PI * 2;
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(angle);
+          ctx.globalAlpha = material >= 4 ? 0.45 : 0.24;
+          ctx.fillStyle = withAlpha(mixHex(data.edge, '#ffffff', 0.22), material >= 4 ? 0.65 : 0.34);
+          ctx.beginPath();
+          if (material === 4 || material === 5 || material === 8 || material === 9) {
+            ctx.moveTo(0, -radius * 1.5);
+            ctx.lineTo(radius * 1.1, 0);
+            ctx.lineTo(0, radius * 1.5);
+            ctx.lineTo(-radius * 0.9, 0);
+          } else {
+            ctx.ellipse(0, 0, radius * 1.8, radius * 0.72, 0, 0, Math.PI * 2);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
       }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
     }
     ctx.restore();
   }
@@ -3808,7 +3816,7 @@ export class TerrainGrid {
         ctx.rect(x, y, size, size);
       }
     }
-    const gradient = ctx.createLinearGradient(0, rect.y, 0, rect.y + rect.height);
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
     gradient.addColorStop(0, top);
     gradient.addColorStop(0.52, base);
     gradient.addColorStop(1, bottom);
@@ -3996,31 +4004,44 @@ export class TerrainGrid {
   }
 
   drawStoneCracks(ctx, palette, bounds = null) {
-    const rect = this.getDrawRect(bounds);
-    const random = createRandom(hashString(`${this.seed}:${this.biome}:cracks:${rect.x}:${rect.y}:${rect.width}:${rect.height}`));
-    const count = Math.min(110, Math.max(10, Math.floor((rect.width * rect.height) / 22000)));
+    const scan = this.getRoughnessBounds(bounds, 2);
+    const size = this.cellSize;
     ctx.save();
     this.clipNaturalMass(ctx, bounds);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (let i = 0; i < count; i += 1) {
-      const x = rect.x + random() * rect.width;
-      const y = rect.y + random() * rect.height;
-      const length = 8 + random() * 24;
-      const angle = random() * Math.PI * 2;
-      ctx.strokeStyle = random() > 0.45
-        ? withAlpha(mixHex(palette.edge, '#ffffff', 0.08), 0.1 + random() * 0.08)
-        : withAlpha(mixHex(palette.deep, '#000000', 0.16), 0.12 + random() * 0.1);
-      ctx.lineWidth = 0.8 + random() * 0.8;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(
-        x + Math.cos(angle + 0.7) * length * 0.4,
-        y + Math.sin(angle + 0.7) * length * 0.4,
-        x + Math.cos(angle) * length,
-        y + Math.sin(angle) * length,
-      );
-      ctx.stroke();
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        if (!this.isNaturalSolidCell(col, row)) continue;
+        const material = this.getCell(col, row);
+        const chance = material === 1 ? 0.16 : 0.1;
+        if (hash2D(col, row, this.seed, material * 887) > chance) continue;
+        const crackCount = 1 + Number(hash2D(row, col, this.seed, material * 889) > 0.86);
+        for (let index = 0; index < crackCount; index += 1) {
+          const salt = material * 907 + index * 53;
+          const x = col * size + size * (0.14 + hash2D(col, row, this.seed, salt) * 0.72);
+          const y = row * size + size * (0.14 + hash2D(row, col, this.seed, salt + 5) * 0.72);
+          const length = 7 + hash2D(col + index, row, this.seed, salt + 11) * 22;
+          const angle = hash2D(row, col + index, this.seed, salt + 17) * Math.PI * 2;
+          const bright = hash2D(col, row, this.seed, salt + 23) > 0.45;
+          const alpha = bright
+            ? 0.1 + hash2D(row, col, this.seed, salt + 29) * 0.08
+            : 0.12 + hash2D(col, row, this.seed, salt + 31) * 0.1;
+          ctx.strokeStyle = bright
+            ? withAlpha(mixHex(palette.edge, '#ffffff', 0.08), alpha)
+            : withAlpha(mixHex(palette.deep, '#000000', 0.16), alpha);
+          ctx.lineWidth = 0.8 + hash2D(row, col, this.seed, salt + 37) * 0.8;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.quadraticCurveTo(
+            x + Math.cos(angle + 0.7) * length * 0.4,
+            y + Math.sin(angle + 0.7) * length * 0.4,
+            x + Math.cos(angle) * length,
+            y + Math.sin(angle) * length,
+          );
+          ctx.stroke();
+        }
+      }
     }
     ctx.restore();
   }
@@ -4327,6 +4348,7 @@ export class TerrainGrid {
     if (bounds) {
       const segments = this.getLocalRoughContourSegments(bounds);
       this.drawLocalRoughContourShadows(ctx, segments);
+      this.drawRoughSurfaceDetails(ctx, bounds);
       this.drawLocalRoughContourLines(ctx, segments);
       return;
     }

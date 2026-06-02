@@ -150,10 +150,6 @@ export class BaseLab {
     const w = this.width;
     const h = this.height;
     const block = this.cellSize || 25;
-    const doorW = block * 2.1;
-    const doorH = block * 4;
-    const doorX = this.doorSide === 'right' ? w * 0.5 - doorW : -w * 0.5;
-    const doorSlide = this.doorOpen * (doorW * 0.74);
 
     ctx.save();
     ctx.translate(this.x, this.y);
@@ -207,33 +203,6 @@ export class BaseLab {
     ctx.moveTo(windowX + windowW * 0.5, windowY + block * 0.22);
     ctx.lineTo(windowX + windowW * 0.5, windowY + windowH - block * 0.22);
     ctx.stroke();
-
-    ctx.fillStyle = '#26313d';
-    ctx.strokeStyle = 'rgba(3, 9, 15, 0.84)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(doorX, -doorH, doorW, doorH, block * 0.12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#566879';
-    ctx.beginPath();
-    ctx.roundRect(
-      doorX + block * 0.14 + (this.doorSide === 'right' ? doorSlide : -doorSlide),
-      -doorH + block * 0.22,
-      doorW - block * 0.28,
-      doorH - block * 0.44,
-      block * 0.1,
-    );
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#75e9ff';
-    ctx.globalAlpha = 0.82;
-    ctx.beginPath();
-    ctx.arc(doorX + doorW * 0.5, -doorH * 0.58, block * 0.19 + Math.sin(time * 5) * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
 
     this.drawCeilingSignals(ctx, block, time);
 

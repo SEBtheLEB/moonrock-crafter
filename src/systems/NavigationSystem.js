@@ -1,6 +1,6 @@
-import { locations } from '../data/locations.js?v=141';
-import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=141';
-import { gameBalance } from '../data/gameBalance.js?v=141';
+import { locations } from '../data/locations.js?v=153';
+import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=153';
+import { gameBalance } from '../data/gameBalance.js?v=153';
 
 export class NavigationSystem {
   constructor(game, islandSystem = null) {

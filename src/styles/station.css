@@ -11,7 +11,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 7px;
+  gap: var(--ui-compact-gap);
   pointer-events: none;
 }
 
@@ -19,7 +19,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  max-width: min(58vw, 620px);
+  max-width: min(58dvw, 620px);
 }
 
 .station-platformer-objective {
@@ -27,7 +27,7 @@
   pointer-events: auto;
   min-width: min(260px, 34vw);
   max-width: min(380px, 39vw);
-  min-height: 38px;
+  min-height: var(--ui-control-height);
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -344,8 +344,8 @@
 
 .station-jump-button,
 .station-interact-button {
-  min-width: clamp(68px, 10vw, 92px);
-  min-height: clamp(50px, 8vw, 66px);
+  min-width: clamp(62px, 9vw, 92px);
+  min-height: clamp(46px, 7.6vw, 66px);
   border-radius: 14px;
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
 }
@@ -391,5 +391,46 @@
   to {
     filter: brightness(1.08);
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22), 0 0 22px rgba(217, 134, 66, 0.28);
+  }
+}
+
+@media (max-height: 430px) and (orientation: landscape) {
+  .station-platformer-top-bar {
+    left: calc(var(--safe-left) + 54px);
+    right: calc(var(--safe-right) + 50px);
+  }
+
+  .station-platformer-resources {
+    max-width: 43dvw;
+    gap: 4px;
+  }
+
+  .station-platformer-objective {
+    min-width: min(230px, 38dvw);
+    max-width: 38dvw;
+    min-height: 30px;
+    padding: 3px 7px;
+  }
+
+  .station-platformer-objective span,
+  .station-platformer-objective em {
+    display: none;
+  }
+
+  .interact-prompt {
+    max-width: min(280px, 42dvw);
+    padding: 5px 8px 5px 6px;
+  }
+
+  .station-storage-quick-button {
+    top: calc(var(--safe-top) + 38px);
+    min-width: 62px;
+    min-height: 31px;
+  }
+
+  .station-jump-button,
+  .station-interact-button {
+    min-width: 60px;
+    min-height: 44px;
   }
 }

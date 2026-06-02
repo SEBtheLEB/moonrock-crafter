@@ -1,11 +1,11 @@
-import { gameBalance } from '../data/gameBalance.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=153';
 
 const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
 const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);
-const HEIGHT = Math.round(PLAYER_GRID_SIZE * 2.86);
+const HEIGHT = Math.round(PLAYER_GRID_SIZE * 2.94);
 const COLLIDER_INSET_X = Math.max(2, Math.round(PLAYER_GRID_SIZE * 0.16));
 const COLLIDER_INSET_TOP = Math.max(1, Math.round(PLAYER_GRID_SIZE * 0.08));
-const COLLIDER_INSET_BOTTOM = Math.max(0, Math.round(PLAYER_GRID_SIZE * 0.02));
+const COLLIDER_INSET_BOTTOM = 0;
 const MAX_STEP_HEIGHT = Math.round(PLAYER_GRID_SIZE * 1.2);
 const GROUND_SNAP_DISTANCE = Math.round(PLAYER_GRID_SIZE * 1.05);
 const FOOT_PROBE_INSET = Math.max(1, Math.round(PLAYER_GRID_SIZE * 0.12));

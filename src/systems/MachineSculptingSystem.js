@@ -281,6 +281,21 @@ export function getMaterialBounds(grid = [], size = 16, itemId) {
   };
 }
 
+export function getChamberBounds(chamber = null) {
+  const cells = chamber?.cells || [];
+  if (!cells.length) return null;
+  const xs = cells.map((cell) => cell.x);
+  const ys = cells.map((cell) => cell.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+    width: Math.max(...xs) - Math.min(...xs) + 1,
+    height: Math.max(...ys) - Math.min(...ys) + 1,
+  };
+}
+
 export function validateRecipe(grid = [], recipe = {}, {
   getOwnedAmount = () => Infinity,
   getDisplayName = (id) => id,
@@ -319,9 +334,30 @@ export function validateRecipe(grid = [], recipe = {}, {
 
   const chambers = detectInternalChambers(grid, size);
   if (rules.requiresInternalChamber) {
-    const hasChamber = chambers.some((chamber) => chamber.cells.length >= (rules.minChamberCells || 2) && chamber.surroundedRatio >= (rules.minChamberSurroundedRatio || 0.24));
+    const minWidth = rules.minInteriorWidth || 1;
+    const minHeight = rules.minInteriorHeight || 1;
+    const hasChamber = chambers.some((chamber) => {
+      const bounds = getChamberBounds(chamber);
+      return Boolean(bounds)
+        && chamber.cells.length >= (rules.minChamberCells || 2)
+        && chamber.surroundedRatio >= (rules.minChamberSurroundedRatio || 0.24)
+        && bounds.width >= minWidth
+        && bounds.height >= minHeight;
+    });
     if (!hasChamber) ok = false;
-    messages.push({ ok: hasChamber, text: `${recipe.name || 'Machine'} needs an internal chamber.` });
+    messages.push({
+      ok: hasChamber,
+      text: minWidth > 1 || minHeight > 1
+        ? `${recipe.name || 'Machine'} needs a ${minWidth}x${minHeight} open chamber.`
+        : `${recipe.name || 'Machine'} needs an internal chamber.`,
+    });
+  }
+
+  if (rules.requiresSingleChamber) {
+    const meaningfulChambers = chambers.filter((chamber) => chamber.cells.length >= (rules.minChamberCells || 2));
+    const notSplit = meaningfulChambers.length === 1;
+    if (!notSplit) ok = false;
+    messages.push({ ok: notSplit, text: 'Interior space must stay connected.' });
   }
 
   if (rules.coreMustBeEmbedded) {

@@ -288,7 +288,7 @@ export const materials = [
     color: '#9fafbd',
     baseValue: 4,
     weight: 0.8,
-    description: 'A three-block-tall automatic facility door. Place it in a clear doorway with solid support above and below.',
+    description: 'A four-block-tall automatic facility door. Place it in a clear doorway with solid support above and below.',
     zoneAvailability: ['starter'],
     itemType: 'door',
     placeable: true,

@@ -1,4 +1,4 @@
-import { PlanetEnemy } from './PlanetEnemy.js?v=141';
+import { PlanetEnemy } from './PlanetEnemy.js?v=153';
 
 const TAU = Math.PI * 2;
 

@@ -1,7 +1,7 @@
 .upgrades-screen .ui-scene-layer {
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
-  gap: 6px;
+  gap: var(--ui-compact-gap);
 }
 
 .upgrade-top-bar {
@@ -549,7 +549,7 @@
   }
 
   .upgrade-top-bar {
-    max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 70px);
+    max-width: calc(100dvw - var(--safe-left) - var(--safe-right) - 70px);
     overflow: auto;
     padding-bottom: 4px;
   }
@@ -635,7 +635,7 @@
 .upgrade-workbench {
   grid-template-columns: 1fr;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
+  gap: var(--ui-compact-gap);
   min-height: 0;
 }
 
@@ -650,8 +650,8 @@
 }
 
 .upgrade-category-tab {
-  width: clamp(50px, 8.5vw, 64px);
-  height: clamp(42px, 8vh, 54px);
+  width: clamp(48px, 8.5vw, 64px);
+  height: min(var(--menu-icon-tile), 56px);
   display: grid;
   grid-template-rows: 1fr auto;
   place-items: center;
@@ -714,7 +714,7 @@
 }
 
 .upgrade-section-heading {
-  min-height: 40px;
+  min-height: min(var(--ui-control-height), 40px);
   padding: 6px 8px;
 }
 
@@ -751,8 +751,8 @@
 .upgrade-icon-grid,
 .research-icon-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(58px, 74px));
-  grid-auto-rows: minmax(58px, 74px);
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--menu-icon-tile) - 8px), var(--menu-icon-tile)));
+  grid-auto-rows: var(--menu-icon-tile);
   justify-content: start;
   align-content: start;
   gap: 8px;
@@ -1025,14 +1025,14 @@
 
   .upgrade-icon-grid,
   .research-icon-grid {
-    grid-template-columns: repeat(auto-fit, minmax(54px, 68px));
-    grid-auto-rows: minmax(54px, 68px);
+    grid-template-columns: repeat(auto-fit, minmax(calc(var(--menu-icon-tile) - 6px), var(--menu-icon-tile)));
+    grid-auto-rows: var(--menu-icon-tile);
     gap: 7px;
   }
 
   .upgrade-category-tab {
-    width: 50px;
-    height: 42px;
+    width: max(46px, calc(var(--menu-icon-tile) - 6px));
+    height: min(var(--menu-icon-tile), 44px);
   }
 
   .upgrade-category-tab strong {

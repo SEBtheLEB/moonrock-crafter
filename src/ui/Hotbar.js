@@ -1,4 +1,4 @@
-import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=141';
+import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=153';
 
 export class Hotbar {
   constructor(game, { className = '' } = {}) {
@@ -65,14 +65,12 @@ export class Hotbar {
       const itemName = slot.inventoryItemId
         ? this.game.systems.materials.getDisplayName(slot.inventoryItemId)
         : slot.label;
-      const tooltip = isEmpty
-        ? `Slot ${index + 1}: Empty`
-        : `${itemName} x${this.formatCount(amount)}`;
       button.className = `tool-hotbar-slot tone-${slot.tone || 'empty'} ${isEmpty ? 'is-empty' : ''}`.trim();
       button.setAttribute('aria-label', isEmpty ? `Empty slot ${index + 1}` : `Select slot ${index + 1}: ${slot.label}`);
-      button.title = tooltip;
-      if (isEmpty) button.removeAttribute('data-item-tooltip');
-      else button.dataset.itemTooltip = tooltip;
+      button.removeAttribute('title');
+      button.removeAttribute('data-item-tooltip');
+      if (selected && !isEmpty && itemName) button.dataset.selectedName = itemName;
+      else button.removeAttribute('data-selected-name');
       button.innerHTML = `
         <kbd>${index + 1}</kbd>
         <span class="tool-hotbar-icon" aria-hidden="true">${slot.iconHtml || slot.icon || '+'}</span>

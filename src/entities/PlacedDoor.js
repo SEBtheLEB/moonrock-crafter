@@ -1,4 +1,4 @@
-const DOOR_HEIGHT_TILES = 3;
+const DOOR_HEIGHT_TILES = 4;
 
 const round1 = (value) => Math.round(value * 10) / 10;
 
