@@ -686,6 +686,13 @@ export class TerrainGrid {
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
     this.lightingFieldCtx = null;
+    this.lightingOverlayCanvas = null;
+    this.lightingOverlayCtx = null;
+    this.lightingOverlayDirty = true;
+    this.lightingOverlayReady = false;
+    this.lightingOverlayFullDirty = true;
+    this.lightingDirtyBounds = null;
+    this.lightingOverlayRebuildAt = 0;
     this.extraLightSources = [];
     this.extraLightSignature = '';
     this.airExposureMap = null;
@@ -1514,8 +1521,18 @@ export class TerrainGrid {
     }
     this.damage[index] = 0;
     this.damagedCells.delete(index);
-    this.invalidateTerrainGeometry({ keepSurfacePath: true });
+    this.invalidateEditedTerrainGeometry({
+      keepSurfacePath: true,
+      previousMaterial: previousValue,
+      nextMaterial: nextValue,
+    });
     if (wallChanged) this.markAirExposureDirty({ defer: true });
+    if (this.getMaterialLight(previousValue) || this.getMaterialLight(nextValue) || wallChanged) {
+      this.markLightingOverlayDirty({
+        defer: true,
+        bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
+      });
+    }
     if ((previousValue > 0) !== (nextValue > 0)) this.invalidateSurfaceRadiusLookupNear(col, row);
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) {
@@ -1536,6 +1553,48 @@ export class TerrainGrid {
     }
   }
 
+  invalidateEditedTerrainGeometry({
+    keepSurfacePath = true,
+    previousMaterial = 0,
+    nextMaterial = 0,
+  } = {}) {
+    this.contourCache?.clear();
+    const touchedNaturalSurface = (
+      (previousMaterial > 0 && !this.isConstructedMaterial(previousMaterial))
+      || (nextMaterial > 0 && !this.isConstructedMaterial(nextMaterial))
+    );
+    if (touchedNaturalSurface) {
+      this.roughEdgeCache?.clear();
+      this.roughContourCache?.clear();
+    }
+    // Runtime collision uses local sampled contours. Leave the full debug contour cache alone during
+    // single-tile edits so mining/building does not force a planet-wide collision rebuild.
+    if (!keepSurfacePath) {
+      this.surfaceRadiusLookupCache?.clear();
+      this.markAirExposureDirty({ defer: true });
+      this.surfacePathCache = null;
+      this.collisionContours = null;
+    }
+  }
+
+  markLightingOverlayDirty({ defer = true, delayMs = 180, bounds = null, full = false } = {}) {
+    this.lightingOverlayDirty = true;
+    if (full || !bounds || !this.lightingOverlayReady) {
+      this.lightingOverlayFullDirty = true;
+      this.lightingDirtyBounds = null;
+    } else if (!this.lightingOverlayFullDirty) {
+      this.lightingDirtyBounds = this.mergeBounds(this.lightingDirtyBounds, bounds);
+    }
+    if (!defer || !this.lightingOverlayReady) {
+      this.lightingOverlayRebuildAt = 0;
+      return;
+    }
+    this.lightingOverlayRebuildAt = Math.max(
+      this.lightingOverlayRebuildAt || 0,
+      this.getClockNow() + Math.max(0, delayMs),
+    );
+  }
+
   getDamageRatio(col, row, materialOverride = null) {
     if (!this.isInside(col, row)) return 0;
     const material = materialOverride || this.getCell(col, row);
@@ -1552,11 +1611,11 @@ export class TerrainGrid {
 
   getLocalRedrawPaddingPixels(...materialIds) {
     const roughPadding = this.roughnessRenderEnabled ? this.cellSize * 5.5 : this.cellSize * 4;
-    const blurPadding = (Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0) * 3) + this.cellSize * 3;
-    const lightPadding = materialIds.reduce((max, materialId) => (
-      Math.max(max, this.getMaterialLightRadiusPixels(materialId))
-    ), 0) + Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0) * 2;
-    return Math.ceil(Math.max(roughPadding, blurPadding, lightPadding));
+    const texturePadding = this.cellSize * 3.5;
+    // Depth shadows and emissive lights now live in a separate cached overlay, so a terrain edit
+    // should only repaint the local material/edge artwork here. Keeping the old shadow blur padding
+    // made one mined or placed block redraw a huge region and caused the visible hitch.
+    return Math.ceil(Math.max(roughPadding, texturePadding));
   }
 
   getDirtyPaddingCellsForMaterialChange(previousMaterial = 0, nextMaterial = 0) {
@@ -1664,7 +1723,11 @@ export class TerrainGrid {
     if (this.wallCells[index] === nextValue) return false;
     this.wallCells[index] = nextValue;
     this.contourCache?.clear();
-    this.markAirExposureDirty({ defer: false });
+    this.markAirExposureDirty({ defer: true });
+    this.markLightingOverlayDirty({
+      defer: true,
+      bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
+    });
     this.renderDirty = true;
     if (this.renderCanvas && !this.fullRenderDirty) {
       this.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(nextValue, nextValue));
@@ -1724,6 +1787,7 @@ export class TerrainGrid {
     }
     this.contourCache?.clear();
     this.markAirExposureDirty({ defer: false });
+    this.markLightingOverlayDirty({ defer: false, full: true });
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -2364,6 +2428,7 @@ export class TerrainGrid {
 
   mineCircle(worldX, worldY, radius, power, delta, options = {}) {
     const broken = [];
+    let brokeEmissiveMaterial = false;
     const halfSize = this.cellSize * 0.5;
     const hasTarget = Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow);
     const startCol = clamp(Math.floor((worldX - radius - halfSize) / this.cellSize), 0, this.cols - 1);
@@ -2404,6 +2469,7 @@ export class TerrainGrid {
         this.damage[index] = 0;
         this.damagedCells.delete(index);
         this.cells[index] = 0;
+        if (this.getMaterialLight(material)) brokeEmissiveMaterial = true;
         broken.push({
           col,
           row,
@@ -2416,10 +2482,11 @@ export class TerrainGrid {
       }
     }
     if (broken.length) {
-      this.invalidateTerrainGeometry({ keepSurfacePath: true });
       let editBounds = null;
       let qualityPadding = 0;
+      let previousMaterial = 0;
       for (const cell of broken) {
+        previousMaterial = previousMaterial || cell.material;
         this.invalidateSurfaceRadiusLookupNear(cell.col, cell.row);
         editBounds = this.mergeBounds(editBounds, {
           minCol: cell.col,
@@ -2432,6 +2499,12 @@ export class TerrainGrid {
           this.markDirtyCell(cell.col, cell.row, this.getFastEditDirtyPaddingCells());
         }
       }
+      this.invalidateEditedTerrainGeometry({
+        keepSurfacePath: true,
+        previousMaterial,
+        nextMaterial: 0,
+      });
+      if (brokeEmissiveMaterial) this.markLightingOverlayDirty({ defer: true, bounds: editBounds });
       this.markFastTerrainEdit(editBounds, qualityPadding);
       this.renderDirty = true;
       if (!this.renderCanvas || this.fullRenderDirty) this.fullRenderDirty = true;
@@ -2672,8 +2745,7 @@ export class TerrainGrid {
       this.lightingRenderEnabled = nextLightingEnabled;
       this.lightingDebugEnabled = nextLightingDebugEnabled;
       this.depthDebugEnabled = nextDepthDebugEnabled;
-      this.renderDirty = true;
-      this.fullRenderDirty = true;
+      this.markLightingOverlayDirty({ defer: false });
     }
     this.flushDeferredTerrainQualityRedraw(now);
     if (!this.renderCanvas) {
@@ -2693,6 +2765,7 @@ export class TerrainGrid {
     if (sw <= 0 || sh <= 0) return;
     ctx.save();
     ctx.drawImage(this.renderCanvas, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
+    this.drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh });
     this.drawLiveDamageOverlays(ctx, camera, { sx, sy, sw, sh });
     ctx.restore();
   }
@@ -2730,11 +2803,11 @@ export class TerrainGrid {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds, { lightingBounds: paintBounds, fastRedraw });
+    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw });
     ctx.restore();
   }
 
-  drawTerrainLayers(ctx, bounds = null, { lightingBounds = bounds, fastRedraw = false } = {}) {
+  drawTerrainLayers(ctx, bounds = null, { fastRedraw = false } = {}) {
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds, { fastRedraw });
@@ -2742,7 +2815,62 @@ export class TerrainGrid {
     if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
     else this.drawEdgeContours(ctx, bounds);
     this.drawConstructedMaterials(ctx, bounds);
-    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.drawDepthLightingOverlay(ctx, lightingBounds, { fastRedraw });
+  }
+
+  drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh } = {}) {
+    if (!this.lightingRenderEnabled && !this.depthDebugEnabled) return;
+    const overlay = this.getLightingOverlayCanvas();
+    if (!overlay.width || !overlay.height) return;
+    if (this.lightingOverlayDirty) {
+      const rebuildDue = !this.lightingOverlayReady
+        || !this.lightingOverlayRebuildAt
+        || this.getClockNow() >= this.lightingOverlayRebuildAt;
+      if (rebuildDue) this.redrawLightingOverlayCache();
+    }
+    ctx.drawImage(overlay, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
+  }
+
+  redrawLightingOverlayCache() {
+    const overlay = this.getLightingOverlayCanvas();
+    const overlayCtx = this.lightingOverlayCtx;
+    const partialBounds = !this.lightingOverlayFullDirty && this.lightingDirtyBounds
+      ? this.expandCellBounds(this.lightingDirtyBounds, Math.ceil((this.getMaxMaterialLightRadius() + this.cellSize * 4) / Math.max(1, this.cellSize)))
+      : null;
+    if (partialBounds) {
+      const rect = this.getLightingDrawRect(partialBounds);
+      overlayCtx.clearRect(rect.x, rect.y, rect.width, rect.height);
+      if (this.lightingRenderEnabled || this.depthDebugEnabled) {
+        overlayCtx.save();
+        overlayCtx.beginPath();
+        overlayCtx.rect(rect.x, rect.y, rect.width, rect.height);
+        overlayCtx.clip();
+        this.drawDepthLightingOverlay(overlayCtx, partialBounds, { fastRedraw: true });
+        overlayCtx.restore();
+      }
+    } else {
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+      if (this.lightingRenderEnabled || this.depthDebugEnabled) {
+        this.drawDepthLightingOverlay(overlayCtx, null, { fastRedraw: false });
+      }
+    }
+    this.lightingOverlayDirty = false;
+    this.lightingOverlayReady = true;
+    this.lightingOverlayFullDirty = false;
+    this.lightingDirtyBounds = null;
+    this.lightingOverlayRebuildAt = 0;
+  }
+
+  getLightingOverlayCanvas() {
+    if (!this.lightingOverlayCanvas) {
+      this.lightingOverlayCanvas = document.createElement('canvas');
+      this.lightingOverlayCtx = this.lightingOverlayCanvas.getContext('2d');
+    }
+    if (this.lightingOverlayCanvas.width !== this.width || this.lightingOverlayCanvas.height !== this.height) {
+      this.lightingOverlayCanvas.width = this.width;
+      this.lightingOverlayCanvas.height = this.height;
+      this.markLightingOverlayDirty({ defer: false });
+    }
+    return this.lightingOverlayCanvas;
   }
 
   getLightingCanvas(width, height) {
@@ -2955,20 +3083,7 @@ export class TerrainGrid {
     const previousSources = this.extraLightSources || [];
     this.extraLightSources = normalized;
     this.extraLightSignature = signature;
-    this.renderDirty = true;
-    if (this.renderCanvas && !this.fullRenderDirty) {
-      const dirtyLights = this.mergeBounds(
-        this.getLightSourceCenterBounds(previousSources),
-        this.getLightSourceCenterBounds(normalized),
-      );
-      const previousRadius = previousSources.reduce((max, source) => Math.max(max, source.radius || 0), 0);
-      const nextRadius = normalized.reduce((max, source) => Math.max(max, source.radius || 0), 0);
-      const redrawPadding = Math.ceil((Math.max(previousRadius, nextRadius) + (TERRAIN_LIGHTING.darknessBlur || 0) * 2) / Math.max(1, this.cellSize)) + 2;
-      this.markDirtyBounds(dirtyLights, Math.max(1, redrawPadding));
-      this.markFastTerrainEdit(dirtyLights, Math.max(3, redrawPadding), 180);
-    } else {
-      this.fullRenderDirty = true;
-    }
+    if (previousSources.length || normalized.length) this.markLightingOverlayDirty({ defer: true, delayMs: 90 });
   }
 
   getMaxStaticMaterialLightRadius() {
@@ -3411,6 +3526,13 @@ export class TerrainGrid {
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
     this.lightingFieldCtx = null;
+    this.lightingOverlayCanvas = null;
+    this.lightingOverlayCtx = null;
+    this.lightingOverlayDirty = true;
+    this.lightingOverlayReady = false;
+    this.lightingOverlayFullDirty = true;
+    this.lightingDirtyBounds = null;
+    this.lightingOverlayRebuildAt = 0;
     this.airExposureMap = null;
     this.airExposureDirty = true;
     this.airExposureDirtyDeferred = false;
@@ -3430,6 +3552,7 @@ export class TerrainGrid {
     if (typeof document === 'undefined') return;
     if (!this.renderCanvas || this.renderDirty) this.redrawTerrainCache();
     this.ensureAirExposureMap();
+    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.redrawLightingOverlayCache();
   }
 
   drawBackgroundWalls(ctx, bounds = null) {
@@ -3671,12 +3794,6 @@ export class TerrainGrid {
   }
 
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
-    if (bounds && cacheKey) {
-      this.forEachContourLoopInBounds(predicate, bounds, cacheKey, options, (loop) => {
-        this.traceContourLoop(ctx, loop.points, options);
-      });
-      return;
-    }
     if (bounds) {
       this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
       return;
@@ -3684,15 +3801,6 @@ export class TerrainGrid {
     const loops = this.getContourLoops(predicate, cacheKey, options);
     for (const loop of loops) {
       this.traceContourLoop(ctx, loop.points, options);
-    }
-  }
-
-  forEachContourLoopInBounds(predicate, bounds, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS, callback = () => {}) {
-    const clipBounds = this.getContourClipBounds(bounds);
-    const loops = this.getContourLoops(predicate, cacheKey, options);
-    for (const loop of loops) {
-      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds)) continue;
-      callback(loop);
     }
   }
 
@@ -4554,11 +4662,10 @@ export class TerrainGrid {
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
     if (bounds) {
-      this.drawRoughContourChipCuts(ctx, bounds);
-      this.drawRoughContourShadows(ctx, bounds);
-      this.drawRoughSurfaceDetails(ctx, bounds);
-      if (!fastRedraw) this.drawRoughContourPebbleLips(ctx, bounds);
-      this.drawRoughContourLines(ctx, bounds);
+      const segments = this.getLocalRoughContourSegments(bounds);
+      this.drawLocalRoughContourShadows(ctx, segments);
+      if (!fastRedraw) this.drawRoughSurfaceDetails(ctx, bounds);
+      this.drawLocalRoughContourLines(ctx, segments);
       return;
     }
     this.drawRoughContourChipCuts(ctx, bounds);
@@ -5011,18 +5118,6 @@ export class TerrainGrid {
   }
 
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
-    if (bounds && cacheKey) {
-      const loops = [];
-      this.forEachContourLoopInBounds(predicate, bounds, cacheKey, options, (loop) => loops.push(loop));
-      ctx.strokeStyle = style;
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      for (const loop of loops) {
-        this.traceContourLoop(ctx, loop.points, options);
-      }
-      ctx.stroke();
-      return;
-    }
     if (bounds) {
       this.strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options);
       return;
