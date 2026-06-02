@@ -3038,7 +3038,21 @@ export class TerrainGrid {
     const padding = bounds
       ? Math.max(this.cellSize * 3, maxRadius, blurPadding)
       : Math.max(this.cellSize * 2, maxRadius, blurPadding);
-    return this.getDrawRect(bounds, padding);
+    return this.snapDrawRectToPixelGrid(this.getDrawRect(bounds, padding));
+  }
+
+  snapDrawRectToPixelGrid(rect) {
+    const grid = Math.max(4, Math.round(1 / Math.max(0.08, TERRAIN_LIGHTING.darknessFieldScale ?? 0.26)));
+    const x = clamp(Math.floor(rect.x / grid) * grid, 0, this.width);
+    const y = clamp(Math.floor(rect.y / grid) * grid, 0, this.height);
+    const right = clamp(Math.ceil((rect.x + rect.width) / grid) * grid, 0, this.width);
+    const bottom = clamp(Math.ceil((rect.y + rect.height) / grid) * grid, 0, this.height);
+    return {
+      x,
+      y,
+      width: Math.max(0, right - x),
+      height: Math.max(0, bottom - y),
+    };
   }
 
   collectExtraLightSources(rect) {
@@ -3115,17 +3129,14 @@ export class TerrainGrid {
     ctx.save();
     ctx.drawImage(canvas, rect.x, rect.y);
     ctx.restore();
-    if (sources.length && !fastRedraw) this.drawColoredLightGlows(ctx, rect, sources);
+    if (sources.length) this.drawColoredLightGlows(ctx, rect, sources);
     if (this.lightingDebugEnabled) this.drawLightingDebug(ctx, rect, sources);
   }
 
   drawDepthDarknessGrid(ctx, rect, isLocalUpdate = false, { fastRedraw = false } = {}) {
     const baseScale = TERRAIN_LIGHTING.darknessFieldScale ?? 0.26;
     const localScale = TERRAIN_LIGHTING.dirtyDarknessFieldScale ?? baseScale;
-    const fastScale = TERRAIN_LIGHTING.fastDirtyDarknessFieldScale ?? 0.16;
-    const scale = fastRedraw
-      ? clamp(Math.min(baseScale, fastScale), 0.1, 0.32)
-      : clamp(isLocalUpdate ? Math.max(baseScale, localScale) : baseScale, 0.12, 0.72);
+    const scale = clamp(isLocalUpdate ? Math.max(baseScale, localScale) : baseScale, 0.12, 0.72);
     const fieldWidth = Math.max(2, Math.ceil(rect.width * scale));
     const fieldHeight = Math.max(2, Math.ceil(rect.height * scale));
     const fieldCanvas = this.getLightingFieldCanvas(fieldWidth, fieldHeight);
@@ -3163,9 +3174,7 @@ export class TerrainGrid {
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    const blur = fastRedraw
-      ? Math.min(Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0), TERRAIN_LIGHTING.fastDirtyDarknessBlur ?? 6)
-      : Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0);
+    const blur = Math.max(0, TERRAIN_LIGHTING.darknessBlur ?? 0);
     if (blur > 0 && 'filter' in ctx) {
       ctx.filter = `blur(${blur}px)`;
       ctx.drawImage(fieldCanvas, -blur, -blur, ctx.canvas.width + blur * 2, ctx.canvas.height + blur * 2);
@@ -3662,6 +3671,12 @@ export class TerrainGrid {
   }
 
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
+    if (bounds && cacheKey) {
+      this.forEachContourLoopInBounds(predicate, bounds, cacheKey, options, (loop) => {
+        this.traceContourLoop(ctx, loop.points, options);
+      });
+      return;
+    }
     if (bounds) {
       this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
       return;
@@ -3669,6 +3684,15 @@ export class TerrainGrid {
     const loops = this.getContourLoops(predicate, cacheKey, options);
     for (const loop of loops) {
       this.traceContourLoop(ctx, loop.points, options);
+    }
+  }
+
+  forEachContourLoopInBounds(predicate, bounds, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS, callback = () => {}) {
+    const clipBounds = this.getContourClipBounds(bounds);
+    const loops = this.getContourLoops(predicate, cacheKey, options);
+    for (const loop of loops) {
+      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds)) continue;
+      callback(loop);
     }
   }
 
@@ -4530,10 +4554,11 @@ export class TerrainGrid {
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
     if (bounds) {
-      const segments = this.getLocalRoughContourSegments(bounds);
-      this.drawLocalRoughContourShadows(ctx, segments);
-      if (!fastRedraw) this.drawRoughSurfaceDetails(ctx, bounds);
-      this.drawLocalRoughContourLines(ctx, segments);
+      this.drawRoughContourChipCuts(ctx, bounds);
+      this.drawRoughContourShadows(ctx, bounds);
+      this.drawRoughSurfaceDetails(ctx, bounds);
+      if (!fastRedraw) this.drawRoughContourPebbleLips(ctx, bounds);
+      this.drawRoughContourLines(ctx, bounds);
       return;
     }
     this.drawRoughContourChipCuts(ctx, bounds);
@@ -4986,6 +5011,18 @@ export class TerrainGrid {
   }
 
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
+    if (bounds && cacheKey) {
+      const loops = [];
+      this.forEachContourLoopInBounds(predicate, bounds, cacheKey, options, (loop) => loops.push(loop));
+      ctx.strokeStyle = style;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      for (const loop of loops) {
+        this.traceContourLoop(ctx, loop.points, options);
+      }
+      ctx.stroke();
+      return;
+    }
     if (bounds) {
       this.strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options);
       return;
