@@ -1150,6 +1150,40 @@ html[data-input-mode="controller"] .tool-hotbar::before {
   transform: translate(-50%, 0) scale(1);
 }
 
+.floating-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483646;
+  max-width: min(260px, calc(100vw - 20px));
+  padding: 7px 10px;
+  border: 1px solid rgba(236, 231, 216, 0.2);
+  border-radius: 9px;
+  background: rgba(7, 13, 22, 0.96);
+  color: #fff2cf;
+  font: 850 11px/1.15 var(--font-ui);
+  letter-spacing: 0;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.44), 0 0 18px rgba(102, 216, 232, 0.12);
+  transform: translate3d(0, 4px, 0) scale(0.96);
+  transition: opacity 70ms ease, transform 70ms ease;
+}
+
+.floating-tooltip.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+[data-item-tooltip]::after {
+  content: none !important;
+  display: none !important;
+}
+
 .tool-hotbar-icon {
   display: grid;
   place-items: center;
@@ -1367,6 +1401,35 @@ html[data-input-mode="controller"] .tool-hotbar::before {
     5px 0 0 currentColor,
     10px 0 0 currentColor,
     15px 0 0 currentColor;
+}
+
+.icon-door::before {
+  left: 7px;
+  top: 3px;
+  width: 11px;
+  height: 19px;
+  border: 2px solid currentColor;
+  border-radius: 4px 4px 2px 2px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.icon-door::after {
+  left: 16px;
+  top: 12px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.icon-door i {
+  left: 9px;
+  top: 7px;
+  width: 7px;
+  height: 4px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.72;
 }
 
 .icon-flag::before {

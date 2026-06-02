@@ -14,6 +14,7 @@ export const gameBalance = {
     thinPlatform: 120,
     metalCaseWall: 100,
     metalCaseBackWall: 100,
+    metalDoor: 20,
   },
   miningFuelCost: 12,
   sellMultiplier: 1,
@@ -67,8 +68,10 @@ export const gameBalance = {
     godShipBoostPower: 3.15,
     depositCreditMultiplier: 0.55,
     mouseAimSnapRadius: 18,
-    ringSize: 20000,
-    miniMapMaxDistance: 100000,
+    ringSize: 36000,
+    miniMapMaxDistance: 180000,
+    planetMinSpacing: 10000,
+    planetApproachNoticeDistance: 4200,
     planetAtmosphereDepth: 5000,
     atmosphereSpaceObjectUnloadInset: 1000,
     atmosphereBackgroundFadeDistance: 1200,
@@ -89,11 +92,11 @@ export const gameBalance = {
     asteroidFragmentation: {
       childSpreadSpeed: 92,
       distanceTierWeights: [
-        { minDistance: 0, maxDistance: 20000, weights: { 0: 50, 1: 40, 2: 10, 3: 0 } },
-        { minDistance: 20000, maxDistance: 40000, weights: { 0: 34, 1: 42, 2: 21, 3: 3 } },
-        { minDistance: 40000, maxDistance: 60000, weights: { 0: 24, 1: 38, 2: 30, 3: 8 } },
-        { minDistance: 60000, maxDistance: 80000, weights: { 0: 16, 1: 34, 2: 34, 3: 16 } },
-        { minDistance: 80000, maxDistance: Infinity, weights: { 0: 10, 1: 28, 2: 38, 3: 24 } },
+        { minDistance: 0, maxDistance: 36000, weights: { 0: 50, 1: 40, 2: 10, 3: 0 } },
+        { minDistance: 36000, maxDistance: 72000, weights: { 0: 34, 1: 42, 2: 21, 3: 3 } },
+        { minDistance: 72000, maxDistance: 108000, weights: { 0: 24, 1: 38, 2: 30, 3: 8 } },
+        { minDistance: 108000, maxDistance: 144000, weights: { 0: 16, 1: 34, 2: 34, 3: 16 } },
+        { minDistance: 144000, maxDistance: Infinity, weights: { 0: 10, 1: 28, 2: 38, 3: 24 } },
       ],
       tiers: {
         0: { childMin: 0, childMax: 0 },
@@ -102,13 +105,13 @@ export const gameBalance = {
         3: { childMin: 2, childMax: 3 },
       },
     },
-    maxStarterReachHint: 20000,
+    maxStarterReachHint: 36000,
     asteroidDistanceBands: [
       {
         id: 'originBlue',
         label: 'Inner Circle',
         minDistance: 0,
-        maxDistance: 20000,
+        maxDistance: 36000,
         weights: {
           stone: 66,
           copperVein: 28,
@@ -118,8 +121,8 @@ export const gameBalance = {
       {
         id: 'cobaltRim',
         label: 'Inner Mid Circle',
-        minDistance: 20000,
-        maxDistance: 40000,
+        minDistance: 36000,
+        maxDistance: 72000,
         weights: {
           stone: 24,
           copperVein: 28,
@@ -131,8 +134,8 @@ export const gameBalance = {
       {
         id: 'emberShelf',
         label: 'Mid Circle',
-        minDistance: 40000,
-        maxDistance: 60000,
+        minDistance: 72000,
+        maxDistance: 108000,
         weights: {
           stone: 4,
           copperVein: 10,
@@ -147,8 +150,8 @@ export const gameBalance = {
       {
         id: 'violetReef',
         label: 'Outer Mid Circle',
-        minDistance: 60000,
-        maxDistance: 80000,
+        minDistance: 108000,
+        maxDistance: 144000,
         weights: {
           copperVein: 3,
           crystal: 10,
@@ -162,7 +165,7 @@ export const gameBalance = {
       {
         id: 'starlessDeep',
         label: 'Outer Circle',
-        minDistance: 80000,
+        minDistance: 144000,
         maxDistance: Infinity,
         weights: {
           crystal: 4,
@@ -256,13 +259,14 @@ export const gameBalance = {
       centerDepthBlend: 0.28,
       lightFalloffPower: 1.18,
       ambientSurfaceLight: 0.08,
+      materialVisibleGlowScale: 0.44,
       materialLights: {
-        crystal: { color: '#6de7ff', radius: 6.2, intensity: 0.62 },
-        coreFragment: { color: '#ffd36b', radius: 5.8, intensity: 0.55 },
-        fireCore: { color: '#ff7448', radius: 8.5, intensity: 0.92 },
-        crystallizedStone: { color: '#9ed7ff', radius: 4.8, intensity: 0.32 },
-        redCrystal: { color: '#ff5575', radius: 6.4, intensity: 0.68 },
-        moonCrystalOre: { color: '#a988ff', radius: 7.2, intensity: 0.72 },
+        crystal: { color: '#6de7ff', radius: 4.6, intensity: 0.34, glowScale: 0.42, sampleStride: 3 },
+        coreFragment: { color: '#ffd36b', radius: 4.2, intensity: 0.3, glowScale: 0.4, sampleStride: 3 },
+        fireCore: { color: '#ff7448', radius: 5.8, intensity: 0.54, glowScale: 0.5, sampleStride: 2 },
+        crystallizedStone: { color: '#9ed7ff', radius: 3.5, intensity: 0.18, glowScale: 0.34, sampleStride: 4 },
+        redCrystal: { color: '#ff5575', radius: 4.5, intensity: 0.36, glowScale: 0.4, sampleStride: 3 },
+        moonCrystalOre: { color: '#a988ff', radius: 4.8, intensity: 0.38, glowScale: 0.38, sampleStride: 3 },
       },
     },
     roughness: {
@@ -372,7 +376,7 @@ export const gameBalance = {
       targetFirstRunMinutes: [1, 2],
       targetFirstUpgradeMinutes: [5, 7],
       starterZone: 'originBlue',
-      previewZoneDistance: 20000,
+      previewZoneDistance: 36000,
     },
     objectives: [
       {
@@ -412,9 +416,9 @@ export const gameBalance = {
       },
       {
         id: 'reachCrystalRim',
-        label: 'Reach 20000m from origin',
+        label: 'Reach 36000m from origin',
         description: 'Push past the Inner Circle toward crystal-heavy space.',
-        condition: { type: 'distanceReached', amount: 20000 },
+        condition: { type: 'distanceReached', amount: 36000 },
         reward: { credits: 18 },
       },
       {
@@ -426,9 +430,9 @@ export const gameBalance = {
       },
       {
         id: 'reachEmberPreview',
-        label: 'Reach 40000m from origin',
+        label: 'Reach 72000m from origin',
         description: 'Reach the Ember Shelf and get home.',
-        condition: { type: 'distanceReached', amount: 40000 },
+        condition: { type: 'distanceReached', amount: 72000 },
         reward: { credits: 18 },
       },
       {
@@ -447,9 +451,9 @@ export const gameBalance = {
       },
       {
         id: 'reachFarPlanetSignal',
-        label: 'Reach 100000m from origin',
+        label: 'Reach 180000m from origin',
         description: 'Fly toward the faraway planet signal beyond the Outer Circle.',
-        condition: { type: 'distanceReached', amount: 100000 },
+        condition: { type: 'distanceReached', amount: 180000 },
         reward: { credits: 80, researchPoints: 2 },
       },
     ],
@@ -471,17 +475,17 @@ export const gameBalance = {
       id: 'originBlue',
       name: 'Inner Circle',
       minDistance: 0,
-      maxDistance: 20000,
+      maxDistance: 36000,
       difficulty: 1,
-      background: { inner: '#163458', middle: '#0a1d38', outer: '#030813' },
+      background: { inner: '#020713', middle: '#01030a', outer: '#000104' },
       particleColor: '#6f9fca',
       ambience: 'dust',
     },
     {
       id: 'cobaltRim',
       name: 'Inner Mid Circle',
-      minDistance: 20000,
-      maxDistance: 40000,
+      minDistance: 36000,
+      maxDistance: 72000,
       researchId: 'emberDrift',
       difficulty: 2,
       background: { inner: '#102d57', middle: '#082145', outer: '#050d22' },
@@ -491,8 +495,8 @@ export const gameBalance = {
     {
       id: 'emberShelf',
       name: 'Mid Circle',
-      minDistance: 40000,
-      maxDistance: 60000,
+      minDistance: 72000,
+      maxDistance: 108000,
       researchId: 'frostRing',
       difficulty: 3,
       background: { inner: '#3d1b16', middle: '#5b2d1a', outer: '#16080a' },
@@ -502,8 +506,8 @@ export const gameBalance = {
     {
       id: 'violetReef',
       name: 'Outer Mid Circle',
-      minDistance: 60000,
-      maxDistance: 80000,
+      minDistance: 108000,
+      maxDistance: 144000,
       researchId: 'voidReef',
       difficulty: 4,
       background: { inner: '#321a5d', middle: '#190b3a', outer: '#060416' },
@@ -513,7 +517,7 @@ export const gameBalance = {
     {
       id: 'starlessDeep',
       name: 'Outer Circle',
-      minDistance: 80000,
+      minDistance: 144000,
       maxDistance: Infinity,
       researchId: 'starGraveyard',
       difficulty: 5,

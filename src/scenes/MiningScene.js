@@ -1,31 +1,32 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=135';
-import { Ship } from '../entities/Ship.js?v=135';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=135';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=135';
-import { MineralPickup } from '../entities/MineralPickup.js?v=135';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=135';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=135';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=135';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=135';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=135';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=135';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=135';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=135';
-import { BaseLab } from '../entities/BaseLab.js?v=135';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=135';
-import { EnemySystem } from '../systems/EnemySystem.js?v=135';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=135';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=135';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=135';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=135';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=135';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=135';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=135';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=135';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=135';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=135';
+import { Hotbar } from '../ui/Hotbar.js?v=141';
+import { Ship } from '../entities/Ship.js?v=141';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=141';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=141';
+import { MineralPickup } from '../entities/MineralPickup.js?v=141';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=141';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=141';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=141';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=141';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=141';
+import { PlacedDoor } from '../entities/PlacedDoor.js?v=141';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=141';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=141';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=141';
+import { BaseLab } from '../entities/BaseLab.js?v=141';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=141';
+import { EnemySystem } from '../systems/EnemySystem.js?v=141';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=141';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=141';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=141';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=141';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=141';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=141';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=141';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=141';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=141';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=141';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -38,9 +39,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=135';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
+} from '../systems/MachineSculptingSystem.js?v=141';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -188,6 +189,14 @@ function lerpColor(from, to, amount) {
   return `rgb(${r}, ${g}, ${bl})`;
 }
 
+function colorWithAlpha(color, alpha) {
+  if (String(color).startsWith('rgb(')) {
+    return String(color).replace('rgb(', 'rgba(').replace(')', `, ${clamp01(alpha)})`);
+  }
+  const rgb = hexToRgb(color);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamp01(alpha)})`;
+}
+
 export class MiningScene {
   constructor(game, payload = {}) {
     this.game = game;
@@ -278,11 +287,15 @@ export class MiningScene {
     this.atmosphereIsland = null;
     this.atmosphereStrength = 0;
     this.atmosphereSurfaceDistance = Infinity;
+    this.atmosphereViewRotation = 0;
+    this.approachNoticeIslandId = '';
+    this.arrivalNoticeIslandId = '';
     this.backgroundAsteroids = [];
     this.backgroundAsteroidSourceId = '';
     this.backgroundAsteroidFadeTimer = 0;
     this.spaceSpawnWarmupTimer = 0;
     this.loadedIslandFocusId = '';
+    this.departedIslandDecorId = '';
     this.spaceObjectsSuspended = false;
     this.landingIsland = null;
     this.landingTargetPreview = null;
@@ -293,6 +306,7 @@ export class MiningScene {
     this.islandLandingAnchor = null;
     this.flagPlacementPreview = null;
     this.platformPlacementPreview = null;
+    this.doorPlacementPreview = null;
     this.platformDropTimer = 0;
     this.furnacePlacementPreview = null;
     this.placedFurnace = null;
@@ -389,6 +403,7 @@ export class MiningScene {
         placedFlags: this.game.systems.islands.getSavedFlags(island.id),
         placedTorches: this.game.systems.islands.getSavedTorches(island.id),
         placedPlatforms: this.game.systems.islands.getSavedPlatforms(island.id),
+        placedDoors: this.game.systems.islands.getSavedDoors(island.id),
         shipAnchor: this.game.systems.islands.getSavedShipAnchor(island.id),
       }, terrain);
     });
@@ -431,6 +446,7 @@ export class MiningScene {
     runtimeIsland.placedFlags = [];
     runtimeIsland.placedTorches = [];
     runtimeIsland.placedPlatforms = [];
+    runtimeIsland.placedDoors = [];
     runtimeIsland.terrain = this.game.systems.islands.createTerrain(islandData, this.createIslandWorld(islandData));
     if (islandData.id === this.getStoryState().starterPlanetId) this.ensureStarterBaseCamp(runtimeIsland);
     if (this.activeIsland?.id === runtimeIsland.id) {
@@ -463,12 +479,14 @@ export class MiningScene {
     }
 
     this.activeIsland = island;
+    this.departedIslandDecorId = '';
     this.landingIsland = island;
     this.gravityIsland = island;
     this.gravityFieldStrength = 1;
     this.atmosphereIsland = island;
     this.atmosphereStrength = 1;
     this.atmosphereSurfaceDistance = 0;
+    this.atmosphereViewRotation = 0;
     this.islandMode = 'onIsland';
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
@@ -2416,9 +2434,7 @@ export class MiningScene {
   }
 
   shouldShowAtmosphereBackgroundAsteroids() {
-    if (!this.atmosphereIsland) return false;
-    if (this.spaceObjectsSuspended || this.islandMode !== 'flight') return true;
-    return this.getAtmosphereInteriorBlend(this.atmosphereIsland) > 0.22;
+    return false;
   }
 
   updateLanding(delta = 0) {
@@ -2430,10 +2446,23 @@ export class MiningScene {
     let strongestAtmosphere = 0;
     let strongestAtmosphereDistanceSq = Infinity;
     let strongestSurfaceDistance = Infinity;
+    let approachingIsland = null;
+    let approachingSurfaceDistance = Infinity;
+    const approachNoticeDistance = gameBalance.mining?.planetApproachNoticeDistance || 4200;
     for (const island of this.rockIslands) {
       const distanceSq = island.distanceSqTo(this.ship);
       const atmosphereRadius = island.atmosphereRadius || island.gravityFieldRadius || island.radius || 0;
-      if (distanceSq > (atmosphereRadius + island.landingZoneRadius + 520) ** 2) continue;
+      if (distanceSq > (atmosphereRadius + island.landingZoneRadius + approachNoticeDistance + 520) ** 2) continue;
+      const surfaceDistance = island.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? Math.sqrt(distanceSq);
+      const atmosphereDepth = island.atmosphereDepth || gameBalance.mining.planetAtmosphereDepth || 5000;
+      if (
+        surfaceDistance > atmosphereDepth
+        && surfaceDistance <= atmosphereDepth + approachNoticeDistance
+        && surfaceDistance < approachingSurfaceDistance
+      ) {
+        approachingIsland = island;
+        approachingSurfaceDistance = surfaceDistance;
+      }
       const gravityStrength = island.getAtmosphereStrength?.(this.ship) ?? island.getGravityFieldStrength(this.ship);
       if (
         gravityStrength > 0
@@ -2445,7 +2474,7 @@ export class MiningScene {
         strongestAtmosphereIsland = island;
         strongestAtmosphere = gravityStrength;
         strongestAtmosphereDistanceSq = distanceSq;
-        strongestSurfaceDistance = island.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? Math.sqrt(distanceSq);
+        strongestSurfaceDistance = surfaceDistance;
       }
       if (island.isNearLandingZone(this.ship) && distanceSq < nearestDistanceSq) {
         nearest = island;
@@ -2462,6 +2491,17 @@ export class MiningScene {
       ? (nearest.getAtmosphereStrength?.(this.ship) ?? nearest.getGravityFieldStrength(this.ship))
       : 0;
     this.atmosphereStrength = Math.max(strongestAtmosphere, nearestAtmosphere);
+    if (
+      approachingIsland
+      && approachingIsland.id !== this.approachNoticeIslandId
+      && (!this.atmosphereIsland || this.atmosphereIsland.id !== approachingIsland.id || this.atmosphereStrength <= 0.02)
+    ) {
+      this.approachNoticeIslandId = approachingIsland.id;
+      const tag = approachingIsland.tag || approachingIsland.planetTag || this.game.systems.islands.getPlanetTag(approachingIsland.id) || 'P??';
+      this.game.ui.showToast(`Approaching ${tag}`, 'default', 1500);
+      this.game.audio.playGpsPing?.();
+    }
+    if (!approachingIsland && !this.atmosphereIsland) this.approachNoticeIslandId = '';
     if (previousAtmosphereIsland && !this.atmosphereIsland) {
       this.spaceSpawnWarmupTimer = Math.max(
         this.spaceSpawnWarmupTimer,
@@ -2476,6 +2516,23 @@ export class MiningScene {
     this.atmosphereSurfaceDistance = nearest
       ? Math.max(0, nearest.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
       : strongestSurfaceDistance;
+    if (this.atmosphereIsland && this.atmosphereIsland !== previousAtmosphereIsland) {
+      this.atmosphereViewRotation = this.atmosphereIsland === this.activeIsland ? this.getIslandViewRotation() : 0;
+    }
+    if (this.atmosphereIsland && this.atmosphereStrength > 0.02 && this.arrivalNoticeIslandId !== this.atmosphereIsland.id) {
+      this.arrivalNoticeIslandId = this.atmosphereIsland.id;
+      const tag = this.atmosphereIsland.tag
+        || this.atmosphereIsland.planetTag
+        || this.game.systems.islands.getPlanetTag(this.atmosphereIsland.id)
+        || 'P??';
+      this.game.ui.showToast(`Arrived at ${tag}`, 'success', 1700);
+      this.game.audio.playSceneTransition?.();
+    }
+    if (!this.atmosphereIsland || this.atmosphereStrength <= 0.01) {
+      this.arrivalNoticeIslandId = '';
+      this.atmosphereViewRotation = 0;
+      this.departedIslandDecorId = '';
+    }
     this.gravityIsland = this.atmosphereIsland;
     this.gravityFieldStrength = this.atmosphereStrength;
     const focusId = this.atmosphereIsland?.id || '';
@@ -2807,6 +2864,7 @@ export class MiningScene {
     const player = this.islandPlayer;
     if (!island || !player) return;
     const actions = this.game.input.actions;
+    this.updateIslandPlacedDoors(delta);
     if (actions.justPressed.crafting) this.tryOpenCraftingStation();
     const keyboardJump = actions.justPressed.up
       && (this.game.input.keys.has('w') || this.game.input.keys.has('W') || this.game.input.keys.has('ArrowUp'));
@@ -2826,12 +2884,14 @@ export class MiningScene {
     this.platformPlacementPreview = (this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected())
       ? this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() })
       : null;
+    this.doorPlacementPreview = this.isDoorToolSelected() ? this.getDoorPlacementPreview() : null;
     this.furnacePlacementPreview = this.isFurnaceToolSelected() ? this.getFurnacePlacementPreview() : null;
     this.craftingStationPlacementPreview = this.isCraftingStationToolSelected() ? this.getCraftingStationPlacementPreview() : null;
     this.researchStationPlacementPreview = this.isResearchStationToolSelected() ? this.getResearchStationPlacementPreview() : null;
     if (actions.justPressed.placeFlag) this.placeFlagOnIsland(this.flagPlacementPreview);
     if (actions.justPressed.placeTorch) this.placeTorchOnIsland(this.torchPlacementPreview);
     if (actions.justPressed.placePlatform || actions.justPressed.placePlatformLine) this.placePlatformOnIsland(this.platformPlacementPreview);
+    if (actions.justPressed.placeDoor) this.placeDoorOnIsland(this.doorPlacementPreview);
     if (actions.justPressed.placeFurnace) this.placeFurnaceOnIsland(this.furnacePlacementPreview);
     if (actions.justPressed.placeCraftingStation) this.placeCraftingStationOnIsland(this.craftingStationPlacementPreview);
     if (actions.justPressed.placeResearchStation) this.placeResearchStationOnIsland(this.researchStationPlacementPreview);
@@ -2980,6 +3040,11 @@ export class MiningScene {
       || this.game.input.getSelectedHotbarSlot?.()?.id === 'pp5';
   }
 
+  isDoorToolSelected() {
+    return this.heldItemState?.itemId === 'metalDoor'
+      || this.game.input.getSelectedHotbarSlot?.()?.id === 'door';
+  }
+
   isWeaponToolSelected() {
     return this.game.input.getSelectedHotbarSlot?.()?.id === 'weapon';
   }
@@ -3008,9 +3073,11 @@ export class MiningScene {
       || selectedId === 'torch'
       || selectedId === 'platform'
       || selectedId === 'pp5'
+      || selectedId === 'door'
       || selectedId === 'furnace'
       || selectedId === 'craftingStation'
       || selectedId === 'researchStation'
+      || this.isDoorToolSelected()
       || this.isBuildToolSelected();
   }
 
@@ -3026,7 +3093,7 @@ export class MiningScene {
     if (id === 'laserGun') return context === 'island' ? 150 : 170;
     if ((id === 'weapon' || action === 'attack') && context === 'island') return SWORD_COMBAT.slashRange;
     if (id === 'weapon' || id.includes('gun') || id.includes('blaster') || id.includes('drone') || action === 'shoot' || action === 'attack') return 150;
-    if (id === 'platform' || id === 'pp5' || action === 'placePlatform' || action === 'placePlatformLine') {
+    if (id === 'platform' || id === 'pp5' || id === 'door' || action === 'placePlatform' || action === 'placePlatformLine' || action === 'placeDoor') {
       return this.game.systems.building?.getBuildRange?.(this) || TERRAIN_MINER_RANGE;
     }
     if (action === 'build' || this.isBuildToolSelected()) return this.game.systems.building?.getBuildRange?.(this) || TERRAIN_MINER_RANGE;
@@ -3307,6 +3374,149 @@ export class MiningScene {
       rarity: 'common',
     });
     this.game.audio.playButtonClick?.();
+  }
+
+  getDoorPlacementPreview() {
+    const island = this.activeIsland;
+    const terrain = island?.terrain;
+    const player = this.islandPlayer;
+    const building = this.game.systems.building;
+    if (!island || !terrain || !player || !building) return null;
+    const aim = building.getAimState(this);
+    if (!aim) return null;
+    const target = building.getTargetTile(terrain, aim, 'door');
+    const placement = target
+      ? this.findDoorPlacementForTile(target.col, target.row, { inRange: aim.inRange })
+      : { ok: false, reason: 'No target tile' };
+    const topRow = placement.topRow ?? target?.row ?? 0;
+    const center = target && terrain.isInside(target.col, topRow + 1)
+      ? building.planetTileToWorld(target.col, topRow + 1, { terrain })
+      : aim.aimPoint;
+    return {
+      island,
+      terrain,
+      target: target ? { col: target.col, row: topRow } : null,
+      col: target?.col ?? 0,
+      topRow,
+      valid: Boolean(placement.ok),
+      reason: placement.reason || '',
+      itemId: 'metalDoor',
+      origin: aim.origin,
+      aimPoint: center,
+      rawAimPoint: aim.rawAimPoint,
+      end: center,
+      range: aim.range,
+      length: aim.length,
+      snapCursor: aim.snapped,
+    };
+  }
+
+  findDoorPlacementForTile(col, row, { inRange = true } = {}) {
+    const terrain = this.activeIsland?.terrain;
+    if (!terrain?.isInside?.(col, row)) return { ok: false, reason: 'Outside build grid' };
+    const candidates = [row - 2, row - 1, row, row - 3, row + 1];
+    let best = null;
+    for (const topRow of candidates) {
+      const validation = this.validateDoorPlacement(col, topRow, { inRange });
+      const score = validation.ok ? 0 : 1;
+      if (validation.ok) return { ...validation, topRow };
+      if (!best || score < best.score) best = { ...validation, topRow, score };
+    }
+    return best || { ok: false, reason: 'No doorway' };
+  }
+
+  validateDoorPlacement(col, topRow, { inRange = true, needsInventory = true } = {}) {
+    const island = this.activeIsland;
+    const terrain = island?.terrain;
+    if (!terrain) return { ok: false, reason: 'No terrain' };
+    const bottomRow = topRow + 2;
+    if (!terrain.isInside(col, topRow) || !terrain.isInside(col, bottomRow)) {
+      return { ok: false, reason: 'Door needs three clear tiles' };
+    }
+    if (!terrain.isInside(col, topRow - 1) || !terrain.isInside(col, bottomRow + 1)) {
+      return { ok: false, reason: 'Needs solid blocks above and below' };
+    }
+    if (!inRange) return { ok: false, reason: 'Too far' };
+    if (needsInventory && this.getAvailableItemAmount('metalDoor') <= 0) return { ok: false, reason: 'No metal doors' };
+    if (!terrain.isSolidCell(col, topRow - 1) || !terrain.isSolidCell(col, bottomRow + 1)) {
+      return { ok: false, reason: 'Needs solid blocks above and below' };
+    }
+    for (let row = topRow; row <= bottomRow; row += 1) {
+      if (terrain.isSolidCell(col, row)) return { ok: false, reason: 'Clear a three-tile doorway first' };
+      if (this.isPlatformAtTile(island, col, row)) return { ok: false, reason: 'Clear platforms first' };
+      if (this.isDoorAtTile(island, col, row)) return { ok: false, reason: 'Door already placed' };
+    }
+    if (this.doesDoorOverlapPlayer(col, topRow, terrain)) return { ok: false, reason: 'Too close to you' };
+    return { ok: true, reason: '' };
+  }
+
+  doesDoorOverlapPlayer(col, topRow, terrain = this.activeIsland?.terrain) {
+    const playerShape = this.getPlanetPlayerCollisionShape?.(this.islandPlayer, this.activeIsland);
+    if (!playerShape || !terrain) return false;
+    const size = terrain.cellSize || 25;
+    const padding = size * 0.08;
+    const left = col * size + padding;
+    const top = topRow * size + padding;
+    const right = (col + 1) * size - padding;
+    const bottom = (topRow + 3) * size - padding;
+    return this.orientedBoxIntersectsAabb(playerShape, left, top, right, bottom);
+  }
+
+  isDoorAtTile(island, col, row) {
+    return Boolean((island?.placedDoors || []).some((door) => door.containsTile?.(col, row)));
+  }
+
+  createDoorForTile(col, topRow) {
+    const terrain = this.activeIsland?.terrain;
+    const material = TERRAIN_MATERIALS[10] || {};
+    return new PlacedDoor({
+      col,
+      topRow,
+      tileSize: terrain?.cellSize || 25,
+      color: material.color || '#9fafbd',
+      edge: material.edge || '#26313d',
+      accent: '#76f3ff',
+    });
+  }
+
+  placeDoorOnIsland(preview = null) {
+    if (this.game.ui.modalLayer?.children.length) return;
+    const island = this.activeIsland;
+    if (!island || !this.islandPlayer || this.islandMode !== 'onIsland') return;
+    const target = preview || this.getDoorPlacementPreview();
+    if (!target?.valid) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast(target?.reason || 'Aim at a supported three-tile doorway', 'danger', 1300);
+      return;
+    }
+    const consumed = this.consumeHeldOrInventoryItem('metalDoor', 1);
+    if (!consumed.ok) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('No metal doors', 'danger', 1100);
+      return;
+    }
+    this.updateIslandPlayerFacingFromAim(target.rawAimPoint);
+    island.placedDoors ||= [];
+    const door = this.createDoorForTile(target.col, target.topRow);
+    island.placedDoors.push(door);
+    this.doorPlacementPreview = null;
+    this.game.systems.islands.saveDoors(island.id, island.placedDoors);
+    this.refreshHotbar(true);
+    this.updateQuickInventory(true);
+    const centerWorld = island.localToWorldRotated(door.x, door.y, this.getIslandViewRotation());
+    this.spawnBurst(centerWorld.x, centerWorld.y, '#76f3ff', 10, 85);
+    this.addFloatingText(centerWorld.x, centerWorld.y - 26, 'Door placed', { color: '#76f3ff', rarity: 'common' });
+    this.game.audio.playButtonClick?.();
+  }
+
+  updateIslandPlacedDoors(delta) {
+    const doors = this.activeIsland?.placedDoors || [];
+    if (!doors.length) return;
+    let changed = false;
+    doors.forEach((door) => {
+      changed = door.update(delta, this.islandPlayer) || changed;
+    });
+    if (changed) this.game.audio.playButtonHover?.();
   }
 
   isFurnaceToolSelected() {
@@ -4134,6 +4344,9 @@ export class MiningScene {
       case 'thinPlatform':
       case 'platformPlacerPp5':
         this.placePlatformOnIsland(this.platformPlacementPreview);
+        break;
+      case 'metalDoor':
+        this.placeDoorOnIsland(this.doorPlacementPreview);
         break;
       case 'starterFurnace':
         this.placeFurnaceOnIsland(this.furnacePlacementPreview);
@@ -5830,6 +6043,7 @@ export class MiningScene {
     const right = Math.max(...xs) + 1;
     const top = Math.min(...ys) - 1;
     const bottom = Math.max(...ys) + 1;
+    if (this.doesPlanetPlayerCollideWithClosedDoor(shape, island, left, top, right, bottom)) return true;
     if (terrain.intersectsCollisionShape) return terrain.intersectsCollisionShape(shape);
     if (terrain.forEachCollisionPolygonInAabb) {
       let hit = false;
@@ -5851,6 +6065,19 @@ export class MiningScene {
         const cellTop = row * size;
         if (this.orientedBoxIntersectsAabb(shape, cellLeft, cellTop, cellLeft + size, cellTop + size)) return true;
       }
+    }
+    return false;
+  }
+
+  doesPlanetPlayerCollideWithClosedDoor(shape, island, left, top, right, bottom) {
+    const doors = island?.placedDoors || [];
+    if (!doors.length) return false;
+    for (const door of doors) {
+      if (!door.isBlocking?.()) continue;
+      const aabb = door.getCollisionAabb?.();
+      if (!aabb) continue;
+      if (aabb.right < left || aabb.left > right || aabb.bottom < top || aabb.top > bottom) continue;
+      if (this.orientedBoxIntersectsAabb(shape, aabb.left, aabb.top, aabb.right, aabb.bottom)) return true;
     }
     return false;
   }
@@ -6177,10 +6404,12 @@ export class MiningScene {
       this.game.systems.islands.saveTerrain(this.activeIsland.id, this.activeIsland.terrain);
       this.islandTerrainDirty = false;
     }
-    const shipLocal = this.activeIsland.getShipParkLocal();
-    const target = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, this.getIslandViewRotation());
+    const departingIsland = this.activeIsland;
+    const preservedViewRotation = this.getIslandViewRotation();
+    const shipLocal = departingIsland.getShipParkLocal();
+    const target = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, preservedViewRotation);
     this.islandLandingAnchor = {
-      island: this.activeIsland,
+      island: departingIsland,
       local: { x: shipLocal.x, y: shipLocal.y },
       world: { x: target.x, y: target.y },
     };
@@ -6188,15 +6417,41 @@ export class MiningScene {
     this.ship.y = target.y;
     this.ship.vx = 0;
     this.ship.vy = 0;
-    this.ship.angle = normalizeAngle(this.activeIsland.landingAngle + this.getIslandViewRotation());
-    this.islandMode = 'boarding';
-    this.islandBoardingDuration = ISLAND_BOARDING_DURATION;
-    this.islandBoardingTimer = this.islandBoardingDuration;
-    this.islandBoardingStartRotation = this.islandViewRotation;
-    this.islandBoardingTargetRotation = 0;
-    this.islandRotationTarget = 0;
+    this.ship.angle = normalizeAngle(departingIsland.landingAngle + preservedViewRotation);
+    this.game.systems.islands.saveShipAnchor?.(departingIsland.id, {
+      landingAngle: departingIsland.landingAngle,
+      landingSurfaceLocal: departingIsland.landingSurfaceLocal,
+    }, { skipSave: true });
+    this.islandMode = 'flight';
+    this.islandPlayer = null;
+    this.islandFreefall = false;
+    this.islandGravityRecovery = false;
+    this.islandGravityRecoveryBlend = 0;
+    this.landingIsland = null;
+    this.landingTargetPreview = null;
+    this.enemySystem?.clear();
+    this.islandPickups.forEach((pickup) => this.releaseIslandPickup(pickup));
+    this.islandPickups.length = 0;
+    this.activeIsland = null;
+    this.atmosphereIsland = departingIsland;
+    this.atmosphereStrength = Math.max(0.98, clamp01(departingIsland.getAtmosphereStrength?.(this.ship) ?? 1));
+    this.atmosphereSurfaceDistance = Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0);
+    this.atmosphereViewRotation = preservedViewRotation;
+    this.departedIslandDecorId = departingIsland.id;
+    this.gravityIsland = departingIsland;
+    this.gravityFieldStrength = this.atmosphereStrength;
+    this.arrivalNoticeIslandId = departingIsland.id;
+    this.approachNoticeIslandId = departingIsland.id;
+    this.islandLandingTarget = null;
+    this.islandLandingAnchor = null;
     this.islandRotationSettling = false;
+    this.resumeSpaceObjectsAfterIsland();
     this.stopIslandTerrainLaser();
+    this.hud?.landingPrompt?.classList.add('is-hidden');
+    this.shipSmoke?.clear();
+    this.game.saveGame();
+    this.game.audio.playBoardShip?.();
+    this.game.ui.showToast('Ship controls online.', 'success', 1100);
   }
 
   handleShipInteract() {
@@ -6262,7 +6517,8 @@ export class MiningScene {
 
   suspendSpaceObjectsForIsland(island) {
     if (this.spaceObjectsSuspended) return;
-    this.backgroundAsteroids = this.createIslandBackgroundAsteroids(island);
+    this.backgroundAsteroids = [];
+    this.backgroundAsteroidSourceId = '';
     this.asteroids.forEach((asteroid) => this.releaseAsteroid(asteroid));
     this.asteroids.length = 0;
     this.pickups.forEach((pickup) => this.releasePickup(pickup));
@@ -6276,15 +6532,8 @@ export class MiningScene {
 
   resumeSpaceObjectsAfterIsland({ keepAtmosphereBackground = false } = {}) {
     if (!this.spaceObjectsSuspended) return;
-    if (keepAtmosphereBackground && this.atmosphereIsland) {
-      if (!this.backgroundAsteroids.length || this.backgroundAsteroidSourceId !== this.atmosphereIsland.id) {
-        this.backgroundAsteroids = this.createIslandBackgroundAsteroids(this.atmosphereIsland);
-      }
-      this.backgroundAsteroidSourceId = this.atmosphereIsland.id;
-    } else {
-      this.backgroundAsteroids = [];
-      this.backgroundAsteroidSourceId = '';
-    }
+    this.backgroundAsteroids = [];
+    this.backgroundAsteroidSourceId = '';
     this.spaceSpawnWarmupTimer = Math.max(
       this.spaceSpawnWarmupTimer,
       gameBalance.mining.spaceSpawnWarmupDuration || 1.4,
@@ -6338,6 +6587,12 @@ export class MiningScene {
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
     if (this.isPlatformToolSelected()) text = 'Platform - aim at open grid space and click Use';
     if (this.isPlatformPlacerToolSelected()) text = 'PP5 - click to place five thin platforms forward';
+    if (this.isDoorToolSelected()) {
+      text = 'Door - aim at a three-tile doorway with solid blocks above and below';
+      if (this.doorPlacementPreview && !this.doorPlacementPreview.valid && this.doorPlacementPreview.reason) {
+        text = `Door - ${this.doorPlacementPreview.reason}`;
+      }
+    }
     if (this.isCraftingStationToolSelected()) text = 'Crafting station - aim at ground and click Use';
     if (this.isResearchStationToolSelected()) text = 'Research station - aim at ground and click Use';
     if (this.isFurnaceToolSelected()) text = 'Furnace tool - aim at ground and click Use';
@@ -7242,6 +7497,10 @@ export class MiningScene {
         && island !== this.activeIsland
         && island !== this.gravityIsland
       ) continue;
+      const renderViewRotation = island === this.activeIsland
+        ? this.getIslandViewRotation()
+        : (island === this.atmosphereIsland ? this.atmosphereViewRotation : 0);
+      const drawLocalIslandDetails = island === this.activeIsland || island.id === this.departedIslandDecorId;
       island.draw(ctx, camera, {
         active: island === this.landingIsland,
         discovered: this.game.systems.navigation.isDiscovered(island.id),
@@ -7252,16 +7511,17 @@ export class MiningScene {
         drawShip: island === this.activeIsland && (this.islandMode === 'onIsland' || this.islandMode === 'boarding'),
         ship: this.ship,
         shipBroken: island === this.activeIsland && !this.getStoryState().thrustersRepaired,
-        viewRotation: island === this.activeIsland ? this.getIslandViewRotation() : 0,
+        viewRotation: renderViewRotation,
         anchorLocal: island === this.activeIsland && this.islandLandingAnchor?.island === island ? this.islandLandingAnchor.local : null,
         anchorWorld: island === this.activeIsland && this.islandLandingAnchor?.island === island ? this.islandLandingAnchor.world : null,
         placedFlags: island.placedFlags || [],
         placedTorches: island.placedTorches || [],
         placedPlatforms: island.placedPlatforms || [],
-        baseLab: island === this.activeIsland && this.baseLab?.id ? this.baseLab : null,
-        placedCraftingStations: island === this.activeIsland && this.placedCraftingStation ? [this.placedCraftingStation] : [],
-        placedResearchStations: island === this.activeIsland && this.placedResearchStation ? [this.placedResearchStation] : [],
-        placedFurnaces: island === this.activeIsland ? this.placedFurnaces : [],
+        placedDoors: island.placedDoors || [],
+        baseLab: drawLocalIslandDetails && this.baseLab?.id ? this.baseLab : null,
+        placedCraftingStations: drawLocalIslandDetails && this.placedCraftingStation ? [this.placedCraftingStation] : [],
+        placedResearchStations: drawLocalIslandDetails && this.placedResearchStation ? [this.placedResearchStation] : [],
+        placedFurnaces: drawLocalIslandDetails ? this.placedFurnaces : [],
         enemies: island === this.activeIsland ? this.enemySystem?.getDrawableEnemies() : [],
         materialPickups: island === this.activeIsland ? this.islandPickups : [],
         terrainDebug: this.game.state.debug?.terrain,
@@ -7476,8 +7736,14 @@ export class MiningScene {
     const phaseSeed = ((island.id || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % 100) / 100;
     const day = (Math.sin(this.time * 0.055 + phaseSeed * Math.PI * 2) + 1) * 0.5;
     const dusk = 1 - Math.abs(day - 0.5) * 2;
-    const alpha = Math.min(0.82, 0.12 + strength * 0.7);
-    const horizonY = height * (0.76 - strength * 0.18 + Math.sin(this.time * 0.025 + phaseSeed) * 0.025);
+    const atmosphereDepth = island.atmosphereDepth || gameBalance.mining.planetAtmosphereDepth || 5000;
+    const surfaceDistance = this.islandMode === 'flight'
+      ? Math.max(0, Math.min(atmosphereDepth, this.atmosphereSurfaceDistance || atmosphereDepth))
+      : 0;
+    const altitudeProgress = clamp01(surfaceDistance / Math.max(1, atmosphereDepth));
+    const altitudeCloseness = 1 - altitudeProgress;
+    const alpha = Math.min(0.42, 0.045 + strength * 0.32);
+    const horizonY = height * (1.08 - altitudeCloseness * 0.43 + Math.sin(this.time * 0.025 + phaseSeed) * 0.012);
     const topColor = lerpColor(palette.nightTop, palette.dayTop, day);
     const midColor = lerpColor(palette.nightMid, palette.dayMid, day);
     const horizonColor = lerpColor(palette.horizon, palette.sunset, dusk * 0.72);
@@ -7495,10 +7761,10 @@ export class MiningScene {
     ctx.globalAlpha = alpha;
     ctx.translate(width * 0.5, height * 0.5);
     ctx.rotate(horizonAngle);
-    const sky = ctx.createLinearGradient(0, -diagonal * 0.52, 0, diagonal * 0.52);
-    sky.addColorStop(0, topColor);
-    sky.addColorStop(0.56, midColor);
-    sky.addColorStop(1, horizonColor);
+    const sky = ctx.createLinearGradient(0, horizonLocalY - diagonal * 0.42, 0, horizonLocalY + diagonal * 0.22);
+    sky.addColorStop(0, colorWithAlpha(topColor, 0));
+    sky.addColorStop(0.48, colorWithAlpha(midColor, 0.14 + strength * 0.12));
+    sky.addColorStop(1, colorWithAlpha(horizonColor, 0.34 + strength * 0.24));
     ctx.fillStyle = sky;
     ctx.fillRect(-diagonal, -diagonal, diagonal * 2, diagonal * 2);
 
@@ -7510,23 +7776,23 @@ export class MiningScene {
       horizonLocalY + height * 0.08,
       width * (0.28 + strength * 0.42),
     );
-    glow.addColorStop(0, `${palette.haze}${Math.round((0.28 + strength * 0.22) * 255).toString(16).padStart(2, '0')}`);
+    glow.addColorStop(0, `${palette.haze}${Math.round((0.12 + strength * 0.18) * 255).toString(16).padStart(2, '0')}`);
     glow.addColorStop(1, `${palette.haze}00`);
     ctx.fillStyle = glow;
     ctx.fillRect(-diagonal, -diagonal, diagonal * 2, diagonal * 2);
 
-    ctx.globalAlpha = Math.min(0.9, 0.18 + strength * 0.58);
+    ctx.globalAlpha = Math.min(0.78, 0.08 + strength * 0.48);
     const horizon = ctx.createLinearGradient(0, horizonLocalY - 60, 0, horizonLocalY + 90);
     horizon.addColorStop(0, `${palette.haze}00`);
     horizon.addColorStop(0.52, `${palette.haze}88`);
     horizon.addColorStop(1, `${palette.ground}00`);
     ctx.fillStyle = horizon;
     ctx.fillRect(-diagonal, horizonLocalY - 80, diagonal * 2, 180);
-    ctx.strokeStyle = `${palette.haze}${Math.round((0.22 + strength * 0.46) * 255).toString(16).padStart(2, '0')}`;
-    ctx.lineWidth = 1.5 + strength * 2.4;
+    ctx.strokeStyle = `${palette.haze}${Math.round((0.18 + strength * 0.36) * 255).toString(16).padStart(2, '0')}`;
+    ctx.lineWidth = 1.2 + strength * 1.8;
     ctx.beginPath();
     ctx.moveTo(-diagonal * 0.58, horizonLocalY + Math.sin(this.time * 0.06) * 5);
-    ctx.quadraticCurveTo(0, horizonLocalY - 42 * strength, diagonal * 0.58, horizonLocalY + Math.cos(this.time * 0.05) * 6);
+    ctx.quadraticCurveTo(0, horizonLocalY - 28 * strength, diagonal * 0.58, horizonLocalY + Math.cos(this.time * 0.05) * 4);
     ctx.stroke();
     ctx.restore();
   }
@@ -7734,6 +8000,7 @@ export class MiningScene {
     const flagPlacementMode = this.isFlagToolSelected();
     const torchPlacementMode = this.isTorchToolSelected();
     const platformPlacementMode = this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected();
+    const doorPlacementMode = this.isDoorToolSelected();
     const furnacePlacementMode = this.isFurnaceToolSelected();
     const craftingStationPlacementMode = this.isCraftingStationToolSelected();
     const researchStationPlacementMode = this.isResearchStationToolSelected();
@@ -7741,6 +8008,7 @@ export class MiningScene {
     const placementMode = flagPlacementMode
       || torchPlacementMode
       || platformPlacementMode
+      || doorPlacementMode
       || furnacePlacementMode
       || craftingStationPlacementMode
       || researchStationPlacementMode
@@ -7754,13 +8022,15 @@ export class MiningScene {
             ? (this.torchPlacementPreview || this.getTorchPlacementPreview())
             : platformPlacementMode
               ? (this.platformPlacementPreview || this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() }))
-              : furnacePlacementMode
-                ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
-                : craftingStationPlacementMode
-                  ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
-                  : researchStationPlacementMode
-                    ? (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
-                    : (this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this))
+              : doorPlacementMode
+                ? (this.doorPlacementPreview || this.getDoorPlacementPreview())
+                : furnacePlacementMode
+                  ? (this.furnacePlacementPreview || this.getFurnacePlacementPreview())
+                  : craftingStationPlacementMode
+                    ? (this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview())
+                    : researchStationPlacementMode
+                      ? (this.researchStationPlacementPreview || this.getResearchStationPlacementPreview())
+                      : (this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this))
       )
       : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
@@ -7776,6 +8046,7 @@ export class MiningScene {
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
       if (platformPlacementMode) this.drawPlatformPlacementPreview(ctx, state);
+      if (doorPlacementMode) this.drawDoorPlacementPreview(ctx, state);
       if (furnacePlacementMode) this.drawFurnacePlacementPreview(ctx, state);
       if (craftingStationPlacementMode) this.drawCraftingStationPlacementPreview(ctx, state);
       if (researchStationPlacementMode) this.drawResearchStationPlacementPreview(ctx, state);
@@ -8037,7 +8308,9 @@ export class MiningScene {
     const target = this.islandMode === 'landing' ? this.islandLandingTarget : this.landingTargetPreview;
     if (!target?.island || !target.hit || this.islandMode === 'onIsland' || this.islandMode === 'boarding') return;
     const island = target.island;
-    const viewRotation = island === this.activeIsland ? this.getIslandViewRotation() : 0;
+    const viewRotation = island === this.activeIsland
+      ? this.getIslandViewRotation()
+      : (island === this.atmosphereIsland ? this.atmosphereViewRotation : 0);
     const anchor = island === this.activeIsland && this.islandLandingAnchor?.island === island
       ? this.islandLandingAnchor
       : null;
@@ -8172,6 +8445,31 @@ export class MiningScene {
       const tile = state.tiles[0];
       const rgb = tile.valid ? { r: 126, g: 231, b: 255 } : { r: 255, g: 117, b: 111 };
       this.game.systems.building?.drawSnapCursorFrame?.(ctx, terrain, tile.col, tile.row, rgb, tile.valid);
+    }
+    ctx.restore();
+  }
+
+  drawDoorPlacementPreview(ctx, state) {
+    if (!state || !this.activeIsland?.terrain) return;
+    const terrain = this.activeIsland.terrain;
+    ctx.save();
+    PlacedDoor.drawGhost(ctx, {
+      x: (state.col + 0.5) * (terrain.cellSize || 25),
+      y: (state.topRow + 1.5) * (terrain.cellSize || 25),
+      width: (terrain.cellSize || 25) * 0.78,
+      height: (terrain.cellSize || 25) * 3,
+      tileSize: terrain.cellSize || 25,
+      color: '#9fafbd',
+      edge: '#26313d',
+      accent: '#76f3ff',
+      time: this.time,
+      valid: state.valid,
+    });
+    const rgb = state.valid ? { r: 126, g: 231, b: 255 } : { r: 255, g: 117, b: 111 };
+    for (let row = state.topRow; row <= state.topRow + 2; row += 1) {
+      if (terrain.isInside(state.col, row)) {
+        this.game.systems.building?.drawSnapCursorFrame?.(ctx, terrain, state.col, row, rgb, state.valid);
+      }
     }
     ctx.restore();
   }
@@ -8321,8 +8619,10 @@ export class MiningScene {
     if (this.isPlatformToolSelected() || this.isPlatformPlacerToolSelected()) {
       return this.platformPlacementPreview || this.getPlatformPlacementPreview({ line: this.isPlatformPlacerToolSelected() });
     }
+    if (this.isDoorToolSelected()) return this.doorPlacementPreview || this.getDoorPlacementPreview();
     if (this.isFurnaceToolSelected()) return this.furnacePlacementPreview || this.getFurnacePlacementPreview();
     if (this.isCraftingStationToolSelected()) return this.craftingStationPlacementPreview || this.getCraftingStationPlacementPreview();
+    if (this.isResearchStationToolSelected()) return this.researchStationPlacementPreview || this.getResearchStationPlacementPreview();
     if (this.isBuildToolSelected()) return this.buildPlacementPreview || this.game.systems.building?.getPreview?.(this);
     return null;
   }

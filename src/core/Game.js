@@ -1,30 +1,30 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=135';
+import { InputManager } from './InputManager.js?v=141';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=135';
-import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=135';
+import { AudioManager } from './AudioManager.js?v=141';
+import { UIManager } from '../ui/UIManager.js?v=141';
+import { DebugPanel } from '../ui/DebugPanel.js?v=141';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=135';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=135';
-import { EconomySystem } from '../systems/EconomySystem.js?v=135';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=135';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=135';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=135';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=135';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=135';
-import { IslandSystem } from '../systems/IslandSystem.js?v=135';
-import { BuildingSystem } from '../systems/BuildingSystem.js?v=135';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=141';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=141';
+import { EconomySystem } from '../systems/EconomySystem.js?v=141';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=141';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=141';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=141';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=141';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=141';
+import { IslandSystem } from '../systems/IslandSystem.js?v=141';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=141';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=135';
-import { MiningScene } from '../scenes/MiningScene.js?v=135';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=135';
-import { StorageScene } from '../scenes/StorageScene.js?v=135';
-import { IslandScene } from '../scenes/IslandScene.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
-import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=135';
+import { StationScene } from '../scenes/StationScene.js?v=141';
+import { MiningScene } from '../scenes/MiningScene.js?v=141';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=141';
+import { StorageScene } from '../scenes/StorageScene.js?v=141';
+import { IslandScene } from '../scenes/IslandScene.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=141';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -135,6 +135,7 @@ export class Game {
         toolInventoryMigrated: true,
         starterTorchMigrated: true,
         starterPlatformMigrated: true,
+        starterDoorMigrated: true,
       },
       achievements: {},
       navigation: {
@@ -154,6 +155,7 @@ export class Game {
         visited: {},
         terrain: {},
         platforms: {},
+        doors: {},
         layout: null,
         layoutVersion: 0,
         seed: worldSeed,
@@ -304,6 +306,18 @@ export class Game {
       }
       merged.progression ||= {};
       merged.progression.starterPlatformMigrated = true;
+    }
+    if (!savedState.progression?.starterDoorMigrated) {
+      merged.inventory.metalDoor = Math.max(
+        merged.inventory.metalDoor || 0,
+        gameBalance.startingInventory.metalDoor || 20,
+      );
+      if (!merged.hotbar.includes('door')) {
+        const emptyIndex = merged.hotbar.findIndex((slot) => !slot);
+        if (emptyIndex >= 0) merged.hotbar[emptyIndex] = 'door';
+      }
+      merged.progression ||= {};
+      merged.progression.starterDoorMigrated = true;
     }
     if (!savedState.progression?.starterMetalCaseWallMigrated) {
       merged.inventory.metalCaseWall = Math.max(
@@ -826,6 +840,7 @@ export class Game {
       'placeFlag',
       'placeTorch',
       'placeFurnace',
+      'placeDoor',
       'placeCraftingStation',
       'placeResearchStation',
       'crafting',

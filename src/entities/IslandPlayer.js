@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=135';
+import { gameBalance } from '../data/gameBalance.js?v=141';
 
 const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
 const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);

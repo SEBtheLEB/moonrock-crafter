@@ -1,6 +1,6 @@
-import { materials } from '../data/materials.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
-import { getPointAabbDistance, getPointPolygonDistanceSq, getSegmentPolygonHit } from '../utils/raycast.js?v=135';
+import { materials } from '../data/materials.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
+import { getPointAabbDistance, getPointPolygonDistanceSq, getSegmentPolygonHit } from '../utils/raycast.js?v=141';
 
 const MATERIAL_COLORS = Object.fromEntries(materials.map((material) => [material.id, material.color]));
 

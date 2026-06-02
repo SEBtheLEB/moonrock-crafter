@@ -6,6 +6,7 @@ const STARTER_MATERIALS = {
   ironDust: 6,
   copperShards: 5,
   glassCrystal: 1,
+  metalDoor: 5,
 };
 
 export class DebugPanel {

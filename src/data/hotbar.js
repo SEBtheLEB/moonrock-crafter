@@ -276,12 +276,25 @@ export const hotbarSlotCatalog = [
     itemType: 'platform',
     placeable: true,
   },
+  {
+    id: 'door',
+    inventoryItemId: 'metalDoor',
+    label: 'Metal Door',
+    shortLabel: 'Door',
+    icon: 'D',
+    iconHtml: '<span class="tool-icon-shape icon-door"><i></i></span>',
+    action: 'placeDoor',
+    tone: 'metal',
+    description: 'Place a three-tile automatic door inside a supported doorway.',
+    itemType: 'door',
+    placeable: true,
+  },
 ];
 
 export const DEFAULT_HOTBAR_SLOT_IDS = [
   'miner',
   'weapon',
-  null,
+  'door',
   'flag',
   'craftingStation',
   'torch',

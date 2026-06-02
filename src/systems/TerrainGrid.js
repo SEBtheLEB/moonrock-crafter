@@ -1,5 +1,5 @@
-import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
+import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -2959,7 +2959,7 @@ export class TerrainGrid {
         if (!light) continue;
         const material = TERRAIN_MATERIALS[materialId];
         const sourceHash = hash2D(col, row, this.seed, materialId * 131);
-        const stride = materialId === 6 ? 1 : Math.max(1, Math.round(light.sampleStride || 2));
+        const stride = Math.max(1, Math.round(light.sampleStride || (materialId === 6 ? 1 : 2)));
         if (stride > 1 && ((col + row * 3 + materialId) % stride) !== 0 && sourceHash < 0.7) continue;
         sources.push({
           x: col * this.cellSize + this.cellSize * 0.5,
@@ -2971,6 +2971,7 @@ export class TerrainGrid {
           color: light.color || material.edge || '#ffffff',
           radius: Math.max(this.cellSize * 1.5, (light.radius || 5) * this.cellSize),
           intensity: clamp01((light.intensity ?? 0.65) * (0.86 + sourceHash * 0.18)),
+          glowScale: clamp01(light.glowScale ?? TERRAIN_LIGHTING.materialVisibleGlowScale ?? 0.44),
         });
         if (sources.length >= sourceLimit) return sources;
       }
@@ -3089,9 +3090,14 @@ export class TerrainGrid {
     for (const source of sources) {
       const rgb = hexToRgb(source.color);
       const radius = source.radius * 0.92;
+      const glowScale = source.dynamic
+        ? clamp01(source.glowScale ?? 1)
+        : clamp01(source.glowScale ?? TERRAIN_LIGHTING.materialVisibleGlowScale ?? 0.44);
+      const coreAlpha = (source.dynamic ? 0.2 : 0.11) * source.intensity * glowScale;
+      const midAlpha = (source.dynamic ? 0.075 : 0.032) * source.intensity * glowScale;
       const gradient = ctx.createRadialGradient(source.x, source.y, this.cellSize * 0.2, source.x, source.y, radius);
-      gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.2 * source.intensity})`);
-      gradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.075 * source.intensity})`);
+      gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${coreAlpha})`);
+      gradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${midAlpha})`);
       gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
       ctx.fillStyle = gradient;
       ctx.beginPath();
@@ -3920,14 +3926,14 @@ export class TerrainGrid {
     }
     const random = createRandom(hashString(`${this.seed}:${data.id}:ore-texture`));
     const base = mixHex(data.color, '#1b1e25', material >= 4 ? 0.08 : 0.18);
-    const glow = mixHex(data.edge, '#ffffff', material >= 4 ? 0.3 : 0.14);
+    const glow = mixHex(data.edge, '#ffffff', material >= 4 ? 0.16 : 0.1);
     ctx.fillStyle = withAlpha(base, material >= 4 ? 0.72 : 0.58);
     ctx.fillRect(0, 0, width, height);
     for (let i = 0; i < 42; i += 1) {
       const x = random() * width;
       const y = random() * height;
       const radius = 3 + random() * (material >= 4 ? 11 : 8);
-      ctx.fillStyle = withAlpha(random() > 0.4 ? glow : data.color, 0.12 + random() * 0.26);
+      ctx.fillStyle = withAlpha(random() > 0.4 ? glow : data.color, 0.08 + random() * 0.16);
       ctx.beginPath();
       if (material === 4 || material === 5 || material === 8 || material === 9) {
         ctx.moveTo(x, y - radius);
@@ -3941,7 +3947,7 @@ export class TerrainGrid {
       ctx.fill();
     }
     for (let i = 0; i < 18; i += 1) {
-      ctx.strokeStyle = withAlpha(glow, material >= 4 ? 0.22 : 0.12);
+      ctx.strokeStyle = withAlpha(glow, material >= 4 ? 0.12 : 0.08);
       ctx.lineWidth = 0.8 + random() * 1.4;
       const x = random() * width;
       const y = random() * height;
@@ -3981,8 +3987,8 @@ export class TerrainGrid {
     }
     ctx.globalCompositeOperation = 'source-atop';
     const glow = ctx.createRadialGradient(width * 0.45, height * 0.38, 4, width * 0.5, height * 0.5, width * 0.7);
-    glow.addColorStop(0, 'rgba(169, 136, 255, 0.22)');
-    glow.addColorStop(1, 'rgba(28, 31, 45, 0.08)');
+    glow.addColorStop(0, 'rgba(169, 136, 255, 0.1)');
+    glow.addColorStop(1, 'rgba(28, 31, 45, 0.035)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();

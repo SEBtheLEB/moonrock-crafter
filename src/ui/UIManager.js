@@ -2,6 +2,7 @@ import { Button } from './Button.js';
 import { Modal } from './Modal.js';
 import { Panel } from './Panel.js';
 import { Toast } from './Toast.js';
+import { TooltipManager } from './TooltipManager.js?v=141';
 
 export class UIManager {
   constructor(root, events, audio) {
@@ -20,6 +21,7 @@ export class UIManager {
     this.highlightTarget = null;
     this.game = null;
     this.dialogueMood = '';
+    this.tooltipManager = new TooltipManager();
 
     this.sceneLayer.className = 'ui-scene-layer';
     this.controlsLayer.className = 'ui-controls-layer';

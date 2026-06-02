@@ -1,8 +1,8 @@
-import { islands } from '../data/islands.js?v=135';
-import { TerrainGrid } from './TerrainGrid.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
+import { islands } from '../data/islands.js?v=141';
+import { TerrainGrid } from './TerrainGrid.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
 
-const ISLAND_LAYOUT_VERSION = 8;
+const ISLAND_LAYOUT_VERSION = 9;
 const PLANET_TAG_PREFIX = 'P';
 const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
 
@@ -105,6 +105,11 @@ export class IslandSystem {
     return Array.isArray(platforms) ? platforms : [];
   }
 
+  getSavedDoors(islandId) {
+    const doors = this.game.state.islands?.doors?.[islandId];
+    return Array.isArray(doors) ? doors : [];
+  }
+
   getSavedShipAnchor(islandId) {
     return this.game.state.islands?.shipAnchors?.[islandId] || null;
   }
@@ -133,6 +138,15 @@ export class IslandSystem {
     this.game.state.islands.platforms[islandId] = platforms
       .filter(Boolean)
       .map((platform) => (typeof platform.serialize === 'function' ? platform.serialize() : platform));
+    this.game.saveGame();
+  }
+
+  saveDoors(islandId, doors = []) {
+    this.game.state.islands ||= { visited: {} };
+    this.game.state.islands.doors ||= {};
+    this.game.state.islands.doors[islandId] = doors
+      .filter(Boolean)
+      .map((door) => (typeof door.serialize === 'function' ? door.serialize() : door));
     this.game.saveGame();
   }
 
@@ -178,6 +192,7 @@ export class IslandSystem {
     this.game.state.islands.flags = {};
     this.game.state.islands.torches = {};
     this.game.state.islands.platforms = {};
+    this.game.state.islands.doors = {};
     this.game.state.islands.shipAnchors = {};
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
@@ -228,6 +243,7 @@ export class IslandSystem {
     if (clearFlags && this.game.state.islands.flags) delete this.game.state.islands.flags[island.id];
     if (clearTorches && this.game.state.islands.torches) delete this.game.state.islands.torches[island.id];
     if (this.game.state.islands.platforms) delete this.game.state.islands.platforms[island.id];
+    if (this.game.state.islands.doors) delete this.game.state.islands.doors[island.id];
     if (this.game.state.islands.shipAnchors) delete this.game.state.islands.shipAnchors[island.id];
     if (this.game.state.base?.islandId === island.id) {
       this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
@@ -269,7 +285,7 @@ export class IslandSystem {
       circleName: this.getCircleName(0),
       atmosphereClass: 'stable',
       gravityStabilizerRequirement: 1,
-      worldPosition: this.positionInRing(random, 0, ringSize, 5200, Math.min(9800, ringSize - 7200), layout),
+      worldPosition: this.positionInRing(random, 0, ringSize, 7200, Math.min(13800, ringSize - 19000), layout),
       size: { width: 3400, height: 3400 },
       discovered: true,
       dangerLevel: 1,
@@ -291,7 +307,7 @@ export class IslandSystem {
       atmosphereClass: 'stable',
       gravityStabilizerRequirement: 1,
       size: { width: 2050, height: 2050 },
-      worldPosition: this.positionInRing(random, 0, ringSize, 5600, ringSize - 5200, layout),
+      worldPosition: this.positionInRing(random, 0, ringSize, 15500, ringSize - 14500, layout),
       landingZoneRadius: 560,
       discovered: true,
     });
@@ -322,7 +338,7 @@ export class IslandSystem {
         atmosphereClass: 'dense',
         gravityStabilizerRequirement: 2,
         objectiveRole: 'gravityStabilizerUpgrade',
-        worldPosition: this.positionInRing(random, 0, ringSize, 11200, Math.min(18200, ringSize - 1400), layout),
+        worldPosition: this.positionInRing(random, 0, ringSize, 23500, ringSize - 2400, layout),
         discovered: false,
         dangerLevel: 2,
         landingZoneRadius: 1100 + index * 80,
@@ -339,8 +355,8 @@ export class IslandSystem {
       for (let index = 0; index < count; index += 1) {
         const type = types[(ring * 3 + index) % types.length];
         const id = `spaceIsland-r${ring}-${index}-${type.type}`;
-        const min = ring === 0 ? 7600 : ring * ringSize + 5200;
-        const max = ring === 0 ? ringSize - 3600 : (ring + 1) * ringSize - 5200;
+        const min = ring === 0 ? 11800 : ring * ringSize + 7800;
+        const max = ring === 0 ? ringSize - 4200 : (ring + 1) * ringSize - 7800;
         layout.push({
           id,
           name: `${type.name} ${ring + 1}-${index + 1}`,
@@ -380,7 +396,7 @@ export class IslandSystem {
 
   positionInRing(random, ring, ringSize, minDistance, maxDistance, existing) {
     let best = null;
-    const targetClearance = Math.max(6800, ringSize * 0.34);
+    const targetClearance = Math.max(gameBalance.mining?.planetMinSpacing || 10000, ringSize * 0.28);
     for (let attempt = 0; attempt < 96; attempt += 1) {
       const angle = random() * Math.PI * 2;
       const distance = minDistance + random() * Math.max(1, maxDistance - minDistance);

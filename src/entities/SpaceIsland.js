@@ -1,7 +1,8 @@
-import { PlacedFlag } from './PlacedFlag.js?v=135';
-import { PlacedTorch } from './PlacedTorch.js?v=135';
-import { PlacedPlatform } from './PlacedPlatform.js?v=135';
-import { gameBalance } from '../data/gameBalance.js?v=135';
+import { PlacedFlag } from './PlacedFlag.js?v=141';
+import { PlacedTorch } from './PlacedTorch.js?v=141';
+import { PlacedPlatform } from './PlacedPlatform.js?v=141';
+import { PlacedDoor } from './PlacedDoor.js?v=141';
+import { gameBalance } from '../data/gameBalance.js?v=141';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothStep = (value) => {
@@ -46,6 +47,7 @@ export class SpaceIsland {
     this.placedFlags = (data.placedFlags || []).map((flag) => PlacedFlag.deserialize(flag));
     this.placedTorches = (data.placedTorches || []).map((torch) => PlacedTorch.deserialize(torch));
     this.placedPlatforms = (data.placedPlatforms || []).map((platform) => PlacedPlatform.deserialize(platform));
+    this.placedDoors = (data.placedDoors || []).map((door) => PlacedDoor.deserialize(door));
     this.world = {
       width: this.width,
       height: this.height,
@@ -285,6 +287,7 @@ export class SpaceIsland {
     placedFlags = this.placedFlags,
     placedTorches = this.placedTorches,
     placedPlatforms = this.placedPlatforms,
+    placedDoors = this.placedDoors,
     baseLab = null,
     placedCraftingStations = [],
     placedResearchStations = [],
@@ -328,6 +331,7 @@ export class SpaceIsland {
     (placedResearchStations || []).forEach((station) => station.draw(ctx, { time }));
     (placedFurnaces || []).forEach((furnace) => furnace.draw(ctx, { time }));
     (placedPlatforms || []).forEach((platform) => platform.draw(ctx, { time }));
+    (placedDoors || []).forEach((door) => door.draw(ctx, { time }));
     (placedFlags || []).forEach((flag) => flag.draw(ctx, { time }));
     torches.forEach((torch) => torch.draw?.(ctx, { time }));
     (materialPickups || []).forEach((pickup) => pickup.drawLocal?.(ctx));
