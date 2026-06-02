@@ -56,6 +56,7 @@ const EDGE_SEGMENTS = {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const STONE_MATERIAL_ID = 'stoneOre';
 
 function withAlpha(hex, alpha) {
   const normalized = hex.replace('#', '');
@@ -111,7 +112,7 @@ export class VoxelAsteroidBody {
     this.radius = radius;
     this.seed = seed;
     this.dropScale = dropScale;
-    this.cellSize = clamp(Math.round(radius / 2.85), 28, 58);
+    this.cellSize = clamp(Math.round(radius / 4.85), 26, 44);
     this.padding = this.cellSize * 3;
     this.size = Math.ceil((radius * 2 + this.padding * 2) / this.cellSize) * this.cellSize;
     this.cols = Math.ceil(this.size / this.cellSize);
@@ -130,20 +131,21 @@ export class VoxelAsteroidBody {
 
   createSlotDefs(data) {
     const drops = data.drops?.length ? data.drops : [{ materialId: 'stoneOre', chance: 1 }];
-    const baseDrop = drops[0];
-    const baseColor = MATERIAL_COLORS[baseDrop.materialId] || data.color;
+    const baseColor = mixHex(MATERIAL_COLORS[STONE_MATERIAL_ID] || '#a7adb4', data.color || '#777d86', 0.42);
     const hardnessBase = gameBalance.mining?.asteroidCellHardnessBase ?? 3.15;
     const requirementScale = gameBalance.mining?.asteroidCellHardnessRequirementScale ?? 1.25;
     const oreBonus = gameBalance.mining?.asteroidOreHardnessBonus ?? 0.72;
     const defs = [null, {
-      materialId: baseDrop.materialId,
-      color: data.color || baseColor,
-      edge: data.accent || baseColor,
+      materialId: STONE_MATERIAL_ID,
+      color: baseColor,
+      edge: mixHex(data.accent || baseColor, '#f0f7ff', 0.16),
       hardness: hardnessBase + (data.miningPowerRequired || 0) * requirementScale,
       yieldScale: 0.11 * this.dropScale,
     }];
 
-    drops.slice(1).forEach((drop) => {
+    drops
+      .filter((drop) => drop.materialId !== STONE_MATERIAL_ID)
+      .forEach((drop) => {
       const color = MATERIAL_COLORS[drop.materialId] || data.accent || data.color;
       defs.push({
         materialId: drop.materialId,
@@ -176,6 +178,7 @@ export class VoxelAsteroidBody {
     }
 
     this.paintOreBlobs(random);
+    this.keepOreBuried();
     this.initialSolidCount = this.countSolidCells();
     this.remainingSolidCount = this.initialSolidCount;
     this.renderDirty = true;
@@ -184,16 +187,30 @@ export class VoxelAsteroidBody {
   paintOreBlobs(random) {
     if (this.slotDefs.length <= 2) return;
     for (let slot = 2; slot < this.slotDefs.length; slot += 1) {
-      const blobCount = slot === 2 ? 1 + Math.floor(random() * 2) : 1;
+      const def = this.slotDefs[slot];
+      const materialChance = this.data.drops?.find((drop) => drop.materialId === def.materialId)?.chance ?? 0.35;
+      const radiusFactor = clamp(this.radius / 190, 0.8, 1.8);
+      const blobCount = Math.max(1, Math.round((1 + random() * 2 + materialChance * 1.4) * radiusFactor));
       for (let blob = 0; blob < blobCount; blob += 1) {
         const angle = random() * Math.PI * 2;
-        const distance = this.radius * (0.1 + random() * 0.46);
+        const distance = this.radius * (0.12 + random() * 0.45);
         const cx = Math.cos(angle) * distance;
         const cy = Math.sin(angle) * distance;
-        const rx = this.radius * (0.22 + random() * 0.18);
-        const ry = this.radius * (0.12 + random() * 0.1);
+        const rx = Math.max(this.cellSize * 1.2, this.radius * (0.08 + random() * 0.11));
+        const ry = Math.max(this.cellSize * 0.9, this.radius * (0.055 + random() * 0.08));
         const veinAngle = random() * Math.PI * 2;
         this.paintOreEllipse(cx, cy, rx, ry, veinAngle, slot);
+        if (random() < 0.55) {
+          const satelliteDistance = this.cellSize * (1.4 + random() * 1.5);
+          this.paintOreEllipse(
+            cx + Math.cos(veinAngle) * satelliteDistance,
+            cy + Math.sin(veinAngle) * satelliteDistance,
+            rx * (0.58 + random() * 0.22),
+            ry * (0.58 + random() * 0.2),
+            veinAngle + (random() - 0.5) * 0.7,
+            slot,
+          );
+        }
       }
     }
   }
@@ -203,7 +220,7 @@ export class VoxelAsteroidBody {
     const sin = Math.sin(angle);
     for (let row = 1; row < this.rows - 1; row += 1) {
       for (let col = 1; col < this.cols - 1; col += 1) {
-        if (!this.isSolidCell(col, row)) continue;
+        if (!this.isBuriedSolidCell(col, row, 1)) continue;
         const point = this.localCenterOfCell(col, row);
         const dx = point.x - cx;
         const dy = point.y - cy;
@@ -213,6 +230,29 @@ export class VoxelAsteroidBody {
         if ((localX / rx) ** 2 + (localY / ry) ** 2 <= 1 + wobble) this.setCell(col, row, slot);
       }
     }
+  }
+
+  isBuriedSolidCell(col, row, shell = 1) {
+    if (!this.isSolidCell(col, row)) return false;
+    for (let y = row - shell; y <= row + shell; y += 1) {
+      for (let x = col - shell; x <= col + shell; x += 1) {
+        if (!this.isInside(x, y) || !this.isSolidCell(x, y)) return false;
+      }
+    }
+    return true;
+  }
+
+  keepOreBuried() {
+    if (this.slotDefs.length <= 2) return;
+    const exposed = [];
+    for (let row = 1; row < this.rows - 1; row += 1) {
+      for (let col = 1; col < this.cols - 1; col += 1) {
+        const slot = this.getCell(col, row);
+        if (slot <= 1) continue;
+        if (!this.isBuriedSolidCell(col, row, 1)) exposed.push({ col, row });
+      }
+    }
+    exposed.forEach(({ col, row }) => this.setCell(col, row, 1));
   }
 
   index(col, row) {
@@ -483,10 +523,79 @@ export class VoxelAsteroidBody {
           materialId: slotDef.materialId,
           yieldScale: slotDef.yieldScale,
           color: slotDef.color,
+          chip: this.createChipDescriptor(col, row, slot),
         });
       }
     }
     return broken;
+  }
+
+  createChipDescriptor(col, row, slot) {
+    const def = this.slotDefs[slot] || this.slotDefs[1];
+    const hash = ((col * 19349663 + row * 83492791 + Math.floor(this.seed * 100000) + slot * 1013) >>> 0);
+    const n = (salt) => signedNoise(hash * 0.013 + salt) * 0.12;
+    const inset = 0.08;
+    const points = [
+      { x: -0.5 + inset + n(1), y: -0.48 + n(2) },
+      { x: -0.08 + n(3), y: -0.54 + n(4) },
+      { x: 0.5 - inset + n(5), y: -0.38 + n(6) },
+      { x: 0.48 + n(7), y: 0.08 + n(8) },
+      { x: 0.24 + n(9), y: 0.5 - inset + n(10) },
+      { x: -0.34 + n(11), y: 0.48 + n(12) },
+      { x: -0.52 + n(13), y: 0.14 + n(14) },
+    ];
+    return {
+      color: mixHex(def.color || '#777d86', '#0d1320', 0.08),
+      edge: def.edge || def.color || '#d7e4ff',
+      darkEdge: 'rgba(4, 9, 16, 0.78)',
+      size: Math.max(18, this.cellSize * 0.72),
+      lineWidth: Math.max(1.2, this.cellSize * 0.055),
+      points,
+      surfaceSegments: [
+        { a: points[0], b: points[1] },
+        { a: points[1], b: points[2] },
+        { a: points[4], b: points[5] },
+      ],
+    };
+  }
+
+  hasSeparatedMass({ minComponentCells = 4 } = {}) {
+    const visited = new Uint8Array(this.cells.length);
+    let largeComponents = 0;
+    const stack = [];
+
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const startIndex = this.index(col, row);
+        if (visited[startIndex] || this.cells[startIndex] <= 0) continue;
+        visited[startIndex] = 1;
+        stack.length = 0;
+        stack.push(startIndex);
+        let count = 0;
+        while (stack.length) {
+          const index = stack.pop();
+          count += 1;
+          const currentCol = index % this.cols;
+          const currentRow = Math.floor(index / this.cols);
+          const neighbors = [
+            { col: currentCol - 1, row: currentRow },
+            { col: currentCol + 1, row: currentRow },
+            { col: currentCol, row: currentRow - 1 },
+            { col: currentCol, row: currentRow + 1 },
+          ];
+          for (const neighbor of neighbors) {
+            if (!this.isInside(neighbor.col, neighbor.row)) continue;
+            const neighborIndex = this.index(neighbor.col, neighbor.row);
+            if (visited[neighborIndex] || this.cells[neighborIndex] <= 0) continue;
+            visited[neighborIndex] = 1;
+            stack.push(neighborIndex);
+          }
+        }
+        if (count >= minComponentCells) largeComponents += 1;
+        if (largeComponents >= 2) return true;
+      }
+    }
+    return false;
   }
 
   getMassRatio() {
@@ -715,8 +824,8 @@ export class VoxelAsteroidBody {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.strokeMarchingEdges(ctx, 'rgba(4, 9, 16, 0.7)', Math.max(3.2, this.cellSize * 0.32));
-    this.strokeMarchingEdges(ctx, withAlpha(this.data.accent || '#d7e4ff', 0.38), Math.max(1.2, this.cellSize * 0.14));
+    this.strokeRoughMarchingEdges(ctx, 'rgba(4, 9, 16, 0.76)', Math.max(3.1, this.cellSize * 0.24), 1);
+    this.strokeRoughMarchingEdges(ctx, withAlpha(this.data.accent || '#d7e4ff', 0.48), Math.max(1.2, this.cellSize * 0.095), 0.42);
     ctx.restore();
   }
 
@@ -765,6 +874,64 @@ export class VoxelAsteroidBody {
       }
     }
     ctx.stroke();
+  }
+
+  strokeRoughMarchingEdges(ctx, style, width, strengthScale = 1, predicate = (x, y) => this.isSolidCell(x, y)) {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    for (let row = 0; row < this.rows - 1; row += 1) {
+      for (let col = 0; col < this.cols - 1; col += 1) {
+        const marchingIndex = this.getMarchingIndex(col, row, predicate);
+        const segments = EDGE_SEGMENTS[marchingIndex];
+        if (!segments?.length) continue;
+        const x = col * this.cellSize;
+        const y = row * this.cellSize;
+        for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          const segment = segments[segmentIndex];
+          const a = POINTS[segment[0]];
+          const b = POINTS[segment[1]];
+          this.traceRoughSegment(
+            ctx,
+            x + a[0] * this.cellSize,
+            y + a[1] * this.cellSize,
+            x + b[0] * this.cellSize,
+            y + b[1] * this.cellSize,
+            col,
+            row,
+            marchingIndex * 17 + segmentIndex * 41,
+            strengthScale,
+          );
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
+  traceRoughSegment(ctx, ax, ay, bx, by, col, row, salt = 0, strengthScale = 1) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length;
+    const ny = dx / length;
+    const steps = Math.max(2, Math.round(length / Math.max(5, this.cellSize * 0.22)));
+    const strength = Math.min(this.cellSize * 0.13, 5.6) * strengthScale;
+    for (let index = 0; index <= steps; index += 1) {
+      const t = index / steps;
+      const endpointFade = Math.sin(Math.PI * t);
+      const chip = signedNoise(
+        col * 71.13
+        + row * 37.91
+        + this.seed * 103.7
+        + salt * 11.17
+        + index * 19.29,
+      ) * strength * endpointFade;
+      const along = signedNoise(col * 13.7 + row * 29.1 + salt + index * 5.11) * strength * 0.22 * endpointFade;
+      const x = ax + dx * t + nx * chip + (dx / length) * along;
+      const y = ay + dy * t + ny * chip + (dy / length) * along;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
   }
 
   getMarchingIndex(col, row, predicate) {

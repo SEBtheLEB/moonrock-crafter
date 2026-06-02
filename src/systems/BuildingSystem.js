@@ -264,7 +264,8 @@ export class BuildingSystem {
         ? this.getInitialSnapCursorTile(scene, scene.activeIsland?.terrain)
         : null;
       scene.buildSnapCursorStepCooldown = 0;
-      this.game.ui.showToast(scene.buildSnapCursorEnabled ? 'Grid cursor on' : 'Grid cursor off', 'default', 900);
+      const label = scene.isMinerToolSelected?.() ? 'Mining grid' : 'Grid cursor';
+      this.game.ui.showToast(scene.buildSnapCursorEnabled ? `${label} on` : `${label} off`, 'default', 900);
       this.game.audio.playButtonClick?.();
     }
   }
@@ -275,7 +276,7 @@ export class BuildingSystem {
     return 'foregroundBlock';
   }
 
-  getAimState(scene) {
+  getAimState(scene, { rangeOverride = null } = {}) {
     if (!scene?.activeIsland || !scene?.islandPlayer) return null;
     const terrain = scene.activeIsland.terrain;
     const rawAimPoint = scene.getIslandAimPoint();
@@ -286,7 +287,7 @@ export class BuildingSystem {
     const dx = rawAimPoint.x - origin.x;
     const dy = rawAimPoint.y - origin.y;
     const distance = Math.hypot(dx, dy) || 1;
-    const range = this.getBuildRange(scene);
+    const range = Number.isFinite(rangeOverride) ? Math.max(1, rangeOverride) : this.getBuildRange(scene);
     const length = Math.min(distance, range);
     const aimPoint = {
       x: origin.x + (dx / distance) * length,
@@ -689,14 +690,6 @@ export class BuildingSystem {
       color: '118, 243, 255',
       pulse: 0.7 + Math.sin(time * 5) * 0.08,
     });
-    if (preview.playerTile) {
-      this.drawGridPatch(ctx, terrain, preview.playerTile.col, preview.playerTile.row, {
-        radius: 4,
-        alpha: 0.12,
-        color: '255, 211, 107',
-        pulse: 0.55,
-      });
-    }
     ctx.restore();
   }
 
@@ -715,32 +708,61 @@ export class BuildingSystem {
     const y = minRow * size;
     const width = (maxCol - minCol + 1) * size;
     const height = (maxRow - minRow + 1) * size;
+    const centerX = centerCol * size + size * 0.5;
+    const centerY = centerRow * size + size * 0.5;
+    const maskRadius = Math.max(size * 1.8, (radius + 0.55) * size);
     const gradient = ctx.createRadialGradient(
-      centerCol * size + size * 0.5,
-      centerRow * size + size * 0.5,
+      centerX,
+      centerY,
       size * 0.6,
-      centerCol * size + size * 0.5,
-      centerRow * size + size * 0.5,
-      Math.max(width, height) * 0.62,
+      centerX,
+      centerY,
+      maskRadius,
     );
-    gradient.addColorStop(0, `rgba(${color}, ${alpha * pulse})`);
+    gradient.addColorStop(0, `rgba(${color}, ${alpha * 0.55 * pulse})`);
+    gradient.addColorStop(0.58, `rgba(${color}, ${alpha * 0.2 * pulse})`);
     gradient.addColorStop(1, `rgba(${color}, 0)`);
     ctx.fillStyle = gradient;
     ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+
+    const fadeAlphaAt = (px, py) => {
+      const distance = Math.hypot(px - centerX, py - centerY);
+      const fade = clamp01(1 - distance / maskRadius);
+      return fade * fade * (3 - fade * 2);
+    };
+    const strokeFadedLine = (x1, y1, x2, y2) => {
+      const length = Math.hypot(x2 - x1, y2 - y1);
+      const segments = Math.max(3, Math.ceil(length / Math.max(1, size * 0.55)));
+      for (let index = 0; index < segments; index += 1) {
+        const t0 = index / segments;
+        const t1 = (index + 1) / segments;
+        const mx = x1 + (x2 - x1) * ((t0 + t1) * 0.5);
+        const my = y1 + (y2 - y1) * ((t0 + t1) * 0.5);
+        const segmentAlpha = alpha * pulse * fadeAlphaAt(mx, my);
+        if (segmentAlpha <= 0.01) continue;
+        ctx.strokeStyle = `rgba(${color}, ${segmentAlpha})`;
+        ctx.beginPath();
+        ctx.moveTo(x1 + (x2 - x1) * t0, y1 + (y2 - y1) * t0);
+        ctx.lineTo(x1 + (x2 - x1) * t1, y1 + (y2 - y1) * t1);
+        ctx.stroke();
+      }
+    };
+
     ctx.lineWidth = Math.max(0.7, size * 0.035);
-    ctx.beginPath();
     for (let col = minCol; col <= maxCol + 1; col += 1) {
       const gx = col * size;
-      ctx.moveTo(gx, y);
-      ctx.lineTo(gx, y + height);
+      const dx = gx - centerX;
+      if (Math.abs(dx) > maskRadius) continue;
+      const span = Math.sqrt(Math.max(0, maskRadius * maskRadius - dx * dx));
+      strokeFadedLine(gx, Math.max(y, centerY - span), gx, Math.min(y + height, centerY + span));
     }
     for (let row = minRow; row <= maxRow + 1; row += 1) {
       const gy = row * size;
-      ctx.moveTo(x, gy);
-      ctx.lineTo(x + width, gy);
+      const dy = gy - centerY;
+      if (Math.abs(dy) > maskRadius) continue;
+      const span = Math.sqrt(Math.max(0, maskRadius * maskRadius - dy * dy));
+      strokeFadedLine(Math.max(x, centerX - span), gy, Math.min(x + width, centerX + span), gy);
     }
-    ctx.stroke();
   }
 
   drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, valid, buildable = null) {

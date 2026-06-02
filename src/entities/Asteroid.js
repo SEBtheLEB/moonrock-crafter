@@ -5,10 +5,10 @@ import { gameBalance } from '../data/gameBalance.js?v=158';
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 
 const FRAGMENT_VISUALS = {
-  0: { radius: 1.65, health: 0.46, drop: 0.62 },
-  1: { radius: 2.28, health: 0.76, drop: 0.82 },
-  2: { radius: 3, health: 1.18, drop: 1 },
-  3: { radius: 3.9, health: 1.72, drop: 1.18 },
+  0: { radius: 2.15, health: 0.52, drop: 0.68 },
+  1: { radius: 3.45, health: 0.9, drop: 0.88 },
+  2: { radius: 4.95, health: 1.34, drop: 1.06 },
+  3: { radius: 6.45, health: 1.9, drop: 1.24 },
 };
 
 export function estimateAsteroidRadius({ type = 'stone', seed = 0.5, fragmentTier = 1 } = {}) {
@@ -110,7 +110,7 @@ export class Asteroid {
   getSplitChipTarget() {
     if (!this.canSplitFromChipping()) return Infinity;
     const rarityWeight = this.data.rarity === 'common' ? 0 : this.data.rarity === 'uncommon' ? 1 : 2;
-    return Math.max(5, Math.min(12, Math.round(this.body.initialSolidCount * 0.18) + rarityWeight));
+    return Math.max(5, Math.min(18, Math.round(this.body.initialSolidCount * 0.12) + rarityWeight));
   }
 
   canSplitFromChipping() {
@@ -120,9 +120,13 @@ export class Asteroid {
   }
 
   shouldSplitFromChipping() {
+    const minSplitChips = Math.max(3, Math.round(this.splitChipTarget * 0.55));
     return this.canSplitFromChipping()
-      && this.chippedCells >= this.splitChipTarget
-      && this.body.remainingSolidCount > Math.max(4, this.body.initialSolidCount * 0.34);
+      && this.chippedCells >= minSplitChips
+      && this.body.remainingSolidCount > Math.max(8, this.body.initialSolidCount * 0.34)
+      && this.body.hasSeparatedMass({
+        minComponentCells: Math.max(4, Math.round(this.body.initialSolidCount * 0.08)),
+      });
   }
 
   getSplitChildCount() {

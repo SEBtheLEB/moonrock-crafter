@@ -2300,10 +2300,12 @@ export class MiningScene {
         x: cell.x,
         y: cell.y,
         color: cell.color || asteroid.data.accent,
+        chip: cell.chip || null,
       };
       entry.count += 1;
       entry.x = (entry.x + cell.x) * 0.5;
       entry.y = (entry.y + cell.y) * 0.5;
+      if (!entry.chip && cell.chip) entry.chip = cell.chip;
       grouped.set(cell.materialId, entry);
     });
 
@@ -2325,6 +2327,7 @@ export class MiningScene {
         y: entry.y + Math.sin(index * 2.1) * 8,
         seed: Math.random(),
         material,
+        chip: entry.chip,
       }));
       index += 1;
     }
@@ -7897,14 +7900,37 @@ export class MiningScene {
 
   getIslandTerrainPreview({ updateFacing = false } = {}) {
     if (!this.activeIsland || !this.islandPlayer) return null;
-    const laser = this.getIslandTerrainLaserState(this.getIslandAimPoint(), { updateFacing });
+    const snapAim = this.getMinerSnapAimState();
+    const laser = this.getIslandTerrainLaserState(snapAim?.aimPoint || this.getIslandAimPoint(), { updateFacing });
     const hit = laser.length > 8
       ? this.activeIsland.terrain.raycast(laser.start.x, laser.start.y, laser.end.x, laser.end.y)
       : null;
+    const target = hit
+      ? { col: hit.col, row: hit.row }
+      : (snapAim?.target || null);
     return {
       ...laser,
+      terrain: this.activeIsland.terrain,
       hit,
       end: hit ? { x: hit.x, y: hit.y } : laser.end,
+      target,
+      center: target ? this.game.systems.building?.planetTileToWorld?.(target.col, target.row, { terrain: this.activeIsland.terrain }) : null,
+      valid: hit ? this.canMineTerrainMaterial(hit.material) : false,
+      snapCursor: Boolean(snapAim?.snapped),
+    };
+  }
+
+  getMinerSnapAimState() {
+    if (!this.buildSnapCursorEnabled || !this.isMinerToolSelected() || !this.activeIsland?.terrain || !this.islandPlayer) return null;
+    const building = this.game.systems.building;
+    const aim = building?.getAimState?.(this, { rangeOverride: TERRAIN_MINER_RANGE });
+    if (!aim?.snapped) return null;
+    const terrain = this.activeIsland.terrain;
+    const target = building.worldToPlanetTile(aim.aimPoint.x, aim.aimPoint.y, { terrain });
+    if (!terrain.isInside(target.col, target.row)) return null;
+    return {
+      ...aim,
+      target,
     };
   }
 
@@ -8820,7 +8846,8 @@ export class MiningScene {
       || researchStationPlacementMode
       || buildPlacementMode;
     const terrainToolMode = this.isMinerToolSelected() || placementMode || Boolean(this.islandMiningBeam);
-    const gridCursorMode = Boolean(this.buildSnapCursorEnabled && buildPlacementMode);
+    const minerSnapGridMode = Boolean(this.buildSnapCursorEnabled && this.isMinerToolSelected());
+    const gridCursorMode = Boolean(this.buildSnapCursorEnabled && (buildPlacementMode || this.isMinerToolSelected()));
     const state = placementMode
       ? (
         flagPlacementMode
@@ -8851,7 +8878,10 @@ export class MiningScene {
           time: this.time,
         });
       }
-      if (!this.islandMiningBeam && !buildPlacementMode) this.drawIslandTerrainTargetGlow(ctx, state);
+      if (minerSnapGridMode && state?.snapCursor) this.drawMinerSnapCursorPreview(ctx, state);
+      if (!this.islandMiningBeam && !buildPlacementMode && !(minerSnapGridMode && state?.snapCursor)) {
+        this.drawIslandTerrainTargetGlow(ctx, state);
+      }
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
       if (platformPlacementMode) this.drawPlatformPlacementPreview(ctx, state);
@@ -9167,6 +9197,17 @@ export class MiningScene {
     });
   }
 
+  drawMinerSnapCursorPreview(ctx, state) {
+    const terrain = this.activeIsland?.terrain;
+    const target = state?.target || (state?.hit ? { col: state.hit.col, row: state.hit.row } : null);
+    const building = this.game.systems.building;
+    if (!terrain || !target || !building) return;
+    const canMine = state.hit ? this.canMineTerrainMaterial(state.hit.material) : false;
+    const rgb = canMine ? { r: 118, g: 243, b: 255 } : { r: 255, g: 117, b: 111 };
+    building.drawSnapCursorGrid?.(ctx, { terrain, target, snapCursor: true }, this.time);
+    building.drawSnapCursorFrame?.(ctx, terrain, target.col, target.row, rgb, canMine);
+  }
+
   drawFlagPlacementPreview(ctx, state) {
     if (!state?.hit || !this.activeIsland?.terrain) return;
     const viewRotation = this.getIslandViewRotation();
@@ -9417,7 +9458,7 @@ export class MiningScene {
   }
 
   isControllerAimIndicatorActive() {
-    if (this.buildSnapCursorEnabled && this.isBuildToolSelected()) return false;
+    if (this.buildSnapCursorEnabled && (this.isBuildToolSelected() || this.isMinerToolSelected())) return false;
     if (!this.isControllerPromptMode()) return false;
     if (this.islandMode === 'onIsland') return Boolean(this.getControllerIslandAimVector());
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
