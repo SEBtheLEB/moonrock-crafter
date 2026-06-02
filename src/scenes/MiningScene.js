@@ -1,32 +1,32 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=157';
-import { Ship } from '../entities/Ship.js?v=157';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=157';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=157';
-import { MineralPickup } from '../entities/MineralPickup.js?v=157';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=157';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=157';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=157';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=157';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=157';
-import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=157';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=157';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=157';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=157';
-import { BaseLab } from '../entities/BaseLab.js?v=157';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=157';
-import { EnemySystem } from '../systems/EnemySystem.js?v=157';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=157';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=157';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=157';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=157';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=157';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=157';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=157';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=157';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=157';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=157';
+import { Hotbar } from '../ui/Hotbar.js?v=158';
+import { Ship } from '../entities/Ship.js?v=158';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=158';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=158';
+import { MineralPickup } from '../entities/MineralPickup.js?v=158';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=158';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=158';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=158';
+import { PlacedTorch, getTorchRotationForSupport } from '../entities/PlacedTorch.js?v=158';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=158';
+import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=158';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=158';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=158';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=158';
+import { BaseLab } from '../entities/BaseLab.js?v=158';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=158';
+import { EnemySystem } from '../systems/EnemySystem.js?v=158';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=158';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=158';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=158';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=158';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=158';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=158';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=158';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=158';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=158';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=158';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -41,9 +41,9 @@ import {
   isCoreMountedOnMaterial,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=157';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=157';
-import { gameBalance } from '../data/gameBalance.js?v=157';
+} from '../systems/MachineSculptingSystem.js?v=158';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=158';
+import { gameBalance } from '../data/gameBalance.js?v=158';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -60,6 +60,12 @@ const TERRAIN_MINER_RANGE = 132;
 const TERRAIN_MINING_BRUSH_RADIUS = gameBalance.terrain?.miningBrushRadius || 22;
 const PLATFORM_PLACE_COUNT = 5;
 const PLATFORM_DROP_THROUGH_TIME = 0.28;
+const TORCH_SUPPORT_SIDES = [
+  { side: 'top', colOffset: 0, rowOffset: -1, normal: { x: 0, y: -1 } },
+  { side: 'right', colOffset: 1, rowOffset: 0, normal: { x: 1, y: 0 } },
+  { side: 'bottom', colOffset: 0, rowOffset: 1, normal: { x: 0, y: 1 } },
+  { side: 'left', colOffset: -1, rowOffset: 0, normal: { x: -1, y: 0 } },
+];
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
@@ -2945,6 +2951,7 @@ export class MiningScene {
     if (!island || !player) return;
     const actions = this.game.input.actions;
     this.updateIslandPlacedDoors(delta);
+    this.updateUnsupportedTorchCleanup(delta);
     if (actions.justPressed.crafting) this.tryOpenCraftingStation();
     const keyboardJump = actions.justPressed.up
       && (this.game.input.keys.has('w') || this.game.input.keys.has('W') || this.game.input.keys.has('ArrowUp'));
@@ -3255,11 +3262,133 @@ export class MiningScene {
   getTorchPlacementPreview() {
     if (!this.activeIsland || !this.islandPlayer) return null;
     const preview = this.getIslandTerrainPreview({ updateFacing: false });
-    if (!preview?.hit) return preview ? { ...preview, canPlace: false } : null;
+    if (!preview?.hit) return preview ? { ...preview, valid: false, canPlace: false, reason: 'Aim at solid tile' } : null;
+    const support = this.getTorchSupportFromHit(preview.hit);
+    const hasTorch = support
+      ? this.isTorchAtSupport(this.activeIsland, support.supportCol, support.supportRow, support.supportSide)
+      : false;
+    const canPlace = this.getAvailableItemAmount('torch') > 0;
     return {
       ...preview,
-      canPlace: this.getAvailableItemAmount('torch') > 0,
+      ...(support || {}),
+      valid: Boolean(support && canPlace && !hasTorch),
+      canPlace,
+      reason: !support
+        ? 'Needs exposed solid support'
+        : hasTorch
+          ? 'Torch already placed here'
+          : canPlace
+            ? ''
+            : 'No torches in inventory',
     };
+  }
+
+  getTorchSupportFromHit(hit) {
+    const terrain = this.activeIsland?.terrain;
+    if (!terrain || !hit || !terrain.isSolidCell(hit.col, hit.row)) return null;
+    const size = terrain.cellSize || 25;
+    const left = hit.col * size;
+    const top = hit.row * size;
+    const right = left + size;
+    const bottom = top + size;
+    const pad = Math.max(2, size * 0.14);
+    const candidates = TORCH_SUPPORT_SIDES
+      .filter((entry) => {
+        const airCol = hit.col + entry.colOffset;
+        const airRow = hit.row + entry.rowOffset;
+        return !terrain.isInside(airCol, airRow) || !terrain.isSolidCell(airCol, airRow);
+      })
+      .map((entry) => {
+        let x = hit.x;
+        let y = hit.y;
+        let distance = 0;
+        if (entry.side === 'top' || entry.side === 'bottom') {
+          x = Math.max(left + pad, Math.min(right - pad, hit.x));
+          y = entry.side === 'top' ? top : bottom;
+          distance = Math.abs(hit.y - y);
+        } else {
+          x = entry.side === 'left' ? left : right;
+          y = Math.max(top + pad, Math.min(bottom - pad, hit.y));
+          distance = Math.abs(hit.x - x);
+        }
+        return {
+          ...entry,
+          x: x + entry.normal.x * Math.max(2, size * 0.08),
+          y: y + entry.normal.y * Math.max(2, size * 0.08),
+          distance,
+          rotation: getTorchRotationForSupport(entry.side),
+          supportCol: hit.col,
+          supportRow: hit.row,
+          supportSide: entry.side,
+        };
+      })
+      .sort((a, b) => a.distance - b.distance);
+    return candidates[0] || null;
+  }
+
+  isTorchAtSupport(island, col, row, side) {
+    return Boolean((island?.placedTorches || []).some((torch) => (
+      torch.supportCol === col
+      && torch.supportRow === row
+      && torch.supportSide === side
+    )));
+  }
+
+  isTorchSupported(island, torch) {
+    const terrain = island?.terrain;
+    if (!terrain || !torch) return false;
+    if (!Number.isInteger(torch.supportCol) || !Number.isInteger(torch.supportRow) || torch.supportCol < 0 || torch.supportRow < 0) {
+      return true;
+    }
+    if (!terrain.isInside(torch.supportCol, torch.supportRow) || !terrain.isSolidCell(torch.supportCol, torch.supportRow)) return false;
+    const support = TORCH_SUPPORT_SIDES.find((entry) => entry.side === torch.supportSide) || TORCH_SUPPORT_SIDES[0];
+    const airCol = torch.supportCol + support.colOffset;
+    const airRow = torch.supportRow + support.rowOffset;
+    return !terrain.isInside(airCol, airRow) || !terrain.isSolidCell(airCol, airRow);
+  }
+
+  updateUnsupportedTorchCleanup(delta) {
+    if (!this.activeIsland?.placedTorches?.length) return;
+    this.torchSupportCheckTimer = Math.max(0, (this.torchSupportCheckTimer || 0) - delta);
+    if (this.torchSupportCheckTimer > 0) return;
+    this.torchSupportCheckTimer = 0.5;
+    this.removeUnsupportedTorches({ drop: false });
+  }
+
+  removeUnsupportedTorches({ brokenCells = null, drop = true } = {}) {
+    const island = this.activeIsland;
+    if (!island?.placedTorches?.length) return 0;
+    const changed = brokenCells
+      ? new Set(brokenCells.map((cell) => `${cell.col}:${cell.row}`))
+      : null;
+    const kept = [];
+    const removed = [];
+    for (const torch of island.placedTorches) {
+      const shouldCheck = !changed
+        || changed.has(`${torch.supportCol}:${torch.supportRow}`)
+        || !Number.isInteger(torch.supportCol)
+        || torch.supportCol < 0;
+      if (!shouldCheck || this.isTorchSupported(island, torch)) kept.push(torch);
+      else removed.push(torch);
+    }
+    if (!removed.length) return 0;
+    island.placedTorches = kept;
+    this.game.systems.islands.saveTorches(island.id, island.placedTorches);
+    if (drop) {
+      const material = this.game.systems.materials.getMaterial('torch');
+      removed.forEach((torch) => {
+        const world = island.localToWorldRotated(torch.x, torch.y, this.getIslandViewRotation());
+        this.spawnIslandLootDrop('torch', 1, {
+          worldX: world.x,
+          worldY: world.y,
+          material,
+          storagePickup: false,
+          pickupDelay: 0.08,
+        });
+      });
+      this.game.ui.showToast(removed.length > 1 ? `${removed.length} torches dropped` : 'Torch dropped', 'default', 950);
+    }
+    return removed.length;
   }
 
   placeTorchOnIsland(preview = null) {
@@ -3273,29 +3402,29 @@ export class MiningScene {
       return;
     }
     const target = preview || this.getTorchPlacementPreview();
-    if (!target?.hit) {
+    if (!target?.hit || !target.valid) {
       this.game.audio.playError?.();
-      this.game.ui.showToast('Aim the torch at solid ground', 'danger', 1100);
+      this.game.ui.showToast(target?.reason || 'Aim the torch at solid ground', 'danger', 1100);
       return;
     }
 
     this.updateIslandPlayerFacingFromAim(target.rawAimPoint);
-    const viewRotation = this.getIslandViewRotation();
-    const outwardAngle = -Math.PI / 2 - viewRotation;
-    const outward = { x: Math.cos(outwardAngle), y: Math.sin(outwardAngle) };
     const torches = island.placedTorches ||= [];
     if (torches.length >= 96) torches.shift();
     const torch = new PlacedTorch({
-      x: target.hit.x + outward.x * 4,
-      y: target.hit.y + outward.y * 4,
-      rotation: -viewRotation,
+      x: target.x,
+      y: target.y,
+      rotation: target.rotation,
+      supportCol: target.supportCol,
+      supportRow: target.supportRow,
+      supportSide: target.supportSide,
     });
     torches.push(torch);
     this.torchPlacementPreview = null;
-    this.consumeItemForPlacement('torch', 1);
+    this.consumeHeldOrInventoryItem('torch', 1);
     this.game.systems.islands.saveTorches(island.id, torches);
     this.refreshHotbar(true);
-    const world = island.localToWorldRotated(torch.x, torch.y, viewRotation);
+    const world = island.localToWorldRotated(torch.x, torch.y, this.getIslandViewRotation());
     this.spawnBurst(world.x, world.y - 18, '#ffb45f', 12, 82);
     this.addFloatingText(world.x, world.y - 28, 'Torch placed', { color: '#ffb45f', rarity: 'common' });
     this.game.audio.playSuccess?.();
@@ -7217,6 +7346,7 @@ export class MiningScene {
     this.spawnHitParticles(hitWorld.x, hitWorld.y, TERRAIN_MATERIALS[hit.material]?.edge || '#ffd36b');
     if (!broken.length) return;
     this.islandTerrainDirty = true;
+    this.removeUnsupportedTorches({ brokenCells: broken, drop: true });
     this.collectIslandTerrainCells(broken);
     this.game.audio.playMineNode?.();
   }
@@ -8902,12 +9032,11 @@ export class MiningScene {
 
   drawTorchPlacementPreview(ctx, state) {
     if (!state?.hit || !this.activeIsland?.terrain) return;
-    const viewRotation = this.getIslandViewRotation();
-    const outwardAngle = -Math.PI / 2 - viewRotation;
-    const outward = { x: Math.cos(outwardAngle), y: Math.sin(outwardAngle) };
-    const torchX = state.hit.x + outward.x * 4;
-    const torchY = state.hit.y + outward.y * 4;
-    const ready = this.game.systems.inventory.getStoredAmount('torch') > 0;
+    const normal = state.normal || { x: 0, y: -1 };
+    const torchX = Number.isFinite(state.x) ? state.x : state.hit.x + normal.x * 4;
+    const torchY = Number.isFinite(state.y) ? state.y : state.hit.y + normal.y * 4;
+    const ready = Boolean(state.valid);
+    this.activeIsland.terrain.drawCellTargetGlow(ctx, state.hit, this.time, { brushRadius: 0 });
     ctx.save();
     ctx.globalAlpha = ready ? 0.64 : 0.34;
     ctx.strokeStyle = ready ? 'rgba(255, 180, 95, 0.88)' : 'rgba(255, 117, 111, 0.7)';
@@ -8915,17 +9044,18 @@ export class MiningScene {
     ctx.setLineDash([6, 7]);
     ctx.lineDashOffset = -this.time * 22;
     ctx.beginPath();
-    ctx.arc(torchX, torchY - 38, 54, 0, Math.PI * 2);
+    ctx.arc(torchX + normal.x * 40, torchY + normal.y * 40, 54, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
     PlacedTorch.drawGhost(ctx, {
       x: torchX,
       y: torchY,
-      viewRotation,
+      rotation: state.rotation ?? getTorchRotationForSupport(state.supportSide),
       time: this.time,
       color: ready ? '#ff9f43' : '#ff756f',
       accent: '#ffd36b',
+      supportSide: state.supportSide || 'top',
     });
   }
 

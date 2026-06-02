@@ -1,6 +1,6 @@
-import { asteroids as asteroidData } from '../data/asteroids.js?v=157';
-import { VoxelAsteroidBody } from './VoxelAsteroidBody.js?v=157';
-import { gameBalance } from '../data/gameBalance.js?v=157';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=158';
+import { VoxelAsteroidBody } from './VoxelAsteroidBody.js?v=158';
+import { gameBalance } from '../data/gameBalance.js?v=158';
 
 export const ASTEROID_TYPES = Object.fromEntries(asteroidData.map((asteroid) => [asteroid.id, asteroid]));
 

@@ -1,4 +1,4 @@
-import { StationPlayer } from '../entities/StationPlayer.js?v=157';
+import { StationPlayer } from '../entities/StationPlayer.js?v=158';
 import { StationInteractable } from '../entities/StationInteractable.js';
 import { StationInteractionSystem } from '../systems/StationInteractionSystem.js';
 import { Button } from '../ui/Button.js';
@@ -7,8 +7,8 @@ import { MobileStationControls } from '../ui/MobileStationControls.js';
 import { createMiningSummaryModal } from '../ui/MiningSummaryModal.js';
 import { NavigationMap } from '../ui/NavigationMap.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
-import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=157';
-import { gameBalance } from '../data/gameBalance.js?v=157';
+import { StationSideScrollerRenderer } from './station/StationSideScrollerRenderer.js?v=158';
+import { gameBalance } from '../data/gameBalance.js?v=158';
 
 const WORLD_WIDTH = 2920;
 

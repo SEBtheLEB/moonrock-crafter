@@ -1,9 +1,9 @@
 import { Button } from './Button.js';
 import { Modal } from './Modal.js';
 import { Panel } from './Panel.js';
-import { QuestTracker } from './QuestTracker.js?v=157';
+import { QuestTracker } from './QuestTracker.js?v=158';
 import { Toast } from './Toast.js';
-import { TooltipManager } from './TooltipManager.js?v=157';
+import { TooltipManager } from './TooltipManager.js?v=158';
 
 export class UIManager {
   constructor(root, events, audio) {
