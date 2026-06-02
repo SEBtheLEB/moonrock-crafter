@@ -23,7 +23,7 @@ export class UIManager {
     this.highlightTarget = null;
     this.game = null;
     this.dialogueMood = '';
-    this.tooltipManager = new TooltipManager();
+    this.tooltipManager = null;
 
     this.sceneLayer.className = 'ui-scene-layer';
     this.controlsLayer.className = 'ui-controls-layer';
@@ -32,6 +32,7 @@ export class UIManager {
     this.toastLayer.className = 'ui-toast-layer';
     this.highlightLayer.className = 'tutorial-highlight-layer';
     this.root.replaceChildren(...this.layers);
+    this.tooltipManager = new TooltipManager({ root: this.root });
 
     this.root.addEventListener('pointerdown', (event) => {
       if (event.target.closest('button')) this.audio.unlock();

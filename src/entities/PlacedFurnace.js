@@ -1,4 +1,5 @@
 import { getShapeState } from '../systems/MachineSculptingSystem.js?v=158';
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
 
 const FURNACE_WIDTH = 112;
 const FURNACE_HEIGHT = 82;
@@ -145,6 +146,28 @@ export class PlacedFurnace {
     ctx.beginPath();
     ctx.ellipse(0, 7, FURNACE_WIDTH * 0.52, 9, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isGameArtReady()) {
+      const heat = active ? 0.72 + Math.sin(time * 9) * 0.12 : 0.34 + glow * 0.22;
+      drawGameArtSprite(ctx, 'furnace', 0, -FURNACE_HEIGHT * 0.46, FURNACE_WIDTH * 1.08, FURNACE_HEIGHT * 1.06, {
+        alpha: ghost ? 0.72 : 1,
+      });
+      ctx.save();
+      ctx.globalAlpha = ghost ? 0.28 : 0.18 + heat * 0.2;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = ghost ? 18 : 16 + heat * 20;
+      const flameGradient = ctx.createRadialGradient(0, -38, 4, 0, -38, 34);
+      flameGradient.addColorStop(0, `rgba(255, 244, 204, ${0.62 * heat})`);
+      flameGradient.addColorStop(0.5, `rgba(255, 159, 67, ${0.46 * heat})`);
+      flameGradient.addColorStop(1, 'rgba(255, 78, 43, 0)');
+      ctx.fillStyle = flameGradient;
+      ctx.beginPath();
+      ctx.ellipse(0, -38, 34, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
 
     const heat = active ? 0.72 + Math.sin(time * 9) * 0.12 : 0.34 + glow * 0.22;
     ctx.shadowColor = color;

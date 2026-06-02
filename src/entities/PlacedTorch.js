@@ -1,6 +1,9 @@
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
+
 const TORCH_HEIGHT = 38;
-const TORCH_LIGHT_RADIUS = 230;
-const TORCH_LIGHT_INTENSITY = 0.82;
+const TORCH_VISUAL_SCALE = 0.62;
+const TORCH_LIGHT_RADIUS = 155;
+const TORCH_LIGHT_INTENSITY = 0.68;
 const TORCH_IGNITE_DURATION = 0.8;
 const SUPPORT_NORMALS = {
   top: { x: 0, y: -1 },
@@ -71,14 +74,13 @@ export class PlacedTorch {
 
   getLightSource({ time = Infinity } = {}) {
     const normal = SUPPORT_NORMALS[this.supportSide] || SUPPORT_NORMALS.top;
-    const ignite = this.getIgniteProgress(time);
     return {
       id: this.id,
-      x: this.x + normal.x * TORCH_HEIGHT * 0.72,
-      y: this.y + normal.y * TORCH_HEIGHT * 0.72,
+      x: this.x + normal.x * TORCH_HEIGHT * TORCH_VISUAL_SCALE * 0.72,
+      y: this.y + normal.y * TORCH_HEIGHT * TORCH_VISUAL_SCALE * 0.72,
       color: this.color,
-      radius: TORCH_LIGHT_RADIUS * (0.35 + ignite * 0.65),
-      intensity: TORCH_LIGHT_INTENSITY * ignite,
+      radius: TORCH_LIGHT_RADIUS,
+      intensity: TORCH_LIGHT_INTENSITY,
     };
   }
 
@@ -139,12 +141,33 @@ export class PlacedTorch {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rotation);
+    ctx.scale(TORCH_VISUAL_SCALE, TORCH_VISUAL_SCALE);
     ctx.globalAlpha *= ghost ? 0.56 : (0.58 + lightFade * 0.42);
 
     ctx.fillStyle = ghost ? 'rgba(255, 159, 67, 0.12)' : 'rgba(3, 9, 16, 0.3)';
     ctx.beginPath();
     ctx.ellipse(0, 4, isWallMounted ? 7 : isBackMounted ? 10 : 12, isBackMounted ? 5.5 : 3.6, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isGameArtReady()) {
+      const flameY = -TORCH_HEIGHT * 0.82;
+      drawGameArtSprite(ctx, 'torch', 0, -TORCH_HEIGHT * 0.38, 20, 42, {
+        alpha: ghost ? 0.72 : 1,
+      });
+      if (!ghost) {
+        const glowRadius = 32 * flicker * (0.35 + lightFade * 0.65);
+        const glow = ctx.createRadialGradient(0, flameY, 0, 0, flameY, glowRadius);
+        glow.addColorStop(0, `rgba(255, 211, 107, ${0.28 * lightFade})`);
+        glow.addColorStop(0.45, `rgba(255, 132, 62, ${0.09 * lightFade})`);
+        glow.addColorStop(1, 'rgba(255, 132, 62, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, flameY, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
 
     ctx.strokeStyle = ghost ? 'rgba(255, 242, 207, 0.42)' : 'rgba(5, 12, 19, 0.68)';
     ctx.lineWidth = ghost ? 1.35 : 1.8;

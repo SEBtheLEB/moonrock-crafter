@@ -1,5 +1,11 @@
 import { getPointAabbDistance, getSegmentPolygonHit } from '../utils/raycast.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
+import {
+  drawGameArtTexture,
+  getTerrainArtKey,
+  isGameArtReady,
+  onGameArtReady,
+} from '../data/gameArt.js?v=158';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
@@ -691,6 +697,11 @@ export class TerrainGrid {
     this.fastTerrainQualityBounds = null;
     this.fastTerrainQualityPadding = 0;
     this.fastTerrainQualityPending = false;
+    this.removeGameArtReadyListener = onGameArtReady(() => {
+      this.textureCache?.clear();
+      this.renderDirty = true;
+      this.fullRenderDirty = true;
+    });
     if (cells && wallCells?.length !== cellCount && TERRAIN_WALLS.enabled) this.generateWallLayerForPlanet();
     TERRAIN_TEXTURE_INSTANCES.add(this);
   }
@@ -2951,8 +2962,10 @@ export class TerrainGrid {
         this.getLightSourceCenterBounds(normalized),
       );
       const previousRadius = previousSources.reduce((max, source) => Math.max(max, source.radius || 0), 0);
-      const previousPadding = Math.ceil((previousRadius + (TERRAIN_LIGHTING.darknessBlur || 0) * 2) / Math.max(1, this.cellSize)) + 2;
-      this.markDirtyBounds(dirtyLights, Math.max(1, previousPadding));
+      const nextRadius = normalized.reduce((max, source) => Math.max(max, source.radius || 0), 0);
+      const redrawPadding = Math.ceil((Math.max(previousRadius, nextRadius) + (TERRAIN_LIGHTING.darknessBlur || 0) * 2) / Math.max(1, this.cellSize)) + 2;
+      this.markDirtyBounds(dirtyLights, Math.max(1, redrawPadding));
+      this.markFastTerrainEdit(dirtyLights, Math.max(3, redrawPadding), 180);
     } else {
       this.fullRenderDirty = true;
     }
@@ -3942,6 +3955,7 @@ export class TerrainGrid {
 
     ctx.save();
     ctx.clip();
+    this.drawConstructedArtTexture(ctx, materialId, scan);
     ctx.globalAlpha = 0.42;
     ctx.strokeStyle = withAlpha(mixHex(edge, '#ffffff', 0.12), 0.18);
     ctx.lineWidth = Math.max(0.7, size * 0.035);
@@ -4002,6 +4016,43 @@ export class TerrainGrid {
     ctx.restore();
   }
 
+  drawConstructedArtTexture(ctx, materialId, scan) {
+    if (!isGameArtReady()) return;
+    const size = this.cellSize;
+    const key = getTerrainArtKey(materialId, this.biome);
+    const overlap = size * 0.08;
+    for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
+      for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        if (this.getCell(col, row) !== materialId) continue;
+        const seed = hash2D(col, row, this.seed, materialId * 701) * 100000;
+        drawGameArtTexture(ctx, key, col * size - overlap, row * size - overlap, size + overlap * 2, size + overlap * 2, {
+          alpha: materialId === 11 ? 0.74 : 0.62,
+          seed,
+          sourceJitter: 0.24,
+          smoothing: true,
+          tint: materialId === 11 ? 'rgba(118, 243, 255, 0.08)' : '',
+        });
+        const rightSame = this.getCell(col + 1, row) === materialId;
+        const downSame = this.getCell(col, row + 1) === materialId;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = 'rgba(226, 242, 255, 0.65)';
+        ctx.lineWidth = Math.max(0.7, size * 0.026);
+        ctx.beginPath();
+        if (rightSame) {
+          ctx.moveTo((col + 1) * size, row * size + size * 0.22);
+          ctx.lineTo((col + 1) * size, row * size + size * 0.78);
+        }
+        if (downSame) {
+          ctx.moveTo(col * size + size * 0.22, (row + 1) * size);
+          ctx.lineTo(col * size + size * 0.78, (row + 1) * size);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   drawRockTexture(ctx, bounds = null, { fastRedraw = false } = {}) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     this.drawPatternInMask(
@@ -4019,6 +4070,14 @@ export class TerrainGrid {
   drawStoneTextureTile(ctx, width, height, palette) {
     const random = createRandom(hashString(`${this.seed}:${this.biome}:stone-texture`));
     ctx.clearRect(0, 0, width, height);
+    if (isGameArtReady()) {
+      drawGameArtTexture(ctx, getTerrainArtKey(1, this.biome), 0, 0, width, height, {
+        alpha: 0.38,
+        seed: hashString(`${this.seed}:${this.biome}:stone-art`),
+        sourceJitter: 0.26,
+        tint: withAlpha(palette.base || palette.deep || '#6b625a', 0.32),
+      });
+    }
     for (let i = 0; i < 95; i += 1) {
       const x = random() * width;
       const y = random() * height;
@@ -4054,6 +4113,14 @@ export class TerrainGrid {
     const glow = mixHex(data.edge, '#ffffff', material >= 4 ? 0.16 : 0.1);
     ctx.fillStyle = withAlpha(base, material >= 4 ? 0.72 : 0.58);
     ctx.fillRect(0, 0, width, height);
+    if (isGameArtReady()) {
+      drawGameArtTexture(ctx, getTerrainArtKey(material, this.biome), 0, 0, width, height, {
+        alpha: material >= 4 ? 0.56 : 0.42,
+        seed: hashString(`${this.seed}:${data.id}:ore-art`),
+        sourceJitter: material >= 4 ? 0.18 : 0.28,
+        tint: withAlpha(data.color, material >= 4 ? 0.16 : 0.24),
+      });
+    }
     for (let i = 0; i < 42; i += 1) {
       const x = random() * width;
       const y = random() * height;

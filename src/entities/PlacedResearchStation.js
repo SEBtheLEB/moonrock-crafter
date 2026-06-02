@@ -1,3 +1,5 @@
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
+
 const STATION_WIDTH = 112;
 const STATION_HEIGHT = 70;
 const STATION_TOUCH_RADIUS = 82;
@@ -98,6 +100,26 @@ export class PlacedResearchStation {
     ctx.beginPath();
     ctx.ellipse(0, 6, STATION_WIDTH * 0.54, 8, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isGameArtReady()) {
+      drawGameArtSprite(ctx, 'researchStation', 0, -STATION_HEIGHT * 0.43, STATION_WIDTH * 1.02, STATION_HEIGHT * 1.06, {
+        alpha: ghost ? 0.72 : 1,
+      });
+      if (!ghost) {
+        const pulse = 0.42 + Math.sin(time * 3.1) * 0.1;
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.arc(0, -STATION_HEIGHT * 0.63, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      return;
+    }
 
     ctx.fillStyle = ghost ? 'rgba(183, 148, 255, 0.18)' : '#22303c';
     ctx.strokeStyle = ghost ? 'rgba(183, 148, 255, 0.7)' : 'rgba(5, 12, 19, 0.82)';

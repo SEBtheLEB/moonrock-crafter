@@ -77,6 +77,7 @@ export class TooltipManager {
     }
     this.activeTarget = target;
     this.element.textContent = text;
+    this.root.append(this.element);
     this.element.classList.add('is-visible');
     this.element.setAttribute('aria-hidden', 'false');
     this.position();

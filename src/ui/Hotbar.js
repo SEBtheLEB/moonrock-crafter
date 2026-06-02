@@ -75,7 +75,12 @@ export class Hotbar {
       button.className = `tool-hotbar-slot tone-${slot.tone || 'empty'} ${isEmpty ? 'is-empty' : ''}`.trim();
       button.setAttribute('aria-label', isEmpty ? `Empty slot ${index + 1}` : `Select slot ${index + 1}: ${slot.label}`);
       button.removeAttribute('title');
-      button.removeAttribute('data-item-tooltip');
+      if (!isEmpty && itemName) {
+        const countLabel = slot.inventoryItemId ? ` x${this.formatCount(amount)}` : '';
+        button.dataset.itemTooltip = `${itemName}${countLabel}`;
+      } else {
+        button.removeAttribute('data-item-tooltip');
+      }
       if (selected && !isEmpty && itemName) button.dataset.selectedName = itemName;
       else button.removeAttribute('data-selected-name');
       button.innerHTML = `

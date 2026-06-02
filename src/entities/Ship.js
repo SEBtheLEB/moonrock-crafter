@@ -1,3 +1,5 @@
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
+
 export class Ship {
   constructor(stats = {}) {
     this.x = 0;
@@ -5,8 +7,8 @@ export class Ship {
     this.vx = 0;
     this.vy = 0;
     this.angle = 0;
-    this.sizeScale = stats.sizeScale || 1;
-    this.radius = 22 * this.sizeScale;
+    this.sizeScale = stats.sizeScale || 1.22;
+    this.radius = 30 * this.sizeScale;
     this.acceleration = 326 + (stats.acceleration || 1) * 36;
     this.drag = 0.68;
     this.activeControl = 2.9 + (stats.handling || 1) * 0.35;
@@ -122,6 +124,16 @@ export class Ship {
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+    }
+
+    if (isGameArtReady()) {
+      const alpha = flashing ? 0.58 : 1;
+      drawGameArtSprite(ctx, 'rocket', 0, 0, 112, 168, {
+        alpha,
+        rotation: Math.PI / 2,
+      });
+      ctx.restore();
+      return;
     }
 
     ctx.fillStyle = flashing ? '#ece7d8' : '#dce6ec';

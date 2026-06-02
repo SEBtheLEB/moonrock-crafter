@@ -1,3 +1,5 @@
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
+
 const STATION_WIDTH = 132;
 const STATION_HEIGHT = 78;
 const STATION_TOUCH_RADIUS = 100;
@@ -88,6 +90,27 @@ export class PlacedCraftingStation {
     ctx.beginPath();
     ctx.ellipse(0, 7, STATION_WIDTH * 0.52, 9, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isGameArtReady()) {
+      drawGameArtSprite(ctx, 'craftingStation', 0, -STATION_HEIGHT * 0.42, STATION_WIDTH * 1.1, STATION_HEIGHT * 1.02, {
+        alpha: ghost ? 0.7 : 1,
+      });
+      if (!ghost) {
+        const glow = 0.42 + Math.sin(time * 4) * 0.08;
+        ctx.save();
+        ctx.globalAlpha = glow;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-STATION_WIDTH * 0.36, -STATION_HEIGHT * 0.72, STATION_WIDTH * 0.72, STATION_HEIGHT * 0.34, 8);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+      return;
+    }
 
     ctx.fillStyle = ghost ? 'rgba(118, 243, 255, 0.18)' : '#253847';
     ctx.strokeStyle = ghost ? 'rgba(118, 243, 255, 0.7)' : 'rgba(5, 12, 19, 0.82)';

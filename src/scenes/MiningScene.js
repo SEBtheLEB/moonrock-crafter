@@ -45,6 +45,7 @@ import {
 } from '../systems/MachineSculptingSystem.js?v=158';
 import { asteroids as asteroidData } from '../data/asteroids.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
+import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -136,9 +137,11 @@ const LASER_GUN_COMBAT = {
 };
 const ISLAND_STABILIZE_MAX_SPEED = 1.45;
 const ISLAND_STABILIZE_HOLD_MAX_SPEED = 1.75;
-const ISLAND_STABILIZE_TARGET_FOLLOW_SPEED = 1.15;
 const ISLAND_STABILIZE_SMOOTH_TIME = 0.62;
 const ISLAND_STABILIZE_EPSILON = 0.004;
+const GRAVITY_MACHINE_BUMPER_ROTATION_SPEED = 1.05;
+const GRAVITY_MACHINE_WHEEL_ROTATION_STEP = 0.18;
+const GRAVITY_MACHINE_WHEEL_MAX_STEP = 0.55;
 const ISLAND_LANDING_CAMERA_SPEED = 1.25;
 const ISLAND_LANDING_ZOOM_SPEED = 1.35;
 const ISLAND_LANDING_PLANET_ROTATION_SPEED = 0.82;
@@ -334,7 +337,12 @@ export class MiningScene {
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
     this.islandRotationSettling = false;
-    this.gravityMachineDefaultResetHeld = false;
+    this.gravityMachineManualActive = false;
+    this.gravityMachineHotbarSuppressed = false;
+    this.gravityMachineLastSelectedSlotId = '';
+    this.gravityMachineRotationInput = 0;
+    this.gravityMachineWasActive = false;
+    this.gravityMachineBlockedToastAt = 0;
     this.islandFreefall = false;
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
@@ -993,6 +1001,7 @@ export class MiningScene {
     this.cancelItemDrag({ returnHeldToInventory: true });
     this.closeSurvivalModal();
     this.closeQuickInventory();
+    this.setGravityMachineInputFlag(false);
     this.moveStick?.__inputCleanup?.();
     this.aimStick?.__inputCleanup?.();
     this.game.audio.stopLaserLoop();
@@ -2964,7 +2973,7 @@ export class MiningScene {
       jumpReleased: actions.justReleased.jump || actions.justReleased.up,
       downHeld: actions.down,
     });
-    this.updateGravityStabilizerInput(actions);
+    this.updateGravityStabilizerInput(actions, delta);
     this.islandAimPreview = this.isTerrainToolSelected() ? this.getIslandTerrainPreview({ updateFacing: false }) : null;
     this.game.systems.building?.update?.(this, delta);
     this.flagPlacementPreview = this.isFlagToolSelected() ? this.getFlagPlacementPreview() : null;
@@ -3057,33 +3066,112 @@ export class MiningScene {
     if (Math.abs(player.vx) > 8) player.facing = player.vx > 0 ? 1 : -1;
   }
 
-  updateGravityStabilizerInput(actions) {
+  updateGravityStabilizerInput(actions, delta = 0) {
     if (!this.activeIsland || !this.islandPlayer) return;
-    this.gravityMachineDefaultResetHeld = false;
-    if (this.heldItemState) return;
-    this.gravityMachineDefaultResetHeld = this.isGravityMachineDefaultResetInput(actions);
-    if (!actions.justPressed?.stabilize && !actions.stabilize) return;
-    if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
-      if (actions.justPressed?.stabilize) {
+    this.syncGravityMachineSelectionState();
+    if (this.heldItemState) {
+      this.setGravityMachineInputFlag(false);
+      this.gravityMachineWasActive = false;
+      return;
+    }
+    const attemptedToggle = Boolean(actions.justPressed?.stabilize);
+    const selectedActive = this.isGravityMachineToolSelected() && !this.gravityMachineHotbarSuppressed;
+    const wantsActive = this.gravityMachineManualActive || selectedActive;
+    if (!wantsActive && !attemptedToggle) {
+      this.setGravityMachineInputFlag(false);
+      this.gravityMachineWasActive = false;
+      return;
+    }
+    const canUse = this.canUseGravityStabilizerOnIsland(this.activeIsland);
+    if (!canUse) {
+      this.setGravityMachineInputFlag(false);
+      const now = performance.now();
+      if ((attemptedToggle || selectedActive) && now >= this.gravityMachineBlockedToastAt) {
+        this.gravityMachineBlockedToastAt = now + 1800;
         this.game.audio.playError?.();
         this.game.ui.showToast(this.getGravityStabilizerBlockMessage(this.activeIsland), 'danger', 2200);
       }
+      this.gravityMachineManualActive = false;
+      this.gravityMachineWasActive = false;
       return;
     }
-    if (actions.justPressed?.stabilize) {
-      this.engageIslandGravityStabilizer({
-        targetRotation: this.gravityMachineDefaultResetHeld ? this.getDefaultIslandViewRotation() : null,
-      });
-    }
-    this.islandRotationSettling = true;
-    if (actions.justPressed?.stabilize) {
-      this.game.audio.playSuccess?.();
+
+    const wasActive = this.gravityMachineWasActive;
+    if (attemptedToggle) this.toggleGravityMachineRotationMode();
+    const active = this.isGravityMachineRotationModeActive();
+    this.setGravityMachineInputFlag(active);
+    this.gravityMachineWasActive = active;
+    if (active !== wasActive) {
+      this.game.audio[active ? 'playSuccess' : 'playButtonClick']?.();
       this.game.ui.showToast(
-        this.gravityMachineDefaultResetHeld ? 'Gravity Machine leveling base rotation' : 'Gravity Machine engaged',
-        'success',
-        900,
+        active ? 'Gravity Machine active - wheel or bumpers rotate' : 'Gravity Machine inactive',
+        active ? 'success' : 'default',
+        active ? 1100 : 850,
       );
     }
+    if (!active) return;
+
+    const wheel = this.game.input.consumeGravityWheelDelta?.() || 0;
+    const bumperDirection = Number(Boolean(actions.gravityRotateRight)) - Number(Boolean(actions.gravityRotateLeft));
+    const wheelStep = clamp(
+      wheel * GRAVITY_MACHINE_WHEEL_ROTATION_STEP,
+      -GRAVITY_MACHINE_WHEEL_MAX_STEP,
+      GRAVITY_MACHINE_WHEEL_MAX_STEP,
+    );
+    const bumperStep = bumperDirection * GRAVITY_MACHINE_BUMPER_ROTATION_SPEED * Math.min(delta, 0.05);
+    const rotationStep = wheelStep + bumperStep;
+    this.gravityMachineRotationInput = approachValue(this.gravityMachineRotationInput || 0, bumperDirection, Math.min(1, delta * 9));
+    if (Math.abs(rotationStep) > 0.0001) {
+      this.islandRotationTarget = normalizeAngle(this.islandRotationTarget + rotationStep);
+      this.islandRotationSettling = true;
+    }
+  }
+
+  syncGravityMachineSelectionState() {
+    const selectedSlotId = this.game.input.getSelectedHotbarSlot?.()?.id || '';
+    if (selectedSlotId !== this.gravityMachineLastSelectedSlotId) {
+      this.gravityMachineLastSelectedSlotId = selectedSlotId;
+      if (selectedSlotId === 'stabilizer') this.gravityMachineHotbarSuppressed = false;
+    }
+  }
+
+  setGravityMachineInputFlag(active) {
+    document.documentElement.dataset.gravityMachineActive = active ? 'true' : 'false';
+  }
+
+  toggleGravityMachineRotationMode({ forceActive = null } = {}) {
+    const currentlyActive = this.isGravityMachineRotationModeActive();
+    const nextActive = forceActive === null ? !currentlyActive : Boolean(forceActive);
+    this.gravityMachineManualActive = nextActive;
+    this.gravityMachineHotbarSuppressed = !nextActive && this.isGravityMachineToolSelected();
+    if (nextActive) {
+      this.gravityMachineHotbarSuppressed = false;
+      this.islandRotationTarget = this.islandViewRotation;
+      this.islandRotationSettling = false;
+    }
+    this.setGravityMachineInputFlag(nextActive || (this.isGravityMachineToolSelected() && !this.gravityMachineHotbarSuppressed));
+    return nextActive;
+  }
+
+  activateGravityMachineFromInventory() {
+    if (!this.hasGravityMachine()) return false;
+    if (!this.activeIsland || !this.islandPlayer) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Use the Gravity Machine while standing on a planet.', 'danger', 1500);
+      return true;
+    }
+    if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast(this.getGravityStabilizerBlockMessage(this.activeIsland), 'danger', 2200);
+      return true;
+    }
+    this.toggleGravityMachineRotationMode({ forceActive: true });
+    this.gravityMachineWasActive = true;
+    this.closeSurvivalModal();
+    this.closeQuickInventory();
+    this.game.audio.playSuccess?.();
+    this.game.ui.showToast('Gravity Machine active - wheel or bumpers rotate', 'success', 1100);
+    return true;
   }
 
   engageIslandGravityStabilizer({ targetRotation = null } = {}) {
@@ -3094,18 +3182,15 @@ export class MiningScene {
     this.islandRotationSettling = true;
   }
 
-  getDefaultIslandViewRotation() {
-    return 0;
-  }
-
   isGravityMachineToolSelected() {
     return this.heldItemState?.itemId === 'gravityStabilizer'
       || this.game.input.getSelectedHotbarSlot?.()?.id === 'stabilizer';
   }
 
-  isGravityMachineDefaultResetInput(actions = this.game.input.actions) {
-    return this.isGravityMachineToolSelected()
-      && Boolean(actions.primaryUse || actions.aimUse);
+  isGravityMachineRotationModeActive() {
+    if (!this.activeIsland || !this.islandPlayer || this.heldItemState) return false;
+    if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) return false;
+    return Boolean(this.gravityMachineManualActive || (this.isGravityMachineToolSelected() && !this.gravityMachineHotbarSuppressed));
   }
 
   isFlagToolSelected() {
@@ -3294,7 +3379,6 @@ export class MiningScene {
     const top = hit.row * size;
     const right = left + size;
     const bottom = top + size;
-    const pad = Math.max(2, size * 0.14);
     const candidates = TORCH_SUPPORT_SIDES
       .filter((entry) => {
         const airCol = hit.col + entry.colOffset;
@@ -3302,22 +3386,36 @@ export class MiningScene {
         return !terrain.isInside(airCol, airRow) || !terrain.isSolidCell(airCol, airRow);
       })
       .map((entry) => {
+        const airCol = hit.col + entry.colOffset;
+        const airRow = hit.row + entry.rowOffset;
+        const airLeft = airCol * size;
+        const airTop = airRow * size;
+        const airRight = airLeft + size;
+        const airBottom = airTop + size;
         let x = hit.x;
         let y = hit.y;
         let distance = 0;
-        if (entry.side === 'top' || entry.side === 'bottom') {
-          x = Math.max(left + pad, Math.min(right - pad, hit.x));
-          y = entry.side === 'top' ? top : bottom;
-          distance = Math.abs(hit.y - y);
+        if (entry.side === 'top') {
+          x = airLeft + size * 0.5;
+          y = airBottom - Math.max(1, size * 0.06);
+          distance = Math.abs(hit.y - top);
+        } else if (entry.side === 'bottom') {
+          x = airLeft + size * 0.5;
+          y = airTop + Math.max(1, size * 0.06);
+          distance = Math.abs(hit.y - bottom);
+        } else if (entry.side === 'left') {
+          x = airRight - Math.max(1, size * 0.06);
+          y = airBottom - Math.max(2, size * 0.16);
+          distance = Math.abs(hit.x - left);
         } else {
-          x = entry.side === 'left' ? left : right;
-          y = Math.max(top + pad, Math.min(bottom - pad, hit.y));
-          distance = Math.abs(hit.x - x);
+          x = airLeft + Math.max(1, size * 0.06);
+          y = airBottom - Math.max(2, size * 0.16);
+          distance = Math.abs(hit.x - right);
         }
         return {
           ...entry,
-          x: x + entry.normal.x * Math.max(2, size * 0.08),
-          y: y + entry.normal.y * Math.max(2, size * 0.08),
+          x,
+          y,
           distance,
           rotation: getTorchRotationForSupport(entry.side),
           supportCol: hit.col,
@@ -3453,7 +3551,8 @@ export class MiningScene {
     torches.push(torch);
     this.torchPlacementPreview = null;
     this.consumeHeldOrInventoryItem('torch', 1);
-    this.game.systems.islands.saveTorches(island.id, torches);
+    this.game.systems.islands.saveTorches(island.id, torches, { skipSave: true });
+    this.schedulePickupSave(0.9);
     this.refreshHotbar(true);
     const world = island.localToWorldRotated(torch.x, torch.y, this.getIslandViewRotation());
     this.spawnBurst(world.x, world.y - 18, '#ffb45f', 12, 82);
@@ -4316,6 +4415,7 @@ export class MiningScene {
       }
       if (event.button === 0) {
         event.preventDefault();
+        if (itemId === 'gravityStabilizer' && this.activateGravityMachineFromInventory()) return;
         this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
       }
     });
@@ -4412,6 +4512,7 @@ export class MiningScene {
       }
       if (event.button === 0) {
         event.preventDefault();
+        if (itemId === 'gravityStabilizer' && this.activateGravityMachineFromInventory()) return;
         this.beginHeldInventoryItem({ itemId, source: 'inventory', pointerEvent: event });
       }
     });
@@ -6934,29 +7035,18 @@ export class MiningScene {
     this.islandRotationSettling = false;
   }
 
-  updateIslandViewRotationManual(delta, centeredTarget) {
+  updateIslandViewRotationManual(delta) {
     if (!this.activeIsland || !this.islandPlayer) return;
-    const holdingStabilizer = this.game.input.actions.stabilize;
-    const target = this.gravityMachineDefaultResetHeld ? this.getDefaultIslandViewRotation() : centeredTarget;
-    if (holdingStabilizer) {
-      const targetDelta = angleDifference(this.islandRotationTarget, target);
-      const targetStep = clamp(
-        targetDelta,
-        -ISLAND_STABILIZE_TARGET_FOLLOW_SPEED * delta,
-        ISLAND_STABILIZE_TARGET_FOLLOW_SPEED * delta,
-      );
-      this.islandRotationTarget = normalizeAngle(this.islandRotationTarget + targetStep);
-      this.islandRotationSettling = true;
-    }
+    const gravityMachineActive = this.isGravityMachineRotationModeActive();
     if (!this.islandRotationSettling) return;
 
     const remaining = angleDifference(this.islandViewRotation, this.islandRotationTarget);
-    if (!holdingStabilizer && Math.abs(remaining) <= ISLAND_STABILIZE_EPSILON) {
+    if (!gravityMachineActive && Math.abs(remaining) <= ISLAND_STABILIZE_EPSILON) {
       this.islandViewRotation = this.islandRotationTarget;
       this.islandRotationSettling = false;
       return;
     }
-    const maxSpeed = holdingStabilizer ? ISLAND_STABILIZE_HOLD_MAX_SPEED : ISLAND_STABILIZE_MAX_SPEED;
+    const maxSpeed = gravityMachineActive ? ISLAND_STABILIZE_HOLD_MAX_SPEED : ISLAND_STABILIZE_MAX_SPEED;
     const smoothTime = ISLAND_STABILIZE_SMOOTH_TIME;
     const easedStep = remaining * (1 - Math.exp(-delta / smoothTime));
     const limitedStep = clamp(
@@ -7039,6 +7129,10 @@ export class MiningScene {
     }
     this.islandMode = 'flight';
     this.islandPlayer = null;
+    this.gravityMachineManualActive = false;
+    this.gravityMachineHotbarSuppressed = false;
+    this.gravityMachineWasActive = false;
+    this.setGravityMachineInputFlag(false);
     this.islandFreefall = false;
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
@@ -7102,6 +7196,10 @@ export class MiningScene {
     }, { skipSave: true });
     this.islandMode = 'flight';
     this.islandPlayer = null;
+    this.gravityMachineManualActive = false;
+    this.gravityMachineHotbarSuppressed = false;
+    this.gravityMachineWasActive = false;
+    this.setGravityMachineInputFlag(false);
     this.islandFreefall = false;
     this.islandGravityRecovery = false;
     this.islandGravityRecoveryBlend = 0;
@@ -7259,8 +7357,10 @@ export class MiningScene {
         ? `${this.activeIsland.getAtmosphereLabel?.() || 'Dense atmosphere'} - Gravity Machine Mk ${this.activeIsland.gravityStabilizerRequirement || 2} needed`
         : 'Craft a Gravity Machine to rotate around the planet';
     }
-    if (this.isGravityMachineToolSelected() && this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
-      text = 'Gravity Machine - hold Use to level base rotation, press G to reorient';
+    if (this.isGravityMachineRotationModeActive()) {
+      text = 'Gravity Machine active - scroll / LB-RB rotate, G/Y toggles off';
+    } else if (this.isGravityMachineToolSelected() && this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
+      text = 'Gravity Machine - select or press G/Y, then scroll / LB-RB rotate';
     }
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
@@ -8263,6 +8363,13 @@ export class MiningScene {
       const y = centerY + (rock.y - this.camera.y) * parallax + driftY;
       if (x < -80 || x > this.game.viewport.width + 80 || y < -80 || y > this.game.viewport.height + 80) continue;
       ctx.globalAlpha = this.islandMode === 'flight' ? 0.08 + 0.28 * atmosphere : 0.28;
+      if (isGameArtReady()) {
+        drawGameArtSprite(ctx, 'asteroid', x, y, rock.radius * 2.6, rock.radius * 2.1, {
+          alpha: 1,
+          rotation: rock.seed * 0.01 + this.time * 0.035,
+        });
+        continue;
+      }
       ctx.fillStyle = rock.color;
       ctx.strokeStyle = rock.accent;
       ctx.lineWidth = 1;
@@ -8405,7 +8512,24 @@ export class MiningScene {
       ctx.arc(x, y, 0.8 + (i % 3) * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
+    this.drawDistantSpaceArt(ctx, width, height);
     this.drawAtmosphereOverlay(ctx, width, height);
+  }
+
+  drawDistantSpaceArt(ctx, width, height) {
+    if (!isGameArtReady()) return;
+    const driftX = -this.camera.x * 0.045;
+    const driftY = -this.camera.y * 0.035;
+    const sunX = ((width * 0.78 + driftX) % (width + 520) + width + 520) % (width + 520) - 260;
+    const sunY = height * 0.18 + Math.sin(this.time * 0.025) * 8 + (driftY % 80) * 0.08;
+    const planetX = ((width * 0.22 - driftX * 0.7) % (width + 360) + width + 360) % (width + 360) - 180;
+    const planetY = height * 0.74 + Math.cos(this.time * 0.018) * 6;
+    ctx.save();
+    drawGameArtSprite(ctx, 'sun', sunX, sunY, 152, 152, {
+      alpha: 0.18 + Math.sin(this.time * 0.05) * 0.025,
+    });
+    drawGameArtSprite(ctx, 'planet', planetX, planetY, 122, 92, { alpha: 0.2 });
+    ctx.restore();
   }
 
   drawAtmosphereOverlay(ctx, width, height) {
@@ -9101,8 +9225,11 @@ export class MiningScene {
     ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 7]);
     ctx.lineDashOffset = -this.time * 22;
+    const size = this.activeIsland.terrain.cellSize || 25;
+    const previewOffset = state.supportSide === 'back' ? 0 : size * 0.35;
+    const previewRadius = state.supportSide === 'back' ? size * 0.46 : size * 0.58;
     ctx.beginPath();
-    ctx.arc(torchX + normal.x * 24, torchY + normal.y * 24, state.supportSide === 'back' ? 24 : 36, 0, Math.PI * 2);
+    ctx.arc(torchX + normal.x * previewOffset, torchY + normal.y * previewOffset, previewRadius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();

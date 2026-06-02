@@ -1668,7 +1668,7 @@
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 2147483646;
+  z-index: 2147483647;
   max-width: min(260px, calc(100dvw - 20px));
   padding: 7px 10px;
   border: 1px solid rgba(236, 231, 216, 0.2);
@@ -2702,8 +2702,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 
 .survival-inventory-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(54px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(clamp(56px, 7.2vh, 70px), 1fr));
+  gap: clamp(9px, 1.2vh, 12px);
 }
 
 .survival-inventory-slot {
@@ -2740,8 +2740,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 }
 
 .survival-inventory-slot .slot-icon {
-  width: 34px;
-  height: 34px;
+  width: clamp(40px, 5.4vh, 50px);
+  height: clamp(40px, 5.4vh, 50px);
 }
 
 .survival-inventory-slot .slot-count {

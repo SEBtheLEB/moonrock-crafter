@@ -890,8 +890,9 @@ html[data-layout-profile="pc"] .recall-button {
 
 .quick-inventory {
   position: relative;
-  width: 100%;
-  max-width: 100%;
+  --quick-inventory-slot-size: clamp(46px, 7vh, 58px);
+  width: max-content;
+  max-width: min(276px, calc(100dvw - var(--safe-left) - var(--safe-right) - 24px));
   transform: translateY(-4px) scale(0.98);
   transform-origin: top left;
   opacity: 0;
@@ -915,8 +916,8 @@ html[data-layout-profile="pc"] .recall-button {
 
 .quick-inventory-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(4px, 0.7vw, 6px);
+  grid-template-columns: repeat(4, var(--quick-inventory-slot-size));
+  gap: clamp(6px, 0.75vw, 8px);
   width: 100%;
 }
 
@@ -948,8 +949,8 @@ html[data-layout-profile="pc"] .recall-button {
 .quick-inventory-slot .slot-icon {
   display: grid;
   place-items: center;
-  width: clamp(20px, 2vw, 25px);
-  height: clamp(20px, 2vw, 25px);
+  width: clamp(30px, 4.8vh, 40px);
+  height: clamp(30px, 4.8vh, 40px);
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
@@ -1042,8 +1043,8 @@ html[data-layout-profile="pc"] .recall-button {
   }
 
   .quick-inventory-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(4, var(--quick-inventory-slot-size));
+    gap: 6px;
   }
 
   .quick-inventory-slot {
@@ -1051,8 +1052,8 @@ html[data-layout-profile="pc"] .recall-button {
   }
 
   .quick-inventory-slot .slot-icon {
-    width: 22px;
-    height: 22px;
+    width: 30px;
+    height: 30px;
   }
 
   .station-radar,

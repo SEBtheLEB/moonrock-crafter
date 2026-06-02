@@ -1,6 +1,7 @@
 import { materials } from '../data/materials.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
 import { getPointAabbDistance, getPointPolygonDistanceSq, getSegmentPolygonHit } from '../utils/raycast.js?v=158';
+import { drawGameArtTexture, isGameArtReady, onGameArtReady } from '../data/gameArt.js?v=158';
 
 const MATERIAL_COLORS = Object.fromEntries(materials.map((material) => [material.id, material.color]));
 
@@ -99,6 +100,9 @@ function signedNoise(value) {
 
 export class VoxelAsteroidBody {
   constructor({ data, radius, seed, dropScale = 1 }) {
+    this.removeGameArtReadyListener = onGameArtReady(() => {
+      this.renderDirty = true;
+    });
     this.reset({ data, radius, seed, dropScale });
   }
 
@@ -566,6 +570,7 @@ export class VoxelAsteroidBody {
     gradient.addColorStop(1, '#242832');
     ctx.fillStyle = gradient;
     this.fillMarchingPath(ctx, (col, row) => this.isSolidCell(col, row));
+    this.drawAtlasRockTexture(ctx);
   }
 
   drawOre(ctx) {
@@ -588,6 +593,7 @@ export class VoxelAsteroidBody {
     ctx.beginPath();
     this.buildMarchingPath(ctx, (col, row) => this.getCell(col, row) === slot);
     ctx.clip();
+    this.drawAtlasOreTexture(ctx, slot, def);
     for (let row = 1; row < this.rows - 1; row += 1) {
       for (let col = 1; col < this.cols - 1; col += 1) {
         if (this.getCell(col, row) !== slot) continue;
@@ -614,6 +620,62 @@ export class VoxelAsteroidBody {
       }
     }
     ctx.restore();
+  }
+
+  drawAtlasRockTexture(ctx) {
+    if (!isGameArtReady()) return;
+    ctx.save();
+    this.clipSolid(ctx);
+    const overlap = this.cellSize * 0.1;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        if (!this.isSolidCell(col, row)) continue;
+        const hash = ((col * 73856093 + row * 19349663 + Math.floor(this.seed * 100000)) >>> 0);
+        drawGameArtTexture(
+          ctx,
+          this.data.rarity === 'rare' || this.data.rarity === 'epic' ? 'deepRockTile' : 'rockTile',
+          col * this.cellSize - overlap,
+          row * this.cellSize - overlap,
+          this.cellSize + overlap * 2,
+          this.cellSize + overlap * 2,
+          {
+            alpha: 0.28,
+            seed: hash,
+            sourceJitter: 0.28,
+            smoothing: true,
+            tint: withAlpha(this.data.color || '#6b625a', 0.22),
+          },
+        );
+      }
+    }
+    ctx.restore();
+  }
+
+  drawAtlasOreTexture(ctx, slot, def) {
+    if (!isGameArtReady()) return;
+    const key = getAsteroidArtKey(def, slot);
+    const overlap = this.cellSize * 0.12;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        if (this.getCell(col, row) !== slot) continue;
+        const hash = ((col * 83492791 + row * 2654435761 + Math.floor(this.seed * 100000) + slot * 31337) >>> 0);
+        drawGameArtTexture(
+          ctx,
+          key,
+          col * this.cellSize - overlap,
+          row * this.cellSize - overlap,
+          this.cellSize + overlap * 2,
+          this.cellSize + overlap * 2,
+          {
+            alpha: slot > 2 ? 0.62 : 0.48,
+            seed: hash,
+            sourceJitter: 0.22,
+            smoothing: true,
+            tint: withAlpha(def.color || '#d7e4ff', 0.14),
+          },
+        );
+      }
+    }
   }
 
   drawTexture(ctx) {
@@ -721,4 +783,18 @@ export class VoxelAsteroidBody {
     }
     ctx.closePath();
   }
+}
+
+function getAsteroidArtKey(def, slot) {
+  const materialId = def?.materialId || '';
+  if (materialId.includes('iron') || materialId.includes('nickel') || materialId.includes('steel')) return 'ironOreTile';
+  if (materialId.includes('copper') || materialId.includes('amber') || materialId.includes('ember')) return 'copperOreTile';
+  if (
+    materialId.includes('crystal')
+    || materialId.includes('quartz')
+    || materialId.includes('moon')
+    || materialId.includes('void')
+    || slot > 2
+  ) return 'crystalOreTile';
+  return 'rockTile';
 }

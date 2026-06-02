@@ -123,13 +123,13 @@ export class IslandSystem {
     this.game.saveGame();
   }
 
-  saveTorches(islandId, torches = []) {
+  saveTorches(islandId, torches = [], { skipSave = false } = {}) {
     this.game.state.islands ||= { visited: {} };
     this.game.state.islands.torches ||= {};
     this.game.state.islands.torches[islandId] = torches
       .filter(Boolean)
       .map((torch) => (typeof torch.serialize === 'function' ? torch.serialize() : torch));
-    this.game.saveGame();
+    if (!skipSave) this.game.saveGame();
   }
 
   savePlatforms(islandId, platforms = []) {
