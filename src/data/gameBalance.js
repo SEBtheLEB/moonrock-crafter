@@ -29,6 +29,7 @@ export const gameBalance = {
     acceleration: 0.9,
     handling: 1,
     sizeScale: 1,
+    gravityStabilizerLevel: 1,
     miningPower: 1.08,
     range: 1,
     miningRange: 214,
@@ -106,7 +107,7 @@ export const gameBalance = {
     asteroidDistanceBands: [
       {
         id: 'originBlue',
-        label: 'Origin Blue Ring',
+        label: 'Inner Circle',
         minDistance: 0,
         maxDistance: 20000,
         weights: {
@@ -117,7 +118,7 @@ export const gameBalance = {
       },
       {
         id: 'cobaltRim',
-        label: 'Cobalt Crystal Rim',
+        label: 'Inner Mid Circle',
         minDistance: 20000,
         maxDistance: 40000,
         weights: {
@@ -130,7 +131,7 @@ export const gameBalance = {
       },
       {
         id: 'emberShelf',
-        label: 'Ember Shelf',
+        label: 'Mid Circle',
         minDistance: 40000,
         maxDistance: 60000,
         weights: {
@@ -146,7 +147,7 @@ export const gameBalance = {
       },
       {
         id: 'violetReef',
-        label: 'Violet Reef',
+        label: 'Outer Mid Circle',
         minDistance: 60000,
         maxDistance: 80000,
         weights: {
@@ -161,7 +162,7 @@ export const gameBalance = {
       },
       {
         id: 'starlessDeep',
-        label: 'Starless Deep',
+        label: 'Outer Circle',
         minDistance: 80000,
         maxDistance: Infinity,
         weights: {
@@ -367,7 +368,7 @@ export const gameBalance = {
       {
         id: 'mineStoneOre',
         label: 'Mine 5 Stone Ore',
-        description: 'Gather starter ore from the Origin Blue Ring.',
+        description: 'Gather starter ore from the Inner Circle.',
         condition: { type: 'materialCollected', materialId: 'stoneOre', amount: 5 },
         reward: { credits: 8 },
       },
@@ -388,14 +389,14 @@ export const gameBalance = {
       {
         id: 'collectCopper',
         label: 'Mine 3 Copper Shards',
-        description: 'Copper asteroids appear deeper in the Origin Blue Ring.',
+        description: 'Copper asteroids appear deeper in the Inner Circle.',
         condition: { type: 'materialCollected', materialId: 'copperShards', amount: 3 },
         reward: { credits: 12 },
       },
       {
         id: 'reachCrystalRim',
         label: 'Reach 20000m from origin',
-        description: 'Push past the inner blue ring toward crystal-heavy space.',
+        description: 'Push past the Inner Circle toward crystal-heavy space.',
         condition: { type: 'distanceReached', amount: 20000 },
         reward: { credits: 18 },
       },
@@ -416,7 +417,7 @@ export const gameBalance = {
       {
         id: 'unlockEmberDrift',
         label: 'Unlock Cobalt Ring charts',
-        description: 'Spend research to chart the first deep ring route.',
+        description: 'Spend research to chart the first deeper circle route.',
         condition: { type: 'researchUnlocked', researchId: 'emberDrift', amount: 1 },
         reward: { credits: 20, researchPoints: 1 },
       },
@@ -430,7 +431,7 @@ export const gameBalance = {
       {
         id: 'reachFarPlanetSignal',
         label: 'Reach 100000m from origin',
-        description: 'Fly toward the faraway planet signal beyond the Starless Deep.',
+        description: 'Fly toward the faraway planet signal beyond the Outer Circle.',
         condition: { type: 'distanceReached', amount: 100000 },
         reward: { credits: 80, researchPoints: 2 },
       },
@@ -451,7 +452,7 @@ export const gameBalance = {
   zones: [
     {
       id: 'originBlue',
-      name: 'Origin Blue Ring',
+      name: 'Inner Circle',
       minDistance: 0,
       maxDistance: 20000,
       difficulty: 1,
@@ -461,7 +462,7 @@ export const gameBalance = {
     },
     {
       id: 'cobaltRim',
-      name: 'Cobalt Rim',
+      name: 'Inner Mid Circle',
       minDistance: 20000,
       maxDistance: 40000,
       researchId: 'emberDrift',
@@ -472,7 +473,7 @@ export const gameBalance = {
     },
     {
       id: 'emberShelf',
-      name: 'Ember Shelf',
+      name: 'Mid Circle',
       minDistance: 40000,
       maxDistance: 60000,
       researchId: 'frostRing',
@@ -483,7 +484,7 @@ export const gameBalance = {
     },
     {
       id: 'violetReef',
-      name: 'Violet Reef',
+      name: 'Outer Mid Circle',
       minDistance: 60000,
       maxDistance: 80000,
       researchId: 'voidReef',
@@ -494,7 +495,7 @@ export const gameBalance = {
     },
     {
       id: 'starlessDeep',
-      name: 'Starless Deep',
+      name: 'Outer Circle',
       minDistance: 80000,
       maxDistance: Infinity,
       researchId: 'starGraveyard',

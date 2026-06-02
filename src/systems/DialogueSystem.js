@@ -1,4 +1,4 @@
-import { dialogue } from '../data/dialogue.js?v=130';
+import { dialogue } from '../data/dialogue.js?v=131';
 
 export class DialogueSystem {
   constructor(game) {

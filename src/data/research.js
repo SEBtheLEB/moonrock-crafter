@@ -1,9 +1,9 @@
 export const research = [
   {
     id: 'emberDrift',
-    name: 'Cobalt Ring Charts',
+    name: 'Inner Mid Circle Charts',
     icon: 'E',
-    description: 'Charts the first deep ring beyond the Origin Blue zone.',
+    description: 'Charts the first circle beyond the Inner Circle.',
     cost: 1,
     position: { x: 24, y: 44 },
     prerequisites: [],
@@ -11,9 +11,9 @@ export const research = [
   },
   {
     id: 'frostRing',
-    name: 'Ember Shelf Charts',
+    name: 'Mid Circle Charts',
     icon: 'I',
-    description: 'Marks the hot 20000m ring where tougher ember rocks drift.',
+    description: 'Marks the hotter mid-distance circle where tougher ember rocks drift.',
     cost: 2,
     position: { x: 42, y: 25 },
     prerequisites: ['emberDrift'],
@@ -21,9 +21,9 @@ export const research = [
   },
   {
     id: 'voidReef',
-    name: 'Void Reef',
+    name: 'Outer Mid Circle Charts',
     icon: 'V',
-    description: 'Stabilizes navigation through the purple 30000m ring.',
+    description: 'Stabilizes navigation through the purple outer-mid circle.',
     cost: 4,
     position: { x: 62, y: 42 },
     prerequisites: ['frostRing'],
@@ -31,9 +31,9 @@ export const research = [
   },
   {
     id: 'starGraveyard',
-    name: 'Starless Deep',
+    name: 'Outer Circle Charts',
     icon: 'G',
-    description: 'Unlocks routes through the black outer ring of ancient debris and epic ore.',
+    description: 'Unlocks routes through the black Outer Circle of ancient debris and epic ore.',
     cost: 5,
     position: { x: 82, y: 24 },
     prerequisites: ['voidReef'],

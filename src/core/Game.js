@@ -1,30 +1,30 @@
 import { EventBus } from './EventBus.js';
 import { SceneManager } from './SceneManager.js';
-import { InputManager } from './InputManager.js?v=130';
+import { InputManager } from './InputManager.js?v=131';
 import { SaveManager } from './SaveManager.js';
-import { AudioManager } from './AudioManager.js?v=130';
+import { AudioManager } from './AudioManager.js?v=131';
 import { UIManager } from '../ui/UIManager.js';
-import { DebugPanel } from '../ui/DebugPanel.js?v=130';
+import { DebugPanel } from '../ui/DebugPanel.js?v=131';
 import { InventorySystem } from '../systems/InventorySystem.js';
 import { MaterialSystem } from '../systems/MaterialSystem.js';
-import { DialogueSystem } from '../systems/DialogueSystem.js?v=130';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=130';
-import { EconomySystem } from '../systems/EconomySystem.js?v=130';
-import { ResearchSystem } from '../systems/ResearchSystem.js?v=130';
-import { TutorialSystem } from '../systems/TutorialSystem.js?v=130';
-import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=130';
-import { AchievementSystem } from '../systems/AchievementSystem.js?v=130';
-import { NavigationSystem } from '../systems/NavigationSystem.js?v=130';
-import { IslandSystem } from '../systems/IslandSystem.js?v=130';
-import { BuildingSystem } from '../systems/BuildingSystem.js?v=130';
+import { DialogueSystem } from '../systems/DialogueSystem.js?v=131';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js?v=131';
+import { EconomySystem } from '../systems/EconomySystem.js?v=131';
+import { ResearchSystem } from '../systems/ResearchSystem.js?v=131';
+import { TutorialSystem } from '../systems/TutorialSystem.js?v=131';
+import { ObjectiveSystem } from '../systems/ObjectiveSystem.js?v=131';
+import { AchievementSystem } from '../systems/AchievementSystem.js?v=131';
+import { NavigationSystem } from '../systems/NavigationSystem.js?v=131';
+import { IslandSystem } from '../systems/IslandSystem.js?v=131';
+import { BuildingSystem } from '../systems/BuildingSystem.js?v=131';
 import { BootScene } from '../scenes/BootScene.js';
-import { StationScene } from '../scenes/StationScene.js?v=130';
-import { MiningScene } from '../scenes/MiningScene.js?v=130';
-import { UpgradeScene } from '../scenes/UpgradeScene.js?v=130';
-import { StorageScene } from '../scenes/StorageScene.js?v=130';
-import { IslandScene } from '../scenes/IslandScene.js?v=130';
-import { gameBalance } from '../data/gameBalance.js?v=130';
-import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=130';
+import { StationScene } from '../scenes/StationScene.js?v=131';
+import { MiningScene } from '../scenes/MiningScene.js?v=131';
+import { UpgradeScene } from '../scenes/UpgradeScene.js?v=131';
+import { StorageScene } from '../scenes/StorageScene.js?v=131';
+import { IslandScene } from '../scenes/IslandScene.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=131';
+import { DEFAULT_HOTBAR_SLOT_IDS } from '../data/hotbar.js?v=131';
 
 export class Game {
   constructor({ canvas, uiRoot }) {
@@ -104,6 +104,7 @@ export class Game {
         researchStation: null,
         baseLab: null,
         stationRouteUnlocked: false,
+        nextObjectiveIslandId: null,
       },
       settings: {
         audioMuted: this.audio ? !this.audio.enabled : false,

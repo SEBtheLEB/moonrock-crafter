@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=130';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
 const AUTOSAVE_EVENTS = new Set([
   'upgradePurchased',
@@ -118,9 +118,9 @@ export class ObjectiveSystem {
         description: 'All current starter objectives are complete.',
         progress: { current: 1, target: 1, text: 'Done' },
         reward: 'Progress',
-        location: 'Station',
-        nextStep: 'Mine, upgrade the ship, unlock research routes, and keep pushing toward the far planet.',
-        tips: ['Use Storage to review minerals, then upgrade fuel, cargo, engines, laser power, and ship frame.'],
+        location: 'Field Base',
+        nextStep: 'Mine, build, repair the ship, then follow the GPS toward the next planet signal.',
+        tips: ['Use the base lab inventory and crafting stations to review materials, repair gear, and prepare for deeper circles.'],
         requirements: [],
       };
     }
@@ -140,8 +140,8 @@ export class ObjectiveSystem {
 
     if (condition.type === 'materialCollected') {
       const material = this.game.systems.materials.getMaterial(condition.materialId);
-      details.location = 'Launch Bay -> Mining';
-      details.nextStep = `Launch the ship and mine asteroids that drop ${material?.name || condition.materialId}.`;
+      details.location = 'Starter Planet -> Mining';
+      details.nextStep = `Mine terrain or nearby asteroids that drop ${material?.name || condition.materialId}.`;
       details.requirements = [{
         id: condition.materialId,
         name: material?.name || condition.materialId,
@@ -176,8 +176,8 @@ export class ObjectiveSystem {
       details.location = 'Launch Bay -> Mining';
       details.nextStep = `Fly at least ${condition.amount}m from the station in any direction.`;
       details.tips = [
-        'Space loot is arranged in distance rings around the station.',
-        'Around 3000m you start seeing more crystal asteroids; around 6000m rarer rocks begin appearing.',
+        'Space loot is arranged in distance circles around the origin.',
+        'The Inner Circle is safest; the Inner Mid Circle starts pushing you toward stronger gear.',
         'The faraway planet is a long-term destination. Upgrade fuel, engines, cargo, and ship frame before committing.',
       ];
     }

@@ -1,6 +1,6 @@
-import { locations } from '../data/locations.js?v=130';
-import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=130';
-import { gameBalance } from '../data/gameBalance.js?v=130';
+import { locations } from '../data/locations.js?v=131';
+import { gpsUnlockCost, scannerUpgrades } from '../data/scannerUpgrades.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
 export class NavigationSystem {
   constructor(game, islandSystem = null) {
@@ -41,6 +41,11 @@ export class NavigationSystem {
         icon: existing.icon || 'IS',
         requiredScannerLevel: island.requiredScannerLevel || existing.requiredScannerLevel || 1,
         biome: island.biome || existing.biome || 'scrap',
+        ringIndex: island.ringIndex ?? existing.ringIndex ?? 0,
+        circleName: island.circleName || existing.circleName || 'Inner Circle',
+        atmosphereClass: island.atmosphereClass || existing.atmosphereClass || 'stable',
+        gravityStabilizerRequirement: island.gravityStabilizerRequirement || existing.gravityStabilizerRequirement || 1,
+        objectiveRole: island.objectiveRole || existing.objectiveRole || '',
         canSetDestination: true,
       });
     });

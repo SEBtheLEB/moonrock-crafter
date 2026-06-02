@@ -1,9 +1,10 @@
-import { islands } from '../data/islands.js?v=130';
-import { TerrainGrid } from './TerrainGrid.js?v=130';
-import { gameBalance } from '../data/gameBalance.js?v=130';
+import { islands } from '../data/islands.js?v=131';
+import { TerrainGrid } from './TerrainGrid.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
-const ISLAND_LAYOUT_VERSION = 7;
+const ISLAND_LAYOUT_VERSION = 8;
 const PLANET_TAG_PREFIX = 'P';
+const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
 
 export class IslandSystem {
   constructor(game) {
@@ -30,6 +31,51 @@ export class IslandSystem {
   getPlanetTag(islandOrId) {
     const island = typeof islandOrId === 'string' ? this.getIslandByTag(islandOrId) || this.getIsland(islandOrId) : islandOrId;
     return island?.tag || island?.planetTag || '';
+  }
+
+  getCircleName(ringIndex = 0) {
+    const index = Math.max(0, Math.min(CIRCLE_NAMES.length - 1, Number(ringIndex) || 0));
+    return CIRCLE_NAMES[index] || `Circle ${index + 1}`;
+  }
+
+  getHigherAtmosphereIslands({
+    origin = null,
+    currentStabilizerLevel = 1,
+    ringIndex = null,
+  } = {}) {
+    const candidates = this.islands.filter((island) => {
+      const requirement = island.gravityStabilizerRequirement || 1;
+      if (requirement <= currentStabilizerLevel) return false;
+      if (ringIndex !== null && island.ringIndex !== ringIndex) return false;
+      return true;
+    });
+    if (!origin) return candidates;
+    return candidates
+      .map((island) => ({
+        island,
+        distanceSq: (island.worldPosition.x - origin.x) ** 2 + (island.worldPosition.y - origin.y) ** 2,
+      }))
+      .sort((a, b) => a.distanceSq - b.distanceSq)
+      .map((entry) => entry.island);
+  }
+
+  pickNextHigherAtmosphereIsland(origin = { x: 0, y: 0 }, { currentStabilizerLevel = 1 } = {}) {
+    const candidates = this.getHigherAtmosphereIslands({
+      origin,
+      currentStabilizerLevel,
+      ringIndex: 0,
+    });
+    if (!candidates.length) return null;
+    const nearestDistanceSq = (candidates[0].worldPosition.x - origin.x) ** 2
+      + (candidates[0].worldPosition.y - origin.y) ** 2;
+    const closeCandidates = candidates
+      .filter((island) => {
+        const distanceSq = (island.worldPosition.x - origin.x) ** 2 + (island.worldPosition.y - origin.y) ** 2;
+        return distanceSq <= nearestDistanceSq * 1.45;
+      })
+      .slice(0, 3);
+    const random = this.createSeededRandom((this.game.state.islands?.seed || 1) ^ 0x7a51cafe);
+    return closeCandidates[Math.floor(random() * closeCandidates.length)] || candidates[0];
   }
 
   createRuntime() {
@@ -219,6 +265,10 @@ export class IslandSystem {
       type: 'crashPlanet',
       biome: 'scrap',
       kind: 'story',
+      ringIndex: 0,
+      circleName: this.getCircleName(0),
+      atmosphereClass: 'stable',
+      gravityStabilizerRequirement: 1,
       worldPosition: this.positionInRing(random, 0, ringSize, 5200, Math.min(9800, ringSize - 7200), layout),
       size: { width: 3400, height: 3400 },
       discovered: true,
@@ -236,10 +286,52 @@ export class IslandSystem {
     layout.push({
       ...starter,
       kind: 'poi',
+      ringIndex: 0,
+      circleName: this.getCircleName(0),
+      atmosphereClass: 'stable',
+      gravityStabilizerRequirement: 1,
       size: { width: 2050, height: 2050 },
       worldPosition: this.positionInRing(random, 0, ringSize, 5600, ringSize - 5200, layout),
       landingZoneRadius: 560,
       discovered: true,
+    });
+
+    const denseInnerPlanets = [
+      {
+        id: 'denseInnerPlanet-a',
+        name: 'Brasshollow',
+        biome: 'scrap',
+        size: { width: 5200, height: 5200 },
+        resources: ['stoneOre', 'ironDust', 'copperShards', 'moonCrystal', 'crystallizedStone'],
+      },
+      {
+        id: 'denseInnerPlanet-b',
+        name: 'Gravemint',
+        biome: 'crystal',
+        size: { width: 5600, height: 5600 },
+        resources: ['stoneOre', 'ironDust', 'copperShards', 'glassCrystal', 'moonCrystal'],
+      },
+    ];
+    denseInnerPlanets.forEach((planet, index) => {
+      layout.push({
+        ...planet,
+        type: 'denseAtmospherePlanet',
+        kind: 'objective',
+        ringIndex: 0,
+        circleName: this.getCircleName(0),
+        atmosphereClass: 'dense',
+        gravityStabilizerRequirement: 2,
+        objectiveRole: 'gravityStabilizerUpgrade',
+        worldPosition: this.positionInRing(random, 0, ringSize, 11200, Math.min(18200, ringSize - 1400), layout),
+        discovered: false,
+        dangerLevel: 2,
+        landingZoneRadius: 1100 + index * 80,
+        atmosphereDepth: 7800 + index * 700,
+        animals: [],
+        layoutId: index === 0 ? 'forestRock' : 'crystalIsland',
+        requiredScannerLevel: 1,
+        description: 'A larger Inner Circle planet with a dense atmosphere. Your Mark I gravity stabilizer cannot reset gravity here yet.',
+      });
     });
 
     for (let ring = 0; ring < 5; ring += 1) {
@@ -255,6 +347,10 @@ export class IslandSystem {
           type: type.type,
           biome: type.biome,
           kind: index === 0 ? 'poi' : type.kind,
+          ringIndex: ring,
+          circleName: this.getCircleName(ring),
+          atmosphereClass: 'stable',
+          gravityStabilizerRequirement: 1,
           worldPosition: this.positionInRing(random, ring, ringSize, min, max, layout),
           size: type.size,
           discovered: ring === 0 && index < 1,
@@ -264,7 +360,7 @@ export class IslandSystem {
           animals: [],
           layoutId: type.layoutId,
           requiredScannerLevel: Math.max(1, Math.min(5, ring + 1)),
-          description: `${type.kind === 'loose' ? 'A loose ore island' : 'A point of interest'} floating in ring ${ring + 1}.`,
+          description: `${type.kind === 'loose' ? 'A loose ore island' : 'A point of interest'} floating in the ${this.getCircleName(ring)}.`,
         });
       }
     }

@@ -1,31 +1,31 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=130';
-import { Ship } from '../entities/Ship.js?v=130';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=130';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=130';
-import { MineralPickup } from '../entities/MineralPickup.js?v=130';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=130';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=130';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=130';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=130';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=130';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=130';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=130';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=130';
-import { BaseLab } from '../entities/BaseLab.js?v=130';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=130';
-import { EnemySystem } from '../systems/EnemySystem.js?v=130';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=130';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=130';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=130';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=130';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=130';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=130';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=130';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=130';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=130';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=130';
+import { Hotbar } from '../ui/Hotbar.js?v=131';
+import { Ship } from '../entities/Ship.js?v=131';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=131';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=131';
+import { MineralPickup } from '../entities/MineralPickup.js?v=131';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=131';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=131';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=131';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=131';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=131';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=131';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=131';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=131';
+import { BaseLab } from '../entities/BaseLab.js?v=131';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=131';
+import { EnemySystem } from '../systems/EnemySystem.js?v=131';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=131';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=131';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=131';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=131';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=131';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=131';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=131';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=131';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=131';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=131';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -38,9 +38,9 @@ import {
   getVoxelEntries,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=130';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=130';
-import { gameBalance } from '../data/gameBalance.js?v=130';
+} from '../systems/MachineSculptingSystem.js?v=131';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -370,6 +370,13 @@ export class MiningScene {
     this.cargoDumpReturnToStation = false;
     this.cargoDumpCooldown = 0;
     this.outOfFuelReturnQueued = false;
+    const story = this.getStoryState();
+    if (
+      story.thrustersRepaired
+      && (!story.nextObjectiveIslandId || !this.game.state.navigation.selectedDestinationId || this.game.state.navigation.selectedDestinationId === 'base')
+    ) {
+      this.assignPostRepairDestination({ save: false });
+    }
   }
 
   createSpaceIslands() {
@@ -505,7 +512,52 @@ export class MiningScene {
     this.game.state.story.researchStationPlaced ||= false;
     this.game.state.story.researchStation ||= null;
     this.game.state.story.baseLab ||= null;
+    this.game.state.story.nextObjectiveIslandId ||= null;
     return this.game.state.story;
+  }
+
+  getGravityStabilizerLevel() {
+    return Math.max(1, Number(this.game.state.ship?.gravityStabilizerLevel) || 1);
+  }
+
+  canUseGravityStabilizerOnIsland(island = this.activeIsland) {
+    if (!island) return true;
+    return this.getGravityStabilizerLevel() >= (island.gravityStabilizerRequirement || 1);
+  }
+
+  getGravityStabilizerBlockMessage(island = this.activeIsland) {
+    const requirement = island?.gravityStabilizerRequirement || 1;
+    const label = island?.getDisplayName?.() || island?.name || 'This planet';
+    return `${label} has dense atmosphere. Gravity Stabilizer Mk ${requirement} required.`;
+  }
+
+  getPostRepairObjectiveIsland() {
+    const story = this.getStoryState();
+    const level = this.getGravityStabilizerLevel();
+    const stored = story.nextObjectiveIslandId
+      ? this.rockIslands.find((island) => island.id === story.nextObjectiveIslandId)
+      : null;
+    if (stored && (stored.gravityStabilizerRequirement || 1) > level) return stored;
+    const origin = this.ship || { x: 0, y: 0 };
+    const islandData = this.game.systems.islands.pickNextHigherAtmosphereIsland?.(origin, {
+      currentStabilizerLevel: level,
+    });
+    if (!islandData) return null;
+    return this.rockIslands.find((island) => island.id === islandData.id) || islandData;
+  }
+
+  assignPostRepairDestination({ save = false } = {}) {
+    const target = this.getPostRepairObjectiveIsland();
+    if (!target) return null;
+    const story = this.getStoryState();
+    story.nextObjectiveIslandId = target.id;
+    this.game.state.navigation.gpsUnlocked = true;
+    this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
+    this.game.state.navigation.selectedDestinationId = target.id;
+    this.game.systems.navigation.refreshLocations?.();
+    this.game.systems.navigation.discoverLocation(target.id, { notify: false, save: false });
+    if (save) this.game.saveGame();
+    return target;
   }
 
   ensureStarterBaseCamp(island) {
@@ -684,13 +736,13 @@ export class MiningScene {
         <span class="radar-arrow" data-station-arrow></span>
         <strong data-distance-text>0m</strong>
       </div>
-      <div class="zone-chip" data-zone-chip>Scrap Belt</div>
+      <div class="zone-chip" data-zone-chip>Inner Circle</div>
       <div class="planet-visor is-hidden" data-planet-visor>
         <span data-planet-tag>P--</span>
         <strong data-planet-status>Surface</strong>
       </div>
       <div class="mining-warning" data-warning></div>
-      <div class="zone-banner" data-zone-banner>Scrap Belt</div>
+      <div class="zone-banner" data-zone-banner>Inner Circle</div>
       <div class="gps-destination-hud is-hidden" data-gps-panel>
         <span class="gps-arrow" data-gps-arrow></span>
         <div>
@@ -2309,7 +2361,9 @@ export class MiningScene {
     } else {
       this.destinationIndicatorAngle += angleDifference(this.destinationIndicatorAngle, targetAngle) * Math.min(1, delta * 8);
     }
-    const warning = this.stats.fuel < (destination.recommendedFuel || 0) * 0.42 ? 'Fuel risk' : '';
+    const warning = (destination.gravityStabilizerRequirement || 1) > this.getGravityStabilizerLevel()
+      ? `Needs Grav Mk ${destination.gravityStabilizerRequirement}`
+      : (this.stats.fuel < (destination.recommendedFuel || 0) * 0.42 ? 'Fuel risk' : '');
     this.destinationIndicator = {
       id: destination.id,
       name: destination.tag ? `${destination.tag} ${destination.name}` : destination.name,
@@ -2442,7 +2496,8 @@ export class MiningScene {
     this.landingIsland = nearest;
     this.hud?.landingPrompt?.classList.toggle('is-hidden', !nearest);
     if (nearest) {
-      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press ${this.getInteractControlLabel()} to Land - ${nearest.getDisplayName?.() || nearest.name}`);
+      const atmosphereNote = nearest.atmosphereClass === 'dense' ? ' - Dense Atmosphere' : '';
+      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press ${this.getInteractControlLabel()} to Land - ${nearest.getDisplayName?.() || nearest.name}${atmosphereNote}`);
       if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Land';
       if (this.mineButtonIcon) this.mineButtonIcon.textContent = 'L';
       this.mineButton?.classList.add('is-land-mode');
@@ -2578,7 +2633,13 @@ export class MiningScene {
     this.game.state.islands ||= { visited: {} };
     this.game.state.islands.visited ||= {};
     this.game.state.islands.visited[island.id] = true;
-    this.game.ui.showToast(`Landing on ${island.name}`, 'success', 1400);
+    this.game.ui.showToast(
+      island.atmosphereClass === 'dense'
+        ? `Landing on ${island.name}. Dense atmosphere detected.`
+        : `Landing on ${island.name}`,
+      island.atmosphereClass === 'dense' ? 'default' : 'success',
+      1700,
+    );
   }
 
   prewarmIslandTerrain(island) {
@@ -2845,6 +2906,13 @@ export class MiningScene {
     if (!this.activeIsland || !this.islandPlayer) return;
     if (this.heldItemState) return;
     if (!actions.justPressed?.stabilize && !actions.stabilize) return;
+    if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
+      if (actions.justPressed?.stabilize) {
+        this.game.audio.playError?.();
+        this.game.ui.showToast(this.getGravityStabilizerBlockMessage(this.activeIsland), 'danger', 2200);
+      }
+      return;
+    }
     if (actions.justPressed?.stabilize) this.engageIslandGravityStabilizer();
     this.islandRotationSettling = true;
     if (actions.justPressed?.stabilize) {
@@ -3640,12 +3708,47 @@ export class MiningScene {
   }
 
   getQuickInventorySignature() {
-    const inventory = this.game.systems.inventory.storage || {};
-    return Object.entries(inventory)
-      .filter(([, amount]) => amount > 0)
-      .sort(([left], [right]) => left.localeCompare(right))
+    const hotbarSignature = (this.game.input.hotbarSlotIds || []).join(',');
+    return `${hotbarSignature}::${this.getBackpackInventoryEntries()
       .map(([itemId, amount]) => `${itemId}:${amount}`)
-      .join('|');
+      .join('|')}`;
+  }
+
+  getHotbarInventoryItemIds({ excludeIndex = -1 } = {}) {
+    const ids = new Set();
+    (this.game.input.hotbarSlotIds || []).forEach((slotId, index) => {
+      if (index === excludeIndex) return;
+      const slot = this.game.input.getHotbarSlotAt?.(index, { ignoreOwnership: true });
+      if (slot?.inventoryItemId && this.game.systems.inventory.getStoredAmount(slot.inventoryItemId) > 0) {
+        ids.add(slot.inventoryItemId);
+      }
+    });
+    return ids;
+  }
+
+  isItemAssignedToHotbar(itemId, options = {}) {
+    if (!itemId) return false;
+    return this.getHotbarInventoryItemIds(options).has(itemId);
+  }
+
+  sortInventoryEntries(entries = []) {
+    return entries.sort(([leftId, leftAmount], [rightId, rightAmount]) => {
+      const left = this.game.systems.materials.getMaterial(leftId);
+      const right = this.game.systems.materials.getMaterial(rightId);
+      const rarityOrder = { common: 0, uncommon: 1, rare: 2, epic: 3 };
+      const rarityDiff = (rarityOrder[left?.rarity || 'common'] ?? 0) - (rarityOrder[right?.rarity || 'common'] ?? 0);
+      if (rarityDiff) return rarityDiff;
+      if (rightAmount !== leftAmount) return rightAmount - leftAmount;
+      return this.game.systems.materials.getDisplayName(leftId).localeCompare(this.game.systems.materials.getDisplayName(rightId));
+    });
+  }
+
+  getBackpackInventoryEntries() {
+    const hotbarItems = this.getHotbarInventoryItemIds();
+    return this.sortInventoryEntries(
+      Object.entries(this.game.systems.inventory.storage || {})
+        .filter(([itemId, amount]) => amount > 0 && !hotbarItems.has(itemId)),
+    );
   }
 
   updateQuickInventory(force = false) {
@@ -3657,17 +3760,7 @@ export class MiningScene {
     const signature = this.getQuickInventorySignature();
     if (!force && signature === this.quickInventorySignature) return;
     this.quickInventorySignature = signature;
-    const entries = Object.entries(this.game.systems.inventory.storage || {})
-      .filter(([, amount]) => amount > 0)
-      .sort(([leftId, leftAmount], [rightId, rightAmount]) => {
-        const left = this.game.systems.materials.getMaterial(leftId);
-        const right = this.game.systems.materials.getMaterial(rightId);
-        const rarityOrder = { common: 0, uncommon: 1, rare: 2, epic: 3 };
-        const rarityDiff = (rarityOrder[left?.rarity || 'common'] ?? 0) - (rarityOrder[right?.rarity || 'common'] ?? 0);
-        if (rarityDiff) return rarityDiff;
-        if (rightAmount !== leftAmount) return rightAmount - leftAmount;
-        return this.game.systems.materials.getDisplayName(leftId).localeCompare(this.game.systems.materials.getDisplayName(rightId));
-      });
+    const entries = this.getBackpackInventoryEntries();
     const slotCount = Math.max(35, Math.ceil(entries.length / 7) * 7 || 35);
     const fragment = document.createDocumentFragment();
     for (let index = 0; index < slotCount; index += 1) {
@@ -3739,7 +3832,7 @@ export class MiningScene {
       return;
     }
     const inventory = this.game.systems.inventory.storage;
-    const entries = Object.entries(inventory).filter(([, amount]) => amount > 0);
+    const entries = this.getBackpackInventoryEntries();
     const content = document.createElement('div');
     content.className = 'survival-inventory';
     const grid = document.createElement('div');
@@ -6045,13 +6138,23 @@ export class MiningScene {
     story.thrustersRepaired = true;
     this.game.state.navigation.gpsUnlocked = true;
     this.game.state.navigation.scannerLevel = Math.max(1, this.game.state.navigation.scannerLevel || 0);
-    this.game.state.navigation.selectedDestinationId = 'base';
-    this.game.systems.navigation.refreshLocations?.();
-    this.game.systems.navigation.discoverLocation('base', { notify: false, save: false });
+    const nextTarget = this.assignPostRepairDestination({ save: false });
+    if (!nextTarget) {
+      this.game.state.navigation.selectedDestinationId = 'base';
+      this.game.systems.navigation.refreshLocations?.();
+      this.game.systems.navigation.discoverLocation('base', { notify: false, save: false });
+    }
     this.game.saveGame();
     this.game.audio.playSuccess?.();
     this.spawnBurst(this.ship.x, this.ship.y, '#76f3ff', 28, 160);
-    this.game.ui.showToast('Thrusters repaired. Your base GPS is online.', 'success', 2800);
+    const targetLabel = nextTarget?.getDisplayName?.() || (nextTarget?.tag ? `${nextTarget.tag} ${nextTarget.name}` : nextTarget?.name);
+    this.game.ui.showToast(
+      targetLabel
+        ? `Thrusters repaired. GPS locked onto ${targetLabel}.`
+        : 'Thrusters repaired. Your base GPS is online.',
+      'success',
+      3200,
+    );
     if (gameBalance.tutorialDialogueEnabled !== false) {
       this.game.systems.dialogue.startSet('sparksTutorial', 'repaired', {
         speaker: 'Sparks',
@@ -6127,6 +6230,9 @@ export class MiningScene {
     if (!this.hud?.landingPrompt || !this.activeIsland || !this.islandPlayer) return;
     this.hud.landingPrompt.classList.remove('is-hidden');
     let text = this.islandFreefall ? 'Gravity device auto-engaged - falling back to the planet' : 'Mine terrain - G stabilizes gravity';
+    if (!this.canUseGravityStabilizerOnIsland(this.activeIsland)) {
+      text = `${this.activeIsland.getAtmosphereLabel?.() || 'Dense atmosphere'} - Gravity Stabilizer Mk ${this.activeIsland.gravityStabilizerRequirement || 2} needed`;
+    }
     if (this.isFlagToolSelected()) text = 'Flag tool - aim at ground and click Use';
     if (this.isTorchToolSelected()) text = 'Torch - aim at ground and click Use';
     if (this.isPlatformToolSelected()) text = 'Platform - aim at open grid space and click Use';
@@ -7416,7 +7522,7 @@ export class MiningScene {
         const label = this.cameraView.worldToScreen(Math.cos(shipAngle) * radius, Math.sin(shipAngle) * radius);
         ctx.setLineDash([]);
         ctx.fillStyle = `rgba(236, 231, 216, ${0.35 + closeAlpha * 0.5})`;
-        ctx.fillText(`${Math.round(radius / 1000)}k ring`, label.x, label.y - 18 / scale);
+        ctx.fillText(`${Math.round(radius / 1000)}k circle`, label.x, label.y - 18 / scale);
       }
     }
     ctx.restore();

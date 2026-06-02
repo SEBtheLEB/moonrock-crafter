@@ -1,7 +1,7 @@
-import { PlacedFlag } from './PlacedFlag.js?v=130';
-import { PlacedTorch } from './PlacedTorch.js?v=130';
-import { PlacedPlatform } from './PlacedPlatform.js?v=130';
-import { gameBalance } from '../data/gameBalance.js?v=130';
+import { PlacedFlag } from './PlacedFlag.js?v=131';
+import { PlacedTorch } from './PlacedTorch.js?v=131';
+import { PlacedPlatform } from './PlacedPlatform.js?v=131';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothStep = (value) => {
@@ -20,6 +20,11 @@ export class SpaceIsland {
     this.y = data.worldPosition.y;
     this.biome = data.biome || 'scrap';
     this.kind = data.kind || 'poi';
+    this.ringIndex = data.ringIndex ?? 0;
+    this.circleName = data.circleName || 'Inner Circle';
+    this.atmosphereClass = data.atmosphereClass || 'stable';
+    this.gravityStabilizerRequirement = data.gravityStabilizerRequirement || 1;
+    this.objectiveRole = data.objectiveRole || '';
     this.width = terrain?.width || data.size?.width || 1500;
     this.height = terrain?.height || data.size?.height || 760;
     this.radius = Math.min(this.width, this.height) * 0.39;
@@ -54,6 +59,14 @@ export class SpaceIsland {
 
   getDisplayName() {
     return this.tag ? `${this.tag} ${this.name}` : this.name;
+  }
+
+  getAtmosphereLabel() {
+    return this.atmosphereClass === 'dense' ? 'Dense Atmosphere' : 'Stable Atmosphere';
+  }
+
+  requiresUpgradedGravityStabilizer(level = 1) {
+    return (this.gravityStabilizerRequirement || 1) > level;
   }
 
   get left() {

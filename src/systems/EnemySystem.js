@@ -1,5 +1,5 @@
-import { enemies, enemySpawnProfiles } from '../data/enemies.js?v=130';
-import { FlyingDroneEnemy } from '../entities/enemies/FlyingDroneEnemy.js?v=130';
+import { enemies, enemySpawnProfiles } from '../data/enemies.js?v=131';
+import { FlyingDroneEnemy } from '../entities/enemies/FlyingDroneEnemy.js?v=131';
 
 const TAU = Math.PI * 2;
 const FLYING_ENEMY_ID = 'sentryDrone';

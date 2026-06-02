@@ -1,4 +1,4 @@
-import { gameBalance } from '../data/gameBalance.js?v=130';
+import { gameBalance } from '../data/gameBalance.js?v=131';
 
 export class AchievementSystem {
   constructor(game) {
