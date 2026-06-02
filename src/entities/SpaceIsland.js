@@ -311,7 +311,7 @@ export class SpaceIsland {
     const torches = placedTorches || this.placedTorches || [];
     this.terrain.setExtraLightSources?.(torches.map((torch) => (
       typeof torch.getLightSource === 'function'
-        ? torch.getLightSource()
+        ? torch.getLightSource({ time })
         : {
           id: torch.id,
           x: torch.x,

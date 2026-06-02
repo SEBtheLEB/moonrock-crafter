@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/dev-server.mjs",
-    "check": "node scripts/dev-server.mjs --smoke"
+    "check": "node scripts/dev-server.mjs --smoke",
+    "generate:icons": "node scripts/generate-icons.mjs"
   }
 }

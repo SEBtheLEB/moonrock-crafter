@@ -1,4 +1,5 @@
 import { EMPTY_HOTBAR_SLOT, HOTBAR_SLOT_COUNT } from '../data/hotbar.js?v=158';
+import { createItemIconMarkup } from '../data/iconAssets.js?v=159';
 
 export class Hotbar {
   constructor(game, { className = '' } = {}) {
@@ -65,6 +66,12 @@ export class Hotbar {
       const itemName = slot.inventoryItemId
         ? this.game.systems.materials.getDisplayName(slot.inventoryItemId)
         : slot.label;
+      const iconMarkup = !isEmpty && slot.inventoryItemId
+        ? createItemIconMarkup(slot.inventoryItemId, slot.iconHtml || slot.icon || '+', {
+          className: 'item-icon-img tool-item-icon',
+          alt: itemName,
+        })
+        : (slot.iconHtml || slot.icon || '+');
       button.className = `tool-hotbar-slot tone-${slot.tone || 'empty'} ${isEmpty ? 'is-empty' : ''}`.trim();
       button.setAttribute('aria-label', isEmpty ? `Empty slot ${index + 1}` : `Select slot ${index + 1}: ${slot.label}`);
       button.removeAttribute('title');
@@ -73,7 +80,7 @@ export class Hotbar {
       else button.removeAttribute('data-selected-name');
       button.innerHTML = `
         <kbd>${index + 1}</kbd>
-        <span class="tool-hotbar-icon" aria-hidden="true">${slot.iconHtml || slot.icon || '+'}</span>
+        <span class="tool-hotbar-icon" aria-hidden="true">${iconMarkup}</span>
         ${!isEmpty && slot.inventoryItemId ? `<span class="tool-hotbar-count">x${this.formatCount(amount)}</span>` : ''}
         <strong>${slot.shortLabel || slot.label || 'Empty'}</strong>
       `;

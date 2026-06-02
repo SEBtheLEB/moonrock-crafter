@@ -260,7 +260,9 @@ export class BuildingSystem {
     }
     if (input?.actions?.justPressed?.buildSnapToggle) {
       scene.buildSnapCursorEnabled = !scene.buildSnapCursorEnabled;
-      scene.buildSnapCursorTile = null;
+      scene.buildSnapCursorTile = scene.buildSnapCursorEnabled
+        ? this.getInitialSnapCursorTile(scene, scene.activeIsland?.terrain)
+        : null;
       scene.buildSnapCursorStepCooldown = 0;
       this.game.ui.showToast(scene.buildSnapCursorEnabled ? 'Grid cursor on' : 'Grid cursor off', 'default', 900);
       this.game.audio.playButtonClick?.();
@@ -324,9 +326,11 @@ export class BuildingSystem {
   getSnapCursorTile(scene, terrain, fallbackPoint) {
     const fallbackTile = this.worldToPlanetTile(fallbackPoint.x, fallbackPoint.y, { terrain });
     if (!scene.buildSnapCursorTile || !terrain.isInside(scene.buildSnapCursorTile.col, scene.buildSnapCursorTile.row)) {
-      scene.buildSnapCursorTile = terrain.isInside(fallbackTile.col, fallbackTile.row)
-        ? { col: fallbackTile.col, row: fallbackTile.row }
-        : { col: 0, row: 0 };
+      scene.buildSnapCursorTile = this.getInitialSnapCursorTile(scene, terrain) || (
+        terrain.isInside(fallbackTile.col, fallbackTile.row)
+          ? { col: fallbackTile.col, row: fallbackTile.row }
+          : { col: 0, row: 0 }
+      );
     }
 
     const controllerActive = Boolean(this.game.input.isControllerActive?.());
@@ -356,6 +360,18 @@ export class BuildingSystem {
       scene.buildSnapCursorStepCooldown = magnitude > 0.82 ? 0.09 : 0.14;
     }
     return scene.buildSnapCursorTile;
+  }
+
+  getInitialSnapCursorTile(scene, terrain) {
+    if (!scene?.islandPlayer || !terrain) return null;
+    const player = scene.islandPlayer;
+    const basis = scene.getIslandGravityBasis?.(scene.activeIsland) || { outward: { x: 0, y: -1 } };
+    const x = player.centerX + basis.outward.x * (terrain.cellSize * 1.15);
+    const y = player.centerY - 7 + basis.outward.y * (terrain.cellSize * 1.15);
+    const tile = this.worldToPlanetTile(x, y, { terrain });
+    if (terrain.isInside(tile.col, tile.row)) return { col: tile.col, row: tile.row };
+    const centerTile = this.worldToPlanetTile(player.centerX, player.centerY - 7, { terrain });
+    return terrain.isInside(centerTile.col, centerTile.row) ? { col: centerTile.col, row: centerTile.row } : null;
   }
 
   getPreview(scene) {
@@ -403,6 +419,7 @@ export class BuildingSystem {
       range: aim.range,
       length: aim.length,
       snapCursor: aim.snapped,
+      playerTile: this.worldToPlanetTile(player.centerX, player.centerY, { terrain }),
     };
   }
 
@@ -618,6 +635,7 @@ export class BuildingSystem {
     const rgb = hexToRgb(color);
     const pulse = 1 + Math.sin(time * 10) * 0.025;
     ctx.save();
+    if (preview.snapCursor) this.drawSnapCursorGrid(ctx, preview, time);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
@@ -655,6 +673,74 @@ export class BuildingSystem {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  drawSnapCursorGrid(ctx, preview, time = 0) {
+    const terrain = preview?.terrain;
+    const target = preview?.target;
+    if (!terrain || !target) return;
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+    this.drawGridPatch(ctx, terrain, target.col, target.row, {
+      radius: 5,
+      alpha: 0.2,
+      color: '118, 243, 255',
+      pulse: 0.7 + Math.sin(time * 5) * 0.08,
+    });
+    if (preview.playerTile) {
+      this.drawGridPatch(ctx, terrain, preview.playerTile.col, preview.playerTile.row, {
+        radius: 4,
+        alpha: 0.12,
+        color: '255, 211, 107',
+        pulse: 0.55,
+      });
+    }
+    ctx.restore();
+  }
+
+  drawGridPatch(ctx, terrain, centerCol, centerRow, {
+    radius = 4,
+    alpha = 0.16,
+    color = '118, 243, 255',
+    pulse = 0.7,
+  } = {}) {
+    const size = terrain.cellSize;
+    const minCol = Math.max(0, centerCol - radius);
+    const maxCol = Math.min(terrain.cols - 1, centerCol + radius);
+    const minRow = Math.max(0, centerRow - radius);
+    const maxRow = Math.min(terrain.rows - 1, centerRow + radius);
+    const x = minCol * size;
+    const y = minRow * size;
+    const width = (maxCol - minCol + 1) * size;
+    const height = (maxRow - minRow + 1) * size;
+    const gradient = ctx.createRadialGradient(
+      centerCol * size + size * 0.5,
+      centerRow * size + size * 0.5,
+      size * 0.6,
+      centerCol * size + size * 0.5,
+      centerRow * size + size * 0.5,
+      Math.max(width, height) * 0.62,
+    );
+    gradient.addColorStop(0, `rgba(${color}, ${alpha * pulse})`);
+    gradient.addColorStop(1, `rgba(${color}, 0)`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+    ctx.lineWidth = Math.max(0.7, size * 0.035);
+    ctx.beginPath();
+    for (let col = minCol; col <= maxCol + 1; col += 1) {
+      const gx = col * size;
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx, y + height);
+    }
+    for (let row = minRow; row <= maxRow + 1; row += 1) {
+      const gy = row * size;
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x + width, gy);
+    }
+    ctx.stroke();
   }
 
   drawBlockPreview(ctx, terrain, col, row, material, rgb, pulse, valid, buildable = null) {

@@ -97,6 +97,7 @@ export class InputManager {
     this.hotbarSlotIds = [...DEFAULT_HOTBAR_SLOT_IDS];
     this.hotbarOwnershipResolver = null;
     this.hotbarChangeHandler = null;
+    this.gravityWheelDelta = 0;
     this.selectHotbarSlot(0);
     this.virtualButtons = new Map();
     this.pointerDownEvents = [];
@@ -152,6 +153,8 @@ export class InputManager {
       primaryUse: false,
       aimUse: false,
       stabilize: false,
+      gravityRotateLeft: false,
+      gravityRotateRight: false,
       mine: false,
       attack: false,
       placeFlag: false,
@@ -232,12 +235,28 @@ export class InputManager {
     if (event.target.closest?.('.modal-backdrop, .global-dialogue-box, .debug-panel, .upgrade-workbench, .storage-workshop')) return;
     if (Math.abs(event.deltaY) < 1 && Math.abs(event.deltaX) < 1) return;
     event.preventDefault();
-    const direction = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-      ? Math.sign(event.deltaY)
-      : Math.sign(event.deltaX);
-    if (direction === 0) return;
     this.setInputMode('mouse');
+    const axisDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+      ? event.deltaY
+      : event.deltaX;
+    if (this.isGravityMachineInputActive()) {
+      const normalized = Math.max(-2.5, Math.min(2.5, axisDelta / 100));
+      this.gravityWheelDelta = (this.gravityWheelDelta || 0) + normalized;
+      return;
+    }
+    const direction = Math.sign(axisDelta);
+    if (direction === 0) return;
     this.cycleHotbar(direction);
+  }
+
+  isGravityMachineInputActive() {
+    return document.documentElement.dataset.gravityMachineActive === 'true';
+  }
+
+  consumeGravityWheelDelta() {
+    const delta = this.gravityWheelDelta || 0;
+    this.gravityWheelDelta = 0;
+    return delta;
   }
 
   onGamepadConnected(event) {
@@ -733,6 +752,15 @@ export class InputManager {
       next.justPressed[actionName] = next[actionName] && !this.actions[actionName];
       next.justReleased[actionName] = !next[actionName] && this.actions[actionName];
     });
+
+    if (this.isGravityMachineInputActive()) {
+      next.gravityRotateLeft = Boolean(next.hotbarPrevious);
+      next.gravityRotateRight = Boolean(next.hotbarNext);
+      next.hotbarPrevious = false;
+      next.hotbarNext = false;
+      next.justPressed.hotbarPrevious = false;
+      next.justPressed.hotbarNext = false;
+    }
 
     if (next.justPressed.hotbarNext) this.cycleHotbar(1);
     if (next.justPressed.hotbarPrevious) this.cycleHotbar(-1);

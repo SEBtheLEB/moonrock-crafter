@@ -25,6 +25,7 @@ import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=158';
 import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=158';
 import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=158';
 import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=158';
+import { createItemIconMarkup } from '../data/iconAssets.js?v=159';
 import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=158';
 import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=158';
 import {
@@ -3262,8 +3263,10 @@ export class MiningScene {
   getTorchPlacementPreview() {
     if (!this.activeIsland || !this.islandPlayer) return null;
     const preview = this.getIslandTerrainPreview({ updateFacing: false });
-    if (!preview?.hit) return preview ? { ...preview, valid: false, canPlace: false, reason: 'Aim at solid tile' } : null;
-    const support = this.getTorchSupportFromHit(preview.hit);
+    if (!preview) return null;
+    const support = preview.hit
+      ? this.getTorchSupportFromHit(preview.hit)
+      : this.getTorchBackWallSupportFromPoint(preview.end || preview.aimPoint || this.getIslandAimPoint());
     const hasTorch = support
       ? this.isTorchAtSupport(this.activeIsland, support.supportCol, support.supportRow, support.supportSide)
       : false;
@@ -3274,7 +3277,7 @@ export class MiningScene {
       valid: Boolean(support && canPlace && !hasTorch),
       canPlace,
       reason: !support
-        ? 'Needs exposed solid support'
+        ? 'Needs solid tile or background wall'
         : hasTorch
           ? 'Torch already placed here'
           : canPlace
@@ -3326,6 +3329,28 @@ export class MiningScene {
     return candidates[0] || null;
   }
 
+  getTorchBackWallSupportFromPoint(point) {
+    const terrain = this.activeIsland?.terrain;
+    if (!terrain || !point) return null;
+    const tile = terrain.cellFromWorld(point.x, point.y);
+    if (!terrain.isInside(tile.col, tile.row)) return null;
+    if (terrain.isSolidCell(tile.col, tile.row) || !terrain.isWallCell(tile.col, tile.row)) return null;
+    const center = {
+      x: tile.col * terrain.cellSize + terrain.cellSize * 0.5,
+      y: tile.row * terrain.cellSize + terrain.cellSize * 0.5,
+    };
+    return {
+      x: center.x,
+      y: center.y,
+      normal: { x: 0, y: -1 },
+      rotation: getTorchRotationForSupport('back'),
+      supportCol: tile.col,
+      supportRow: tile.row,
+      supportSide: 'back',
+      wallMounted: true,
+    };
+  }
+
   isTorchAtSupport(island, col, row, side) {
     return Boolean((island?.placedTorches || []).some((torch) => (
       torch.supportCol === col
@@ -3339,6 +3364,11 @@ export class MiningScene {
     if (!terrain || !torch) return false;
     if (!Number.isInteger(torch.supportCol) || !Number.isInteger(torch.supportRow) || torch.supportCol < 0 || torch.supportRow < 0) {
       return true;
+    }
+    if (torch.supportSide === 'back') {
+      return terrain.isInside(torch.supportCol, torch.supportRow)
+        && terrain.isWallCell(torch.supportCol, torch.supportRow)
+        && !terrain.isSolidCell(torch.supportCol, torch.supportRow);
     }
     if (!terrain.isInside(torch.supportCol, torch.supportRow) || !terrain.isSolidCell(torch.supportCol, torch.supportRow)) return false;
     const support = TORCH_SUPPORT_SIDES.find((entry) => entry.side === torch.supportSide) || TORCH_SUPPORT_SIDES[0];
@@ -3402,7 +3432,7 @@ export class MiningScene {
       return;
     }
     const target = preview || this.getTorchPlacementPreview();
-    if (!target?.hit || !target.valid) {
+    if (!target?.valid) {
       this.game.audio.playError?.();
       this.game.ui.showToast(target?.reason || 'Aim the torch at solid ground', 'danger', 1100);
       return;
@@ -3418,6 +3448,7 @@ export class MiningScene {
       supportCol: target.supportCol,
       supportRow: target.supportRow,
       supportSide: target.supportSide,
+      igniteStart: this.time,
     });
     torches.push(torch);
     this.torchPlacementPreview = null;
@@ -4270,7 +4301,7 @@ export class MiningScene {
     button.style.setProperty('--item-color', material?.color || '#fff2cf');
     button.dataset.itemTooltip = `${name} x${this.formatStackCount(amount)}`;
     button.innerHTML = `
-      <span class="slot-icon">${material?.icon || '?'}</span>
+      <span class="slot-icon">${this.getMaterialIconMarkup(itemId, material)}</span>
       <strong class="slot-count">x${this.formatStackCount(amount)}</strong>
     `;
     button.title = `${name} x${this.formatStackCount(amount)} | ${this.game.systems.materials.getRarityLabel(rarity)} | ${this.game.systems.materials.getValue(itemId, amount)} cr`;
@@ -4367,7 +4398,7 @@ export class MiningScene {
     button.style.setProperty('--item-color', material?.color || '#fff2cf');
     button.dataset.itemTooltip = `${this.game.systems.materials.getDisplayName(itemId)} x${this.formatStackCount(amount)}`;
     button.innerHTML = `
-      <span class="slot-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
+      <span class="slot-icon" style="--item-color: ${material?.color || '#fff2cf'}">${this.getMaterialIconMarkup(itemId, material)}</span>
       <strong class="slot-count">x${this.formatStackCount(amount)}</strong>
     `;
     button.title = `${this.game.systems.materials.getDisplayName(itemId)} x${this.formatStackCount(amount)}`;
@@ -4417,6 +4448,18 @@ export class MiningScene {
     if (value >= 1000000) return `${Math.floor(value / 100000) / 10}m`;
     if (value >= 10000) return `${Math.floor(value / 100) / 10}k`;
     return String(value);
+  }
+
+  getItemIconMarkup(itemId, fallback = '?', className = 'item-icon-img inventory-item-icon') {
+    return createItemIconMarkup(itemId, fallback, {
+      className,
+      alt: this.game.systems.materials.getDisplayName(itemId),
+    });
+  }
+
+  getMaterialIconMarkup(itemId, material = this.game.systems.materials.getMaterial(itemId), className = 'item-icon-img inventory-item-icon') {
+    const fallback = material?.icon || '?';
+    return this.getItemIconMarkup(itemId, fallback, className);
   }
 
   getAvailableItemAmount(itemId) {
@@ -4470,7 +4513,7 @@ export class MiningScene {
     ghost.className = 'item-drag-ghost is-dragging is-held';
     ghost.style.setProperty('--item-color', material?.color || '#fff2cf');
     ghost.innerHTML = `
-      <span>${material?.icon || '?'}</span>
+      <span>${this.getMaterialIconMarkup(itemId, material, 'item-icon-img drag-item-icon')}</span>
       <strong data-held-item-count>x${this.formatStackCount(amount)}</strong>
     `;
     document.body.append(ghost);
@@ -4631,7 +4674,7 @@ export class MiningScene {
     const ghost = document.createElement('div');
     ghost.className = 'item-drag-ghost';
     ghost.style.setProperty('--item-color', material?.color || '#fff2cf');
-    ghost.innerHTML = `<span>${material?.icon || '?'}</span>`;
+    ghost.innerHTML = `<span>${this.getMaterialIconMarkup(itemId, material, 'item-icon-img drag-item-icon')}</span>`;
     document.body.append(ghost);
     this.itemDragState = {
       itemId,
@@ -5243,7 +5286,7 @@ export class MiningScene {
       button.type = 'button';
       button.className = `voxel-recipe-card ${item.id === recipe.id ? 'is-active' : ''}`;
       button.innerHTML = `
-        <span class="voxel-recipe-icon">${item.icon}</span>
+        <span class="voxel-recipe-icon">${this.getItemIconMarkup(item.outputItemId, item.icon || 'C', 'item-icon-img recipe-item-icon')}</span>
         <span class="voxel-recipe-copy"><strong>${item.name}</strong><em>${item.category}</em></span>
         <i aria-hidden="true"></i>
       `;
@@ -5349,7 +5392,7 @@ export class MiningScene {
       ].filter(Boolean).join(' ');
       button.title = `${material?.name || itemId}: ${have} owned, ${needed} needed, ${used} used`;
       button.innerHTML = `
-        <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
+        <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-material-icon')}</span>
         <strong>${material?.name || itemId}</strong>
         <em>x${have}</em>
         <small>${used}/${needed} used${missing ? ` - need ${missing}` : ''}</small>
@@ -5436,7 +5479,7 @@ export class MiningScene {
     craftButton.type = 'button';
     craftButton.className = 'voxel-action-button craft-primary';
     craftButton.disabled = !validation.ok;
-    craftButton.innerHTML = `<span>${recipe.icon || 'C'}</span><strong>${recipe.outputItemId === 'starterFurnace' ? 'Craft' : 'Craft Item'}</strong>`;
+    craftButton.innerHTML = `<span>${this.getItemIconMarkup(recipe.outputItemId, recipe.icon || 'C', 'item-icon-img action-item-icon')}</span><strong>${recipe.outputItemId === 'starterFurnace' ? 'Craft' : 'Craft Item'}</strong>`;
     craftButton.addEventListener('click', () => {
       this.craftVoxelRecipe(recipe, state);
       this.populateVoxelCraftingContent(content);
@@ -5518,7 +5561,7 @@ export class MiningScene {
     el.className = `voxel-craft-held-cursor ${itemId === 'fireCore' ? 'is-fire-core' : ''}`;
     el.style.setProperty('--item-color', material?.color || '#fff2cf');
     el.innerHTML = `
-      <span>${material?.icon || '?'}</span>
+      <span>${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-held-icon')}</span>
       <strong>${material?.name || itemId}</strong>
       <em>x${have}</em>
       <small>${used}/${needed}</small>
@@ -8653,6 +8696,7 @@ export class MiningScene {
       || researchStationPlacementMode
       || buildPlacementMode;
     const terrainToolMode = this.isMinerToolSelected() || placementMode || Boolean(this.islandMiningBeam);
+    const gridCursorMode = Boolean(this.buildSnapCursorEnabled && buildPlacementMode);
     const state = placementMode
       ? (
         flagPlacementMode
@@ -8673,14 +8717,16 @@ export class MiningScene {
       )
       : (terrainToolMode ? (this.islandAimPreview || this.islandMiningBeam || this.getIslandTerrainPreview({ updateFacing: false })) : null);
     if (state) {
-      this.terrainLaserRenderer.drawRangeField(ctx, {
-        worldToScreen: (x, y) => ({ x, y }),
-        origin: state.origin,
-        radius: state.range,
-        aimPoint: state.aimPoint,
-        active: Boolean(this.islandMiningBeam),
-        time: this.time,
-      });
+      if (!gridCursorMode) {
+        this.terrainLaserRenderer.drawRangeField(ctx, {
+          worldToScreen: (x, y) => ({ x, y }),
+          origin: state.origin,
+          radius: state.range,
+          aimPoint: state.aimPoint,
+          active: Boolean(this.islandMiningBeam),
+          time: this.time,
+        });
+      }
       if (!this.islandMiningBeam && !buildPlacementMode) this.drawIslandTerrainTargetGlow(ctx, state);
       if (flagPlacementMode) this.drawFlagPlacementPreview(ctx, state);
       if (torchPlacementMode) this.drawTorchPlacementPreview(ctx, state);
@@ -8691,7 +8737,7 @@ export class MiningScene {
       if (researchStationPlacementMode) this.drawResearchStationPlacementPreview(ctx, state);
       if (buildPlacementMode) this.game.systems.building?.drawPreview?.(ctx, state, this.time);
     }
-    this.drawControllerIslandAimIndicator(ctx);
+    if (!gridCursorMode) this.drawControllerIslandAimIndicator(ctx);
     if (this.islandMiningHitFeedback) {
       this.activeIsland.terrain.drawDamageFeedback(ctx, this.islandMiningHitFeedback, this.time);
     }
@@ -9031,20 +9077,32 @@ export class MiningScene {
   }
 
   drawTorchPlacementPreview(ctx, state) {
-    if (!state?.hit || !this.activeIsland?.terrain) return;
+    if (!state || !this.activeIsland?.terrain) return;
     const normal = state.normal || { x: 0, y: -1 };
-    const torchX = Number.isFinite(state.x) ? state.x : state.hit.x + normal.x * 4;
-    const torchY = Number.isFinite(state.y) ? state.y : state.hit.y + normal.y * 4;
+    const torchX = Number.isFinite(state.x) ? state.x : (state.hit?.x || 0) + normal.x * 4;
+    const torchY = Number.isFinite(state.y) ? state.y : (state.hit?.y || 0) + normal.y * 4;
     const ready = Boolean(state.valid);
-    this.activeIsland.terrain.drawCellTargetGlow(ctx, state.hit, this.time, { brushRadius: 0 });
+    if (state.hit) {
+      this.activeIsland.terrain.drawCellTargetGlow(ctx, state.hit, this.time, { brushRadius: 0 });
+    } else if (Number.isInteger(state.supportCol) && Number.isInteger(state.supportRow)) {
+      const rgb = ready ? { r: 255, g: 180, b: 95 } : { r: 255, g: 117, b: 111 };
+      this.game.systems.building?.drawSnapCursorFrame?.(
+        ctx,
+        this.activeIsland.terrain,
+        state.supportCol,
+        state.supportRow,
+        rgb,
+        ready,
+      );
+    }
     ctx.save();
-    ctx.globalAlpha = ready ? 0.64 : 0.34;
+    ctx.globalAlpha = state.supportSide === 'back' ? (ready ? 0.42 : 0.25) : (ready ? 0.52 : 0.3);
     ctx.strokeStyle = ready ? 'rgba(255, 180, 95, 0.88)' : 'rgba(255, 117, 111, 0.7)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 7]);
     ctx.lineDashOffset = -this.time * 22;
     ctx.beginPath();
-    ctx.arc(torchX + normal.x * 40, torchY + normal.y * 40, 54, 0, Math.PI * 2);
+    ctx.arc(torchX + normal.x * 24, torchY + normal.y * 24, state.supportSide === 'back' ? 24 : 36, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
@@ -9232,6 +9290,7 @@ export class MiningScene {
   }
 
   isControllerAimIndicatorActive() {
+    if (this.buildSnapCursorEnabled && this.isBuildToolSelected()) return false;
     if (!this.isControllerPromptMode()) return false;
     if (this.islandMode === 'onIsland') return Boolean(this.getControllerIslandAimVector());
     const aim = this.game.input.aimVector || { x: 0, y: 0 };

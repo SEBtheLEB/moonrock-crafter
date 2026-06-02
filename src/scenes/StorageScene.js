@@ -2,6 +2,7 @@ import { Button } from '../ui/Button.js';
 import { ResourceCounter } from '../ui/ResourceCounter.js';
 import { TabButton } from '../ui/TabButton.js';
 import { materialRarities, materials } from '../data/materials.js';
+import { createItemIconMarkup } from '../data/iconAssets.js?v=159';
 
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic'];
 
@@ -183,7 +184,7 @@ export class StorageScene {
     card.setAttribute('aria-label', `${material.name}, ${amount} stored`);
     card.title = material.name;
     card.innerHTML = `
-      <span class="storage-material-icon">${material.icon}</span>
+      <span class="storage-material-icon">${createItemIconMarkup(material.id, material.icon || '?', { className: 'item-icon-img storage-item-icon', alt: material.name })}</span>
       <strong class="storage-material-amount">${amount}</strong>
     `;
     card.addEventListener('click', () => {
@@ -204,7 +205,7 @@ export class StorageScene {
     detail.style.setProperty('--rarity-color', rarityInfo?.color || material.color);
     detail.innerHTML = `
       <header>
-        <span class="storage-detail-icon">${material.icon}</span>
+        <span class="storage-detail-icon">${createItemIconMarkup(material.id, material.icon || '?', { className: 'item-icon-img storage-detail-item-icon', alt: material.name })}</span>
         <div>
           <p>${rarityInfo?.name || material.rarity}</p>
           <h2>${material.name}</h2>

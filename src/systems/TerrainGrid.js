@@ -2938,13 +2938,24 @@ export class TerrainGrid {
       }))
       .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     const signature = normalized
-      .map((source) => `${source.id}:${Math.round(source.x)}:${Math.round(source.y)}:${Math.round(source.radius)}:${Math.round(source.intensity * 100)}:${source.color}`)
+      .map((source) => `${source.id}:${Math.round(source.x)}:${Math.round(source.y)}:${Math.round(source.radius)}:${Math.round(source.intensity * 12)}:${source.color}`)
       .join('|');
     if (signature === this.extraLightSignature) return;
+    const previousSources = this.extraLightSources || [];
     this.extraLightSources = normalized;
     this.extraLightSignature = signature;
     this.renderDirty = true;
-    this.fullRenderDirty = true;
+    if (this.renderCanvas && !this.fullRenderDirty) {
+      const dirtyLights = this.mergeBounds(
+        this.getLightSourceCenterBounds(previousSources),
+        this.getLightSourceCenterBounds(normalized),
+      );
+      const previousRadius = previousSources.reduce((max, source) => Math.max(max, source.radius || 0), 0);
+      const previousPadding = Math.ceil((previousRadius + (TERRAIN_LIGHTING.darknessBlur || 0) * 2) / Math.max(1, this.cellSize)) + 2;
+      this.markDirtyBounds(dirtyLights, Math.max(1, previousPadding));
+    } else {
+      this.fullRenderDirty = true;
+    }
   }
 
   getMaxStaticMaterialLightRadius() {
@@ -2956,6 +2967,17 @@ export class TerrainGrid {
     const staticRadius = this.getMaxStaticMaterialLightRadius();
     const extraRadius = (this.extraLightSources || []).reduce((max, source) => Math.max(max, source.radius || 0), 0);
     return Math.max(staticRadius, extraRadius);
+  }
+
+  getLightSourceCenterBounds(sources = []) {
+    let bounds = null;
+    for (const source of sources || []) {
+      if (!Number.isFinite(source?.x) || !Number.isFinite(source?.y)) continue;
+      const col = clamp(Math.floor(source.x / this.cellSize), 0, this.cols - 1);
+      const row = clamp(Math.floor(source.y / this.cellSize), 0, this.rows - 1);
+      bounds = this.mergeBounds(bounds, { minCol: col, maxCol: col, minRow: row, maxRow: row });
+    }
+    return bounds;
   }
 
   getLightReductionAt(x, y) {

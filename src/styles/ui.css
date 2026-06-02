@@ -1705,6 +1705,50 @@
   font: 900 clamp(14px, 2.2vh, 17px)/1 var(--font-display);
 }
 
+.item-icon-shell,
+.item-icon-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.item-icon-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+  user-select: none;
+  -webkit-user-drag: none;
+  image-rendering: auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.38));
+}
+
+.tool-item-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.inventory-item-icon,
+.storage-item-icon,
+.craft-material-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.recipe-item-icon,
+.action-item-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.drag-item-icon,
+.craft-held-icon {
+  width: 34px;
+  height: 34px;
+}
+
 .tool-hotbar-slot strong {
   display: none;
 }

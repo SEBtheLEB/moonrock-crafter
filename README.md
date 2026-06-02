@@ -122,6 +122,31 @@ Most visuals are procedural canvas drawings or CSS shapes. Replace them graduall
 
 Keep asset keys stable in data and systems so art can be swapped without rewriting gameplay logic.
 
+## Inventory Icon Assets
+
+Inventory, hotbar, storage, and crafting material cards use `src/data/iconAssets.js` to resolve item IDs to local image files in `assets/img/generated/icons/`.
+
+To generate icon image files with the current free/no-key Pollinations endpoint:
+
+```bash
+npm run generate:icons -- --item stoneOre
+```
+
+For a broader pass:
+
+```bash
+npm run generate:icons -- --all
+```
+
+The free endpoint can throttle or fail during large batches. Run this to create local SVG fallback icons for every item so the UI never shows broken image slots:
+
+```bash
+npm run generate:icons -- --all --local-fallbacks --skip-api
+```
+
+The runtime tries the generated API image first and automatically falls back to the matching SVG if that generated file does not exist yet.
+When a new generated image is approved and should replace its SVG fallback, add that item ID to `GENERATED_API_IMAGE_ITEM_IDS` in `src/data/iconAssets.js`.
+
 ## Debug Tools
 
 Press `F2` or backtick, or tap the small `DEV` button, to open the debug panel. It can add resources, refill the ship, toggle invincibility, spawn rare asteroids during mining, jump home, unlock upgrades, and clear the save.
