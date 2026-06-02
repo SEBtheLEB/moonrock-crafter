@@ -1,4 +1,4 @@
-import { quests as questDefinitions } from '../data/quests.js?v=156';
+import { quests as questDefinitions } from '../data/quests.js?v=157';
 
 const AUTOSAVE_EVENTS = new Set([
   'boardedShip',

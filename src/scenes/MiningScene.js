@@ -1,32 +1,32 @@
 import { Button } from '../ui/Button.js';
 import { Joystick } from '../ui/Joystick.js';
-import { Hotbar } from '../ui/Hotbar.js?v=156';
-import { Ship } from '../entities/Ship.js?v=156';
-import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=156';
-import { CompanionDrone } from '../entities/CompanionDrone.js?v=156';
-import { MineralPickup } from '../entities/MineralPickup.js?v=156';
-import { SpaceIsland } from '../entities/SpaceIsland.js?v=156';
-import { IslandPlayer } from '../entities/IslandPlayer.js?v=156';
-import { PlacedFlag } from '../entities/PlacedFlag.js?v=156';
-import { PlacedTorch } from '../entities/PlacedTorch.js?v=156';
-import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=156';
-import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=156';
-import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=156';
-import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=156';
-import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=156';
-import { BaseLab } from '../entities/BaseLab.js?v=156';
-import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=156';
-import { EnemySystem } from '../systems/EnemySystem.js?v=156';
-import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=156';
-import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=156';
-import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=156';
-import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=156';
-import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=156';
-import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=156';
-import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=156';
-import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=156';
-import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=156';
-import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=156';
+import { Hotbar } from '../ui/Hotbar.js?v=157';
+import { Ship } from '../entities/Ship.js?v=157';
+import { Asteroid, estimateAsteroidRadius } from '../entities/Asteroid.js?v=157';
+import { CompanionDrone } from '../entities/CompanionDrone.js?v=157';
+import { MineralPickup } from '../entities/MineralPickup.js?v=157';
+import { SpaceIsland } from '../entities/SpaceIsland.js?v=157';
+import { IslandPlayer } from '../entities/IslandPlayer.js?v=157';
+import { PlacedFlag } from '../entities/PlacedFlag.js?v=157';
+import { PlacedTorch } from '../entities/PlacedTorch.js?v=157';
+import { PlacedPlatform } from '../entities/PlacedPlatform.js?v=157';
+import { PlacedDoor, DOOR_HEIGHT_TILES } from '../entities/PlacedDoor.js?v=157';
+import { PlacedFurnace } from '../entities/PlacedFurnace.js?v=157';
+import { PlacedCraftingStation } from '../entities/PlacedCraftingStation.js?v=157';
+import { PlacedResearchStation } from '../entities/PlacedResearchStation.js?v=157';
+import { BaseLab } from '../entities/BaseLab.js?v=157';
+import { AsteroidFragmentationSystem } from '../systems/AsteroidFragmentationSystem.js?v=157';
+import { EnemySystem } from '../systems/EnemySystem.js?v=157';
+import { ShipSmokeSimulation } from '../effects/ShipSmokeSimulation.js?v=157';
+import { ParticleBurstSystem } from '../effects/ParticleBurstSystem.js?v=157';
+import { FloatingTextSystem } from '../effects/FloatingTextSystem.js?v=157';
+import { CargoTransferEffectSystem } from '../effects/CargoTransferEffectSystem.js?v=157';
+import { MiningLaserRenderer } from '../effects/MiningLaserRenderer.js?v=157';
+import { ElectricLaserRenderer } from '../effects/ElectricLaserRenderer.js?v=157';
+import { MiningMiniMap } from '../ui/MiningMiniMap.js?v=157';
+import { HOTBAR_SLOT_COUNT, getHotbarSlotForItem } from '../data/hotbar.js?v=157';
+import { TERRAIN_MATERIALS } from '../systems/TerrainGrid.js?v=157';
+import { drawCraftVoxelPreview } from '../utils/craftVoxelRenderer.js?v=157';
 import {
   MACHINE_DETAIL_STATES,
   MACHINE_SHAPE_STATES,
@@ -41,9 +41,9 @@ import {
   isCoreMountedOnMaterial,
   normalizeMachineVoxel,
   validateRecipe as validateMachineRecipe,
-} from '../systems/MachineSculptingSystem.js?v=156';
-import { asteroids as asteroidData } from '../data/asteroids.js?v=156';
-import { gameBalance } from '../data/gameBalance.js?v=156';
+} from '../systems/MachineSculptingSystem.js?v=157';
+import { asteroids as asteroidData } from '../data/asteroids.js?v=157';
+import { gameBalance } from '../data/gameBalance.js?v=157';
 
 const DOCK_RADIUS = gameBalance.mining.stationDockRadius;
 const DOCK_RADIUS_SQ = DOCK_RADIUS * DOCK_RADIUS;
@@ -4003,6 +4003,8 @@ export class MiningScene {
 
   closeSurvivalModal() {
     if (!this.survivalModal) return;
+    if (this.voxelCraftState) this.voxelCraftState.heldMaterialId = null;
+    this.clearVoxelCraftHeldCursor();
     this.survivalModal = null;
     this.survivalModalKind = '';
     this.game.ui.hideModal();
@@ -4800,6 +4802,7 @@ export class MiningScene {
     this.voxelCraftState = {
       recipeId: recipe.id,
       selectedMaterialId: Object.keys(recipe.requirements)[0],
+      heldMaterialId: null,
       selectedShapeState: 'full',
       selectedDetailId: null,
       detailMode: false,
@@ -4923,6 +4926,7 @@ export class MiningScene {
         this.voxelCraftState = {
           recipeId: item.id,
           selectedMaterialId: Object.keys(item.requirements)[0],
+          heldMaterialId: null,
           selectedShapeState: 'full',
           selectedDetailId: null,
           detailMode: false,
@@ -5118,6 +5122,7 @@ export class MiningScene {
         this.voxelCraftState = {
           recipeId: item.id,
           selectedMaterialId: Object.keys(item.requirements)[0],
+          heldMaterialId: null,
           selectedShapeState: 'full',
           selectedDetailId: null,
           detailMode: false,
@@ -5194,33 +5199,43 @@ export class MiningScene {
 
     const palette = document.createElement('div');
     palette.className = 'voxel-material-palette';
-    palette.innerHTML = '<h2>3. Choose Material</h2>';
+    palette.innerHTML = '<h2>3. Inventory Materials</h2>';
+    const materialGrid = document.createElement('div');
+    materialGrid.className = 'voxel-material-grid';
     Object.entries(recipe.requirements).forEach(([itemId, needed]) => {
       const material = this.game.systems.materials.getMaterial(itemId);
       const used = usage[itemId] || 0;
       const have = this.game.systems.inventory.getStoredAmount(itemId);
       const complete = used === needed && have >= needed;
+      const missing = Math.max(0, needed - have);
       const button = document.createElement('button');
       button.type = 'button';
       button.className = [
         'voxel-material-card',
         state.selectedMaterialId === itemId ? 'is-selected' : '',
+        state.heldMaterialId === itemId ? 'is-held' : '',
         itemId === 'fireCore' ? 'is-fire-core' : '',
+        have < needed ? 'is-short' : '',
         complete ? 'is-complete' : 'is-incomplete',
       ].filter(Boolean).join(' ');
+      button.title = `${material?.name || itemId}: ${have} owned, ${needed} needed, ${used} used`;
       button.innerHTML = `
         <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span>
-        <span class="voxel-material-copy"><strong>${material?.name || itemId}</strong><em>${used} / ${needed}</em><small>${have} owned</small></span>
-        <i aria-hidden="true">${complete ? 'OK' : '!'}</i>
+        <strong>${material?.name || itemId}</strong>
+        <em>x${have}</em>
+        <small>${used}/${needed} used${missing ? ` - need ${missing}` : ''}</small>
       `;
-      button.addEventListener('click', () => {
+      button.addEventListener('pointerdown', (event) => {
         state.selectedMaterialId = itemId;
+        state.heldMaterialId = itemId;
         state.eraseMode = false;
         state.detailMode = false;
+        this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
         this.populateVoxelCraftingContent(content);
       });
-      palette.append(button);
+      materialGrid.append(button);
     });
+    palette.append(materialGrid);
 
     const tools = document.createElement('div');
     tools.className = 'voxel-craft-tools';
@@ -5244,6 +5259,7 @@ export class MiningScene {
       button.addEventListener('click', () => {
         state.eraseMode = Boolean(tool.erase);
         state.detailMode = false;
+        if (tool.erase) state.heldMaterialId = null;
         if (!tool.erase) state.selectedShapeState = tool.shape;
         this.populateVoxelCraftingContent(content);
       });
@@ -5322,6 +5338,94 @@ export class MiningScene {
 
     shell.append(tabs, center, side, bottomBar);
     content.append(shell);
+    this.mountVoxelCraftHeldCursor(content, state, recipe, usage);
+  }
+
+  setVoxelCraftHeldCursorTarget(event, { visible = true, instant = false } = {}) {
+    if (!event) return;
+    this.voxelCraftHeldCursor ||= {
+      x: event.clientX,
+      y: event.clientY,
+      targetX: event.clientX,
+      targetY: event.clientY,
+      visible,
+    };
+    this.voxelCraftHeldCursor.targetX = event.clientX;
+    this.voxelCraftHeldCursor.targetY = event.clientY;
+    this.voxelCraftHeldCursor.visible = visible;
+    if (instant) {
+      this.voxelCraftHeldCursor.x = event.clientX;
+      this.voxelCraftHeldCursor.y = event.clientY;
+    }
+  }
+
+  mountVoxelCraftHeldCursor(content, state, recipe, usage = this.getVoxelCraftUsage(state.grid)) {
+    const itemId = state.heldMaterialId && !state.eraseMode && !state.detailMode
+      ? state.heldMaterialId
+      : null;
+    if (!itemId) {
+      this.clearVoxelCraftHeldCursor();
+      content.onpointermove = null;
+      return;
+    }
+    const material = this.game.systems.materials.getMaterial(itemId);
+    const needed = recipe.requirements?.[itemId] || 0;
+    const used = usage[itemId] || 0;
+    const have = this.game.systems.inventory.getStoredAmount(itemId);
+    const cursor = this.voxelCraftHeldCursor ||= {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      targetX: window.innerWidth / 2,
+      targetY: window.innerHeight / 2,
+      visible: true,
+    };
+    cursor.visible = true;
+    if (!this.voxelCraftHeldCursorEl || !this.voxelCraftHeldCursorEl.isConnected) {
+      this.voxelCraftHeldCursorEl = document.createElement('div');
+      this.voxelCraftHeldCursorEl.className = 'voxel-craft-held-cursor';
+      this.game.ui.modalLayer.append(this.voxelCraftHeldCursorEl);
+    }
+    const el = this.voxelCraftHeldCursorEl;
+    el.className = `voxel-craft-held-cursor ${itemId === 'fireCore' ? 'is-fire-core' : ''}`;
+    el.style.setProperty('--item-color', material?.color || '#fff2cf');
+    el.innerHTML = `
+      <span>${material?.icon || '?'}</span>
+      <strong>${material?.name || itemId}</strong>
+      <em>x${have}</em>
+      <small>${used}/${needed}</small>
+    `;
+    content.onpointermove = (event) => this.setVoxelCraftHeldCursorTarget(event, { visible: true });
+    content.onpointerdown = (event) => this.setVoxelCraftHeldCursorTarget(event, { visible: true });
+    this.startVoxelCraftHeldCursorLoop();
+  }
+
+  startVoxelCraftHeldCursorLoop() {
+    if (this.voxelCraftHeldCursorFrame) return;
+    const tick = () => {
+      const el = this.voxelCraftHeldCursorEl;
+      const state = this.voxelCraftHeldCursor;
+      if (!el || !state || this.survivalModalKind !== 'crafting') {
+        this.voxelCraftHeldCursorFrame = 0;
+        return;
+      }
+      const blend = 0.34;
+      state.x += (state.targetX - state.x) * blend;
+      state.y += (state.targetY - state.y) * blend;
+      el.style.opacity = state.visible ? '1' : '0';
+      el.style.transform = `translate3d(${Math.round(state.x + 14)}px, ${Math.round(state.y + 14)}px, 0)`;
+      this.voxelCraftHeldCursorFrame = requestAnimationFrame(tick);
+    };
+    this.voxelCraftHeldCursorFrame = requestAnimationFrame(tick);
+  }
+
+  clearVoxelCraftHeldCursor() {
+    if (this.voxelCraftHeldCursorFrame) {
+      cancelAnimationFrame(this.voxelCraftHeldCursorFrame);
+      this.voxelCraftHeldCursorFrame = 0;
+    }
+    this.voxelCraftHeldCursorEl?.remove();
+    this.voxelCraftHeldCursorEl = null;
+    if (this.voxelCraftHeldCursor) this.voxelCraftHeldCursor.visible = false;
   }
 
   normalizeVoxelCraftCell(cell) {

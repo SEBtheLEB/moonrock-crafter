@@ -52,8 +52,8 @@
   --craft-header-height: clamp(54px, 9.2vh, 78px);
   --craft-panel-pad: clamp(7px, 1vw, 12px);
   --craft-column-gap: clamp(7px, 0.8vw, 12px);
-  --craft-side-width: clamp(276px, 24vw, 360px);
-  --craft-tabs-width: clamp(176px, 16vw, 232px);
+  --craft-side-width: clamp(270px, 23vw, 344px);
+  --craft-tabs-width: clamp(194px, 17vw, 252px);
   --menu-icon-tile: clamp(58px, 8.6vh, 74px);
   --inventory-tile: clamp(36px, 5.4vh, 44px);
   color-scheme: dark;
@@ -194,8 +194,8 @@ html[data-input-mode="controller"] .game-custom-cursor {
     --hotbar-slot-size: clamp(38px, 5.6vh, 46px);
     --modal-panel-padding: 12px;
     --craft-header-height: clamp(48px, 8vh, 62px);
-    --craft-tabs-width: clamp(164px, 15vw, 198px);
-    --craft-side-width: clamp(248px, 25vw, 318px);
+    --craft-tabs-width: clamp(178px, 16vw, 216px);
+    --craft-side-width: clamp(238px, 24vw, 302px);
     --menu-icon-tile: clamp(56px, 7.8vh, 68px);
     --inventory-tile: clamp(34px, 5vh, 40px);
   }
@@ -229,8 +229,8 @@ html[data-input-mode="controller"] .game-custom-cursor {
     --ui-control-height: 32px;
     --craft-header-height: 42px;
     --craft-panel-pad: 6px;
-    --craft-side-width: min(250px, 31vw);
-    --craft-tabs-width: min(158px, 20vw);
+    --craft-side-width: min(224px, 30vw);
+    --craft-tabs-width: min(168px, 22vw);
     --menu-icon-tile: clamp(48px, 13vh, 58px);
     --inventory-tile: clamp(30px, 8.5vh, 34px);
   }
