@@ -4536,19 +4536,20 @@ export class TerrainGrid {
       this.drawEdgeContours(ctx, bounds);
       return;
     }
-    if (bounds) {
+    if (outlineOnly) {
       const segments = this.getLocalRoughContourSegments(bounds);
-      if (!outlineOnly && TERRAIN_ROUGHNESS.edgeShadows !== false) {
-        this.drawLocalRoughContourShadows(ctx, segments);
-      }
-      if (!outlineOnly && !fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
-        this.drawRoughSurfaceDetails(ctx, bounds);
-      }
       this.drawLocalRoughContourLines(ctx, segments);
       return;
     }
-    if (outlineOnly) {
-      this.drawRoughContourLines(ctx, bounds);
+    if (bounds) {
+      const segments = this.getLocalRoughContourSegments(bounds);
+      if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
+        this.drawLocalRoughContourShadows(ctx, segments);
+      }
+      if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+        this.drawRoughSurfaceDetails(ctx, bounds);
+      }
+      this.drawLocalRoughContourLines(ctx, segments);
       return;
     }
     if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
@@ -4565,13 +4566,18 @@ export class TerrainGrid {
   }
 
   forEachLocalRoughContourSegment(bounds, callback) {
-    if (!bounds) return;
+    const scanBounds = bounds || {
+      minCol: 0,
+      maxCol: this.cols - 1,
+      minRow: 0,
+      maxRow: this.rows - 1,
+    };
     const step = this.getContourStep(VISUAL_CONTOUR_OPTIONS);
     const padding = this.cellSize * 4;
-    const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
-    const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
-    const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
-    const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const minCol = clamp(Math.floor((scanBounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const maxCol = clamp(Math.ceil(((scanBounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
+    const minRow = clamp(Math.floor((scanBounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
+    const maxRow = clamp(Math.ceil(((scanBounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
     const clipBounds = this.getContourClipBounds(bounds);
     const sample = (col, row) => this.sampleContourNode(
       (x, y) => this.isNaturalSolidCell(x, y),
