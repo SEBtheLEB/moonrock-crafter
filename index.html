@@ -53,21 +53,18 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          const localCleanupKey = 'moonrock-local-sw-clean-v116';
-          if (location.hostname === 'localhost') {
-            if (!sessionStorage.getItem(localCleanupKey)) {
-              sessionStorage.setItem(localCleanupKey, '1');
-              Promise.all([
-                navigator.serviceWorker.getRegistrations()
-                  .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))),
-                window.caches
-                  ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-                  : Promise.resolve(),
-              ]).finally(() => location.reload());
-            }
+          const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+          if (localHosts.has(location.hostname)) {
+            Promise.all([
+              navigator.serviceWorker.getRegistrations()
+                .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))),
+              window.caches
+                ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+                : Promise.resolve(),
+            ]).catch(() => {});
             return;
           }
-          navigator.serviceWorker.register('./service-worker.js?v=158').catch(() => {});
+          navigator.serviceWorker.register('./service-worker.js?v=159').catch(() => {});
         });
       }
     </script>
