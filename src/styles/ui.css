@@ -2734,7 +2734,9 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 .survival-inventory-slot .slot-icon,
 .survival-item-detail-icon,
 .furnace-smelt-slot span,
-.furnace-queue-button span {
+.furnace-queue-button span,
+.furnace-item-slot .furnace-slot-icon,
+.furnace-source-button span {
   display: grid;
   place-items: center;
   border-radius: 10px;
@@ -3198,43 +3200,110 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 
 .survival-furnace {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
-.furnace-smelt-slots,
-.furnace-controls {
+.furnace-machine {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  max-width: min(520px, 100%);
+  justify-self: center;
+  padding: 14px;
+  border: 1px solid rgba(255, 159, 67, 0.24);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 159, 67, 0.11), rgba(12, 20, 30, 0.78)),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
 }
 
-.furnace-smelt-slot,
-.furnace-fuel-slot,
-.furnace-queue-button {
+.furnace-input-row {
   display: grid;
-  grid-template-columns: 42px 1fr;
+  grid-template-columns: minmax(96px, 0.62fr) minmax(154px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.furnace-item-slot,
+.furnace-source-button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px 1fr;
   gap: 10px;
   align-items: center;
+  min-height: 92px;
   padding: 12px;
   border: 1px solid rgba(236, 231, 216, 0.14);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.furnace-smelt-slot {
-  position: relative;
-  min-height: 78px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--item-color, #fff2cf) 15%, transparent), transparent 62%),
+    rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  text-align: left;
   overflow: hidden;
 }
 
-.furnace-smelt-slot span,
-.furnace-queue-button span,
-.furnace-fuel-slot span {
-  width: 38px;
-  height: 38px;
+.furnace-item-slot.is-compact {
+  grid-template-columns: 40px 1fr;
+  min-height: 76px;
+  padding: 10px;
 }
 
-.furnace-smelt-slot i {
+.furnace-item-slot.is-empty {
+  opacity: 0.72;
+}
+
+.furnace-item-slot.is-active {
+  border-color: rgba(255, 211, 107, 0.72);
+  box-shadow: 0 0 24px rgba(255, 159, 67, 0.14);
+}
+
+.furnace-item-slot.is-fuel {
+  min-height: 82px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 93, 61, 0.22), transparent 46%),
+    rgba(255, 159, 67, 0.08);
+}
+
+.furnace-slot-label {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  color: rgba(236, 231, 216, 0.48);
+  font-size: 0.66rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.furnace-item-slot .furnace-slot-icon,
+.furnace-source-button span {
+  width: 42px;
+  height: 42px;
+}
+
+.furnace-item-slot.is-compact .furnace-slot-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.furnace-item-slot strong,
+.furnace-source-button strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.furnace-item-slot em,
+.furnace-source-button em,
+.furnace-heat-channel em {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.furnace-item-slot i {
   position: absolute;
   left: 0;
   bottom: 0;
@@ -3242,21 +3311,39 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   background: linear-gradient(90deg, #ff9f43, #ffd36b);
 }
 
-.furnace-queue-button {
-  grid-template-columns: 42px 1fr;
-  text-align: left;
-}
-
-.furnace-queue-button em,
-.furnace-fuel-slot em {
-  display: block;
+.furnace-heat-channel {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
   color: var(--muted);
-  font-style: normal;
 }
 
-.furnace-fuel-slot {
-  grid-template-columns: 42px 1fr;
-  background: rgba(255, 159, 67, 0.08);
+.furnace-heat-channel span {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 117, 111, 0.2), rgba(255, 211, 107, 0.72), rgba(255, 117, 111, 0.2));
+}
+
+.furnace-heat-channel strong {
+  color: var(--forge-yellow);
+  font-size: 0.82rem;
+}
+
+.furnace-source-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.furnace-source-button {
+  min-height: 68px;
+  border-color: rgba(255, 159, 67, 0.2);
+}
+
+.furnace-source-button:disabled {
+  opacity: 0.42;
 }
 
 @media (max-width: 760px), (max-height: 460px) {
@@ -3285,6 +3372,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   .survival-recipe-card ul,
   .furnace-smelt-slots,
   .furnace-controls,
+  .furnace-input-row,
+  .furnace-source-grid,
   .voxel-craft-layout,
   .survival-inventory-summary {
     grid-template-columns: 1fr;

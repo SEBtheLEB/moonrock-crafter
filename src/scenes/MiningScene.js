@@ -71,6 +71,9 @@ const TORCH_SUPPORT_SIDES = [
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
+const FURNACE_FUEL_ITEM_ID = 'fireCore';
+const FURNACE_SMELTS_PER_FIRE_CORE = 10;
+const FURNACE_DEFAULT_SMELT_SECONDS = 4;
 const STARTER_BASE_BUILD_VERSION = 3;
 const CRAFTING_STATION_WIDTH = 150;
 const CRAFTING_STATION_CLEARANCE = 106;
@@ -4305,7 +4308,9 @@ export class MiningScene {
       blueprintId: blueprint.id,
       name: blueprint.name || 'Starter Furnace',
       active: null,
-      queue: [],
+      mainInput: null,
+      queuedInput: null,
+      fuel: null,
       completed: {},
     });
     story.furnacePlaced = true;
@@ -4378,6 +4383,7 @@ export class MiningScene {
     story.furnaces ||= [];
     this.placedFurnaces.forEach((placed) => {
       const furnaceState = story.furnaces.find((furnace) => furnace.id === placed.id);
+      this.normalizeFurnaceState(furnaceState);
       this.tickCrashFurnace(delta, furnaceState, placed);
       placed.update(delta, { active: Boolean(furnaceState?.active) });
     });
@@ -4402,60 +4408,264 @@ export class MiningScene {
 
   tickCrashFurnace(delta, furnace, placedFurnace = this.placedFurnace) {
     if (!furnace) return;
-    furnace.queue ||= [];
+    this.normalizeFurnaceState(furnace);
     furnace.completed ||= {};
     const recipes = gameBalance.earlyGame?.crashStart?.smelting || {};
-    if (!furnace.active && furnace.queue.length) {
-      const inputId = furnace.queue.shift();
-      const recipe = recipes[inputId];
-      if (recipe) {
-        furnace.active = {
-          inputId,
-          outputId: recipe.output,
-          time: recipe.time,
-          elapsed: 0,
-        };
-        this.game.audio.playFurnaceIgnite?.();
-      }
-    }
+    if (!furnace.active) this.startNextFurnaceSmelt(furnace, recipes);
     if (!furnace.active) return;
     furnace.active.elapsed += delta;
     if (furnace.active.elapsed < furnace.active.time) return;
+    const inputId = furnace.active.inputId;
     const outputId = furnace.active.outputId;
+    const fuelCharged = Boolean(furnace.active.fuelCharged);
     this.game.systems.inventory.add(outputId, 1, { skipSave: true });
     furnace.completed[outputId] = (furnace.completed[outputId] || 0) + 1;
     const material = this.game.systems.materials.getMaterial(outputId);
     const world = this.activeIsland?.localToWorldRotated(placedFurnace.x, placedFurnace.y, this.getIslandViewRotation());
     if (world) {
       this.spawnBurst(world.x, world.y - 20, material?.color || '#ffd36b', 18, 120);
-      this.addFloatingText(world.x, world.y - 36, `+1 ${this.game.systems.materials.getDisplayName(outputId)}`, {
+      this.addFurnaceOutputFloatingText(furnace, world.x, world.y - 38, outputId, {
         color: material?.color || '#ffd36b',
         rarity: material?.rarity || 'common',
       });
     }
     furnace.active = null;
+    if (furnace.mainInput?.itemId === inputId) {
+      furnace.mainInput.amount = Math.max(0, (furnace.mainInput.amount || 0) - 1);
+      if (furnace.mainInput.amount <= 0) furnace.mainInput = null;
+    }
+    if (fuelCharged && furnace.fuel) {
+      furnace.fuel.remainingSmelts = Math.max(0, (furnace.fuel.remainingSmelts || 0) - 1);
+      if ((furnace.fuel.amount || 0) <= 0 && (furnace.fuel.remainingSmelts || 0) <= 0) furnace.fuel = null;
+    }
+    this.promoteQueuedFurnaceInput(furnace);
     this.game.audio.playCraftSuccess?.();
     this.game.saveGame();
     this.startCrashTutorialHint('repairHint');
   }
 
+  normalizeFurnaceState(furnace) {
+    if (!furnace) return null;
+    const normalizeSlot = (slot) => {
+      if (!slot) return null;
+      if (typeof slot === 'string') return { itemId: slot, amount: 1 };
+      const itemId = slot.itemId;
+      const amount = Math.max(0, Math.floor(Number(slot.amount) || 0));
+      if (!itemId || amount <= 0) return null;
+      return { itemId, amount };
+    };
+    const legacyQueue = Array.isArray(furnace.queue) ? furnace.queue.filter(Boolean) : [];
+    furnace.mainInput = normalizeSlot(furnace.mainInput);
+    furnace.queuedInput = normalizeSlot(furnace.queuedInput);
+    if (!furnace.mainInput && furnace.active?.inputId) {
+      furnace.mainInput = { itemId: furnace.active.inputId, amount: 1 };
+    }
+    while (legacyQueue.length && (!furnace.mainInput || !furnace.queuedInput)) {
+      const next = { itemId: legacyQueue.shift(), amount: 1 };
+      if (!furnace.mainInput) furnace.mainInput = next;
+      else if (!furnace.queuedInput) furnace.queuedInput = next;
+    }
+    furnace.queue = [];
+    const fuel = furnace.fuel || null;
+    const fuelAmount = Math.max(0, Math.floor(Number(fuel?.amount) || 0));
+    const remainingSmelts = Math.max(0, Math.floor(Number(fuel?.remainingSmelts) || 0));
+    furnace.fuel = fuelAmount > 0 || remainingSmelts > 0
+      ? { itemId: FURNACE_FUEL_ITEM_ID, amount: fuelAmount, remainingSmelts }
+      : null;
+    furnace.completed ||= {};
+    return furnace;
+  }
+
+  startNextFurnaceSmelt(furnace, recipes = gameBalance.earlyGame?.crashStart?.smelting || {}) {
+    this.promoteQueuedFurnaceInput(furnace);
+    const input = furnace?.mainInput;
+    if (!input?.itemId || input.amount <= 0) return false;
+    const recipe = recipes[input.itemId];
+    if (!recipe) return false;
+    if (!this.consumeFurnaceFuelCharge(furnace)) return false;
+    furnace.active = {
+      inputId: input.itemId,
+      outputId: recipe.output,
+      time: recipe.time || FURNACE_DEFAULT_SMELT_SECONDS,
+      elapsed: 0,
+      fuelCharged: true,
+    };
+    this.game.audio.playFurnaceIgnite?.();
+    return true;
+  }
+
+  consumeFurnaceFuelCharge(furnace) {
+    if (!furnace) return false;
+    furnace.fuel ||= { itemId: FURNACE_FUEL_ITEM_ID, amount: 0, remainingSmelts: 0 };
+    if ((furnace.fuel.remainingSmelts || 0) <= 0 && (furnace.fuel.amount || 0) > 0) {
+      furnace.fuel.amount = Math.max(0, furnace.fuel.amount - 1);
+      furnace.fuel.remainingSmelts = FURNACE_SMELTS_PER_FIRE_CORE;
+    }
+    if ((furnace.fuel.remainingSmelts || 0) <= 0) {
+      if ((furnace.fuel.amount || 0) <= 0) furnace.fuel = null;
+      return false;
+    }
+    return true;
+  }
+
+  promoteQueuedFurnaceInput(furnace) {
+    if (!furnace) return;
+    if (furnace.mainInput?.amount > 0) return;
+    furnace.mainInput = furnace.queuedInput?.amount > 0 ? furnace.queuedInput : null;
+    furnace.queuedInput = null;
+  }
+
+  hasFurnaceStoredItems(furnace) {
+    this.normalizeFurnaceState(furnace);
+    return Boolean(
+      furnace?.mainInput?.amount > 0
+      || furnace?.queuedInput?.amount > 0
+      || furnace?.fuel?.amount > 0
+      || furnace?.fuel?.remainingSmelts > 0,
+    );
+  }
+
+  addFurnaceOutputFloatingText(furnace, x, y, outputId, { color = '#ffd36b', rarity = 'common' } = {}) {
+    const material = this.game.systems.materials.getMaterial(outputId);
+    this.floatingTextFx.addStacked(x, y, {
+      key: `furnace:${furnace?.id || 'active'}:${outputId}`,
+      label: material?.icon || this.game.systems.materials.getDisplayName(outputId),
+      amount: 1,
+      color,
+      rarity,
+    });
+  }
+
   queueCrashSmelt(inputId) {
     const story = this.getStoryState();
     const furnace = this.getFurnaceState(this.activeFurnaceId) || story.furnaces?.[0];
+    return this.addInventoryToFurnaceInput(furnace, inputId);
+  }
+
+  getBestFurnaceInputSlot(furnace, inputId) {
+    this.normalizeFurnaceState(furnace);
+    if (!furnace?.mainInput || furnace.mainInput.itemId === inputId) return 'mainInput';
+    if (!furnace.queuedInput || furnace.queuedInput.itemId === inputId) return 'queuedInput';
+    return '';
+  }
+
+  addInventoryToFurnaceInput(furnace, inputId, preferredSlotName = '') {
     const recipes = gameBalance.earlyGame?.crashStart?.smelting || {};
-    if (!furnace || !recipes[inputId]) return false;
-    furnace.queue ||= [];
-    if (furnace.queue.length + (furnace.active ? 1 : 0) >= 2) {
+    const amount = this.game.systems.inventory.getStoredAmount(inputId);
+    const slotName = preferredSlotName || this.getBestFurnaceInputSlot(furnace, inputId);
+    const canFit = slotName && this.canAddItemToFurnaceSlot(furnace, slotName, inputId);
+    if (!furnace || !recipes[inputId] || amount <= 0 || !canFit) {
       this.game.audio.playError?.();
-      this.game.ui.showToast('Starter furnace has two slots', 'danger', 1200);
+      this.game.ui.showToast(
+        amount <= 0 ? `Need ${this.game.systems.materials.getDisplayName(inputId)}` : 'Furnace input slots are full',
+        'danger',
+        1200,
+      );
       return false;
     }
-    if (!this.game.systems.inventory.remove(inputId, 1, { skipSave: true })) {
+    if (!this.game.systems.inventory.remove(inputId, amount, { skipSave: true })) {
       this.game.audio.playError?.();
       this.game.ui.showToast(`Need ${this.game.systems.materials.getDisplayName(inputId)}`, 'danger', 1200);
       return false;
     }
-    furnace.queue.push(inputId);
+    this.addStackToFurnaceSlot(furnace, slotName, inputId, amount);
+    this.game.audio.playButtonClick?.();
+    this.game.saveGame();
+    this.refreshFurnaceModal();
+    return true;
+  }
+
+  addHeldItemToFurnaceSlot(slotName) {
+    const held = this.heldItemState;
+    const furnace = this.getFurnaceState(this.activeFurnaceId);
+    if (!held?.itemId || !furnace) return false;
+    const amount = Math.max(0, Math.floor(held.amount || 0));
+    if (amount <= 0) return false;
+    if (!this.canAddItemToFurnaceSlot(furnace, slotName, held.itemId)) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('That item does not fit this furnace slot', 'danger', 1200);
+      return false;
+    }
+    this.addStackToFurnaceSlot(furnace, slotName, held.itemId, amount);
+    held.amount = 0;
+    this.clearHeldItemState();
+    this.game.audio.playButtonClick?.();
+    this.game.saveGame();
+    this.refreshFurnaceModal();
+    return true;
+  }
+
+  canAddItemToFurnaceSlot(furnace, slotName, itemId) {
+    this.normalizeFurnaceState(furnace);
+    const recipes = gameBalance.earlyGame?.crashStart?.smelting || {};
+    if (slotName === 'fuel') return itemId === FURNACE_FUEL_ITEM_ID;
+    if (!recipes[itemId]) return false;
+    const current = furnace?.[slotName];
+    return !current || current.itemId === itemId;
+  }
+
+  addStackToFurnaceSlot(furnace, slotName, itemId, amount = 1) {
+    this.normalizeFurnaceState(furnace);
+    const addAmount = Math.max(1, Math.floor(amount));
+    if (slotName === 'fuel') {
+      furnace.fuel ||= { itemId: FURNACE_FUEL_ITEM_ID, amount: 0, remainingSmelts: 0 };
+      furnace.fuel.itemId = FURNACE_FUEL_ITEM_ID;
+      furnace.fuel.amount = (furnace.fuel.amount || 0) + addAmount;
+      return true;
+    }
+    const current = furnace[slotName];
+    if (current?.itemId === itemId) {
+      current.amount += addAmount;
+    } else {
+      furnace[slotName] = { itemId, amount: addAmount };
+    }
+    return true;
+  }
+
+  addInventoryFuelToFurnace(furnace) {
+    if (!furnace) return false;
+    const amount = this.game.systems.inventory.getStoredAmount(FURNACE_FUEL_ITEM_ID);
+    if (amount <= 0) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast(`Need ${this.game.systems.materials.getDisplayName(FURNACE_FUEL_ITEM_ID)}`, 'danger', 1200);
+      return false;
+    }
+    if (!this.game.systems.inventory.remove(FURNACE_FUEL_ITEM_ID, amount, { skipSave: true })) return false;
+    this.addStackToFurnaceSlot(furnace, 'fuel', FURNACE_FUEL_ITEM_ID, amount);
+    this.game.audio.playButtonClick?.();
+    this.game.saveGame();
+    this.refreshFurnaceModal();
+    return true;
+  }
+
+  returnFurnaceSlotToInventory(slotName) {
+    const furnace = this.getFurnaceState(this.activeFurnaceId);
+    if (!furnace) return false;
+    this.normalizeFurnaceState(furnace);
+    if (slotName === 'mainInput' && furnace.active) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Main slot is smelting', 'danger', 1100);
+      return false;
+    }
+    if (slotName === 'fuel') {
+      const amount = furnace.fuel?.amount || 0;
+      if (amount <= 0) {
+        if (furnace.fuel?.remainingSmelts > 0) {
+          this.game.audio.playError?.();
+          this.game.ui.showToast('Fire Core is already burning', 'danger', 1100);
+        }
+        return false;
+      }
+      this.game.systems.inventory.add(FURNACE_FUEL_ITEM_ID, amount, { skipSave: true });
+      furnace.fuel.amount = 0;
+      if ((furnace.fuel.remainingSmelts || 0) <= 0) furnace.fuel = null;
+    } else {
+      const slot = furnace[slotName];
+      if (!slot?.itemId || slot.amount <= 0) return false;
+      this.game.systems.inventory.add(slot.itemId, slot.amount, { skipSave: true });
+      furnace[slotName] = null;
+      this.promoteQueuedFurnaceInput(furnace);
+    }
     this.game.audio.playButtonClick?.();
     this.game.saveGame();
     this.refreshFurnaceModal();
@@ -6847,6 +7057,7 @@ export class MiningScene {
   showFurnaceModal(furnaceId = '') {
     const furnace = furnaceId ? this.getFurnaceState(furnaceId) : this.getFurnaceState();
     if (!furnace) return;
+    this.normalizeFurnaceState(furnace);
     this.activeFurnaceId = furnace.id;
     const content = document.createElement('div');
     content.className = 'survival-furnace';
@@ -6854,7 +7065,7 @@ export class MiningScene {
     this.populateFurnaceContent(content);
     const modal = this.createSurvivalModal({
       title: 'Starter Furnace',
-      subtitle: 'Two top slots queue ore. The Fire Core at the bottom keeps it hot.',
+      subtitle: 'Load ore into the upper slots and Fire Core into the lower fuel chamber.',
       className: 'furnace-survival-modal',
       content,
       actions: [
@@ -6875,67 +7086,156 @@ export class MiningScene {
 
   populateFurnaceContent(content) {
     const furnace = this.getFurnaceState(this.activeFurnaceId) || {};
+    this.normalizeFurnaceState(furnace);
     const active = furnace.active || null;
-    const queue = furnace.queue || [];
     const recipes = gameBalance.earlyGame?.crashStart?.smelting || {};
     const activeProgress = active ? clamp01(active.elapsed / Math.max(0.01, active.time)) : 0;
-    const slotItems = active
-      ? [
-        { itemId: active.inputId, progress: activeProgress, active: true },
-        queue[0] ? { itemId: queue[0], progress: 0, active: false } : null,
-      ]
-      : [
-        queue[0] ? { itemId: queue[0], progress: 0, active: false } : null,
-        queue[1] ? { itemId: queue[1], progress: 0, active: false } : null,
-      ];
     content.replaceChildren();
-    const slots = document.createElement('div');
-    slots.className = 'furnace-smelt-slots';
-    slotItems.forEach((slot, index) => {
-      const material = slot ? this.game.systems.materials.getMaterial(slot.itemId) : null;
-      const element = document.createElement('div');
-      element.className = `furnace-smelt-slot ${slot ? 'has-item' : 'is-empty'} ${slot?.active ? 'is-active' : ''}`;
-      element.innerHTML = slot
-        ? `<span style="--item-color: ${material?.color || '#fff2cf'}">${material?.icon || '?'}</span><strong>${slot.active ? 'Smelting' : 'Queued'}</strong><i style="width: ${Math.round((slot.progress || 0) * 100)}%"></i>`
-        : `<span>+</span><strong>Slot ${index + 1}</strong>`;
-      slots.append(element);
-    });
-    content.append(slots);
+    const machine = document.createElement('div');
+    machine.className = 'furnace-machine';
 
-    const controls = document.createElement('div');
-    controls.className = 'furnace-controls';
+    const inputs = document.createElement('div');
+    inputs.className = 'furnace-input-row';
+    inputs.append(
+      this.createFurnaceSlotElement({
+        slotName: 'queuedInput',
+        slot: furnace.queuedInput,
+        label: 'Queue',
+        caption: 'Next',
+        compact: true,
+      }),
+      this.createFurnaceSlotElement({
+        slotName: 'mainInput',
+        slot: furnace.mainInput,
+        label: 'Main',
+        caption: active ? 'Smelting' : 'Ready',
+        active: Boolean(active),
+        progress: activeProgress,
+      }),
+    );
+    machine.append(inputs);
+
+    const heat = document.createElement('div');
+    heat.className = 'furnace-heat-channel';
+    const heatSmelts = (furnace.fuel?.remainingSmelts || 0) + (furnace.fuel?.amount || 0) * FURNACE_SMELTS_PER_FIRE_CORE;
+    heat.innerHTML = `
+      <span></span>
+      <strong>${active ? `${Math.round(activeProgress * 100)}%` : 'Idle'}</strong>
+      <em>${heatSmelts} heat</em>
+    `;
+    machine.append(heat);
+
+    machine.append(this.createFurnaceSlotElement({
+      slotName: 'fuel',
+      slot: furnace.fuel?.amount > 0 || furnace.fuel?.remainingSmelts > 0
+        ? { itemId: FURNACE_FUEL_ITEM_ID, amount: furnace.fuel.amount || 0, heat: furnace.fuel.remainingSmelts || 0 }
+        : null,
+      label: 'Fuel',
+      caption: `${FURNACE_SMELTS_PER_FIRE_CORE} each`,
+      fuel: true,
+    }));
+    content.append(machine);
+
+    const sources = document.createElement('div');
+    sources.className = 'furnace-source-grid';
     Object.keys(recipes).forEach((inputId) => {
-      const recipe = recipes[inputId];
-      const input = this.game.systems.materials.getMaterial(inputId);
-      const output = this.game.systems.materials.getMaterial(recipe.output);
-      const amount = this.game.systems.inventory.getStoredAmount(inputId);
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'furnace-queue-button';
-      button.disabled = amount <= 0 || (queue.length + (active ? 1 : 0) >= 2);
-      button.innerHTML = `
-        <span style="--item-color: ${input?.color || '#fff2cf'}">${input?.icon || '?'}</span>
-        <strong>${input?.name || inputId}</strong>
-        <em>${amount} available -> ${output?.name || recipe.output}</em>
-      `;
-      button.addEventListener('click', () => this.queueCrashSmelt(inputId));
-      controls.append(button);
+      const preferredSlot = this.getBestFurnaceInputSlot(furnace, inputId);
+      sources.append(this.createFurnaceSourceButton({
+        itemId: inputId,
+        amount: this.game.systems.inventory.getStoredAmount(inputId),
+        outputId: recipes[inputId].output,
+        disabled: !preferredSlot,
+        onClick: () => this.addInventoryToFurnaceInput(furnace, inputId, preferredSlot),
+      }));
     });
-    content.append(controls);
+    sources.append(this.createFurnaceSourceButton({
+      itemId: FURNACE_FUEL_ITEM_ID,
+      amount: this.game.systems.inventory.getStoredAmount(FURNACE_FUEL_ITEM_ID),
+      outputId: '',
+      fuel: true,
+      onClick: () => this.addInventoryFuelToFurnace(furnace),
+    }));
+    content.append(sources);
+  }
 
-    const fuel = document.createElement('div');
-    fuel.className = 'furnace-fuel-slot';
-    fuel.innerHTML = '<span>FC</span><strong>Fire Core installed</strong><em>Stable emergency heat</em>';
-    content.append(fuel);
+  createFurnaceSlotElement({
+    slotName,
+    slot = null,
+    label = '',
+    caption = '',
+    active = false,
+    progress = 0,
+    compact = false,
+    fuel = false,
+  } = {}) {
+    const material = slot?.itemId ? this.game.systems.materials.getMaterial(slot.itemId) : null;
+    const element = document.createElement('button');
+    element.type = 'button';
+    element.className = [
+      'furnace-item-slot',
+      compact ? 'is-compact' : '',
+      active ? 'is-active' : '',
+      fuel ? 'is-fuel' : '',
+      slot?.itemId ? 'has-item' : 'is-empty',
+    ].filter(Boolean).join(' ');
+    element.dataset.furnaceSlot = slotName;
+    element.style.setProperty('--item-color', material?.color || '#fff2cf');
+    const amountText = fuel && slot
+      ? `x${this.formatStackCount(slot.amount || 0)} | ${slot.heat || 0} heat`
+      : (slot ? `x${this.formatStackCount(slot.amount || 0)}` : caption);
+    element.innerHTML = `
+      <span class="furnace-slot-label">${label}</span>
+      <span class="furnace-slot-icon">${slot?.itemId ? this.getMaterialIconMarkup(slot.itemId, material) : '+'}</span>
+      <strong>${slot?.itemId ? this.game.systems.materials.getDisplayName(slot.itemId) : 'Empty'}</strong>
+      <em>${amountText}</em>
+      <i style="width: ${Math.round(clamp01(progress) * 100)}%"></i>
+    `;
+    element.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button !== 0) return;
+      if (this.heldItemState?.itemId) {
+        this.addHeldItemToFurnaceSlot(slotName);
+      } else if (slot?.itemId) {
+        this.returnFurnaceSlotToInventory(slotName);
+      }
+    });
+    return element;
+  }
+
+  createFurnaceSourceButton({ itemId, amount = 0, outputId = '', fuel = false, disabled = false, onClick = null } = {}) {
+    const material = this.game.systems.materials.getMaterial(itemId);
+    const output = outputId ? this.game.systems.materials.getMaterial(outputId) : null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `furnace-source-button ${fuel ? 'is-fuel' : ''}`;
+    button.disabled = amount <= 0 || disabled;
+    button.style.setProperty('--item-color', material?.color || '#fff2cf');
+    button.innerHTML = `
+      <span>${this.getMaterialIconMarkup(itemId, material)}</span>
+      <strong>${material?.name || itemId}</strong>
+      <em>${fuel ? `x${this.formatStackCount(amount)} available` : `x${this.formatStackCount(amount)} -> ${output?.name || outputId}`}</em>
+    `;
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+      if (event.button === 0) event.preventDefault();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick?.();
+    });
+    return button;
   }
 
   packUpActiveFurnace() {
     const story = this.getStoryState();
     const furnace = this.getFurnaceState(this.activeFurnaceId);
     if (!furnace) return;
-    if (furnace.active || furnace.queue?.length) {
+    this.normalizeFurnaceState(furnace);
+    if (furnace.active || this.hasFurnaceStoredItems(furnace)) {
       this.game.audio.playError?.();
-      this.game.ui.showToast('Let the furnace finish before packing it up', 'danger', 1400);
+      this.game.ui.showToast('Empty the furnace before packing it up', 'danger', 1400);
       return;
     }
     const placed = this.placedFurnaces.find((item) => item.id === furnace.id);

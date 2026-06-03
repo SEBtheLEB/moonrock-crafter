@@ -384,8 +384,8 @@ export const gameBalance = {
         },
       },
       smelting: {
-        ironDust: { output: 'ironIngot', time: 4.8 },
-        copperShards: { output: 'copperIngot', time: 4.2 },
+        ironDust: { output: 'ironIngot', time: 4 },
+        copperShards: { output: 'copperIngot', time: 4 },
       },
       shipRepair: {
         requirements: { shipEngine: 1 },
