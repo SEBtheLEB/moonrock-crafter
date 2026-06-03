@@ -3083,7 +3083,7 @@ export class TerrainGrid {
   }
 
   drawTerrainLayers(ctx, bounds = null, { fastRedraw = false, drawOutline = true } = {}) {
-    if (bounds && (fastRedraw || this.isRecentMiningEdit())) {
+    if (bounds && fastRedraw) {
       this.drawFastTerrainLayers(ctx, bounds, { drawOutline });
       return;
     }
@@ -3102,9 +3102,8 @@ export class TerrainGrid {
 
   drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
     this.drawFastBackgroundWalls(ctx, bounds);
-    this.drawFastOrganicMass(ctx, bounds);
-    this.drawFastRockTexture(ctx, bounds);
-    this.drawFastOreVeins(ctx, bounds);
+    this.drawFastNaturalMass(ctx, bounds);
+    this.drawOreVeins(ctx, bounds, { fastRedraw: true });
     if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: true });
     this.drawConstructedMaterials(ctx, bounds);
   }
@@ -3129,74 +3128,27 @@ export class TerrainGrid {
     ctx.restore();
   }
 
-  drawFastOrganicMass(ctx, bounds) {
+  drawFastNaturalMass(ctx, bounds) {
     if (!bounds) return;
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
     gradient.addColorStop(0, palette.top);
     gradient.addColorStop(0.48, palette.body);
     gradient.addColorStop(1, palette.deep);
-    const size = this.cellSize;
-    ctx.save();
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
-      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
-        if (!this.isNaturalSolidCell(col, row)) continue;
-        ctx.rect(col * size, row * size, size, size);
-      }
-    }
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawFastRockTexture(ctx, bounds) {
-    if (!bounds) return;
-    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     const tile = this.getTextureTile(
       `stone:${this.seed}:${this.biome}`,
       (tileCtx, width, height) => this.drawStoneTextureTile(tileCtx, width, height, palette),
     );
     const pattern = ctx.createPattern(tile, 'repeat');
-    if (!pattern) return;
-    const size = this.cellSize;
+    const rect = this.getDrawRect(bounds);
+    if (rect.width <= 0 || rect.height <= 0) return;
     ctx.save();
-    ctx.fillStyle = pattern;
-    ctx.beginPath();
-    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
-      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
-        if (!this.isNaturalSolidCell(col, row)) continue;
-        ctx.rect(col * size, row * size, size, size);
-      }
-    }
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawFastOreVeins(ctx, bounds) {
-    if (!bounds) return;
-    const size = this.cellSize;
-    ctx.save();
-    for (const [materialKey, data] of Object.entries(TERRAIN_MATERIALS)) {
-      const material = Number(materialKey);
-      if (material <= 1 || this.isConstructedMaterial(material)) continue;
-      if (!data?.color || !this.hasMaterialInBounds(material, bounds, 0)) continue;
-      const tile = this.getTextureTile(
-        `ore:${this.seed}:${material}:${data.color}:${data.edge}`,
-        (tileCtx, width, height) => this.drawOreTextureTile(tileCtx, width, height, data, material),
-      );
-      const pattern = ctx.createPattern(tile, 'repeat');
-      if (!pattern) continue;
-      ctx.globalAlpha = material >= 4 ? 0.95 : 0.86;
+    this.clipNaturalMass(ctx, bounds);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    if (pattern) {
       ctx.fillStyle = pattern;
-      ctx.beginPath();
-      for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
-        for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
-          if (this.getCell(col, row) !== material) continue;
-          ctx.rect(col * size, row * size, size, size);
-        }
-      }
-      ctx.fill();
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     }
     ctx.restore();
   }
@@ -5138,13 +5090,7 @@ export class TerrainGrid {
         return;
       }
       if (bounds) {
-        if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughEdgeChipCuts(ctx, bounds);
-        if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughEdgeShadows(ctx, bounds);
-        if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
-          this.drawRoughSurfaceDetails(ctx, bounds);
-        }
-        if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughPebbleLips(ctx, bounds);
-        stats = this.drawRoughEdgeLines(ctx, bounds);
+        stats = this.drawLocalRoughContourLayer(ctx, bounds, { fastRedraw });
         return;
       }
       if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
@@ -5161,6 +5107,27 @@ export class TerrainGrid {
         fromMining: this.isRecentMiningEdit(),
       });
     }
+  }
+
+  drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false } = {}) {
+    const segments = this.getLocalRoughContourSegments(bounds);
+    if (!segments.length) {
+      return {
+        tilesProcessed: this.countCellsInBounds(bounds),
+        roughEdgesDrawn: 0,
+      };
+    }
+    if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
+      this.drawLocalRoughContourShadows(ctx, segments);
+    }
+    this.drawLocalRoughContourLines(ctx, segments);
+    if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+      this.drawRoughSurfaceDetails(ctx, bounds);
+    }
+    return {
+      tilesProcessed: this.countCellsInBounds(bounds),
+      roughEdgesDrawn: segments.length,
+    };
   }
 
   getLocalRoughContourSegments(bounds) {
