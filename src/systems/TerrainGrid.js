@@ -2656,14 +2656,18 @@ export class TerrainGrid {
     ctx.restore();
   }
 
-  drawTerrainLayers(ctx, bounds = null, { fastRedraw = false } = {}) {
+  drawTerrainLayers(ctx, bounds = null, { fastRedraw = false, drawOutline = true } = {}) {
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds, { fastRedraw });
     this.drawOreVeins(ctx, bounds, { fastRedraw });
+    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw });
+    this.drawConstructedMaterials(ctx, bounds);
+  }
+
+  drawTerrainOutlineLayer(ctx, bounds = null, { fastRedraw = false } = {}) {
     if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
     else this.drawEdgeContours(ctx, bounds);
-    this.drawConstructedMaterials(ctx, bounds);
   }
 
   drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh } = {}) {
@@ -3400,6 +3404,9 @@ export class TerrainGrid {
     if (state.cursor < state.chunks.length) return false;
 
     this.progressivePrewarm = null;
+    this.flushStaleContourRenderCaches();
+    this.drawTerrainOutlineLayer(ctx, null, { fastRedraw: false });
+    this.drawConstructedMaterials(ctx, null);
     this.renderDirty = false;
     this.fullRenderDirty = false;
     this.dirtyBounds = null;
@@ -3416,7 +3423,7 @@ export class TerrainGrid {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw: false });
+    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw: false, drawOutline: false });
     ctx.restore();
   }
 
@@ -3661,6 +3668,15 @@ export class TerrainGrid {
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
     if (bounds) {
       this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
+      return;
+    }
+    if (this.isRoughnessOutlineOnly?.()) {
+      this.buildSampledMarchingCellPath(ctx, predicate, {
+        minCol: 0,
+        maxCol: this.cols - 1,
+        minRow: 0,
+        maxRow: this.rows - 1,
+      }, options);
       return;
     }
     const loops = this.getContourLoops(predicate, cacheKey, options);
