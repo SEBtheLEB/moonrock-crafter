@@ -2,7 +2,7 @@ import { islands } from '../data/islands.js?v=158';
 import { TerrainGrid } from './TerrainGrid.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
 
-const ISLAND_LAYOUT_VERSION = 9;
+const ISLAND_LAYOUT_VERSION = 10;
 const PLANET_TAG_PREFIX = 'P';
 const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
 
@@ -188,12 +188,22 @@ export class IslandSystem {
       if (this.assignPlanetTags(layout)) this.game.saveGame();
       return layout;
     }
-    this.game.state.islands.terrain = {};
-    this.game.state.islands.flags = {};
-    this.game.state.islands.torches = {};
-    this.game.state.islands.platforms = {};
-    this.game.state.islands.doors = {};
-    this.game.state.islands.shipAnchors = {};
+    const previousLayoutVersion = Number(this.game.state.islands.layoutVersion) || 0;
+    if (previousLayoutVersion < 9) {
+      this.game.state.islands.terrain = {};
+      this.game.state.islands.flags = {};
+      this.game.state.islands.torches = {};
+      this.game.state.islands.platforms = {};
+      this.game.state.islands.doors = {};
+      this.game.state.islands.shipAnchors = {};
+    } else {
+      this.game.state.islands.terrain ||= {};
+      this.game.state.islands.flags ||= {};
+      this.game.state.islands.torches ||= {};
+      this.game.state.islands.platforms ||= {};
+      this.game.state.islands.doors ||= {};
+      this.game.state.islands.shipAnchors ||= {};
+    }
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
     this.game.state.islands.layout = layout;
@@ -275,6 +285,8 @@ export class IslandSystem {
     const random = this.createSeededRandom(layoutSeed);
     const layout = [];
     const ringSize = gameBalance.mining?.ringSize || 20000;
+    const innerAtmosphereDepth = gameBalance.mining?.planetInnerAtmosphereDepth || 2500;
+    const outerAtmosphereDepth = gameBalance.mining?.planetAtmosphereDepth || 5000;
     layout.push({
       id: 'crashPlanet',
       name: 'Menderfall',
@@ -285,11 +297,14 @@ export class IslandSystem {
       circleName: this.getCircleName(0),
       atmosphereClass: 'stable',
       gravityStabilizerRequirement: 1,
-      worldPosition: this.positionInRing(random, 0, ringSize, 7200, Math.min(13800, ringSize - 19000), layout),
+      worldPosition: this.positionInRing(random, 0, ringSize, 7200, Math.min(13800, ringSize - 19000), layout, {
+        size: { width: 3400, height: 3400 },
+      }),
       size: { width: 3400, height: 3400 },
       discovered: true,
       dangerLevel: 1,
-      landingZoneRadius: 720,
+      landingZoneRadius: innerAtmosphereDepth,
+      atmosphereDepth: outerAtmosphereDepth,
       baseCamp: true,
       resources: ['stoneOre', 'ironDust', 'copperShards', 'moonCrystal', 'crystallizedStone', 'redCrystal'],
       animals: [],
@@ -307,8 +322,11 @@ export class IslandSystem {
       atmosphereClass: 'stable',
       gravityStabilizerRequirement: 1,
       size: { width: 2050, height: 2050 },
-      worldPosition: this.positionInRing(random, 0, ringSize, 15500, ringSize - 14500, layout),
-      landingZoneRadius: 560,
+      worldPosition: this.positionInRing(random, 0, ringSize, 15500, ringSize - 14500, layout, {
+        size: { width: 2050, height: 2050 },
+      }),
+      landingZoneRadius: innerAtmosphereDepth,
+      atmosphereDepth: outerAtmosphereDepth,
       discovered: true,
     });
 
@@ -338,11 +356,11 @@ export class IslandSystem {
         atmosphereClass: 'dense',
         gravityStabilizerRequirement: 2,
         objectiveRole: 'gravityStabilizerUpgrade',
-        worldPosition: this.positionInRing(random, 0, ringSize, 23500, ringSize - 2400, layout),
+        worldPosition: this.positionInRing(random, 0, ringSize, 23500, ringSize - 2400, layout, planet),
         discovered: false,
         dangerLevel: 2,
-        landingZoneRadius: 1100 + index * 80,
-        atmosphereDepth: 7800 + index * 700,
+        landingZoneRadius: innerAtmosphereDepth,
+        atmosphereDepth: outerAtmosphereDepth,
         animals: [],
         layoutId: index === 0 ? 'forestRock' : 'crystalIsland',
         requiredScannerLevel: 1,
@@ -367,11 +385,12 @@ export class IslandSystem {
           circleName: this.getCircleName(ring),
           atmosphereClass: 'stable',
           gravityStabilizerRequirement: 1,
-          worldPosition: this.positionInRing(random, ring, ringSize, min, max, layout),
+          worldPosition: this.positionInRing(random, ring, ringSize, min, max, layout, type),
           size: type.size,
           discovered: ring === 0 && index < 1,
           dangerLevel: Math.max(1, ring + 1),
-          landingZoneRadius: type.radius,
+          landingZoneRadius: innerAtmosphereDepth,
+          atmosphereDepth: outerAtmosphereDepth,
           resources: [],
           animals: [],
           layoutId: type.layoutId,
@@ -394,23 +413,70 @@ export class IslandSystem {
     };
   }
 
-  positionInRing(random, ring, ringSize, minDistance, maxDistance, existing) {
+  getLayoutPlanetRadius(data = {}) {
+    const size = data.size || {};
+    const width = Number(size.width) || 0;
+    const height = Number(size.height) || 0;
+    const sizeRadius = Math.min(width, height) * 0.39;
+    return Math.max(0, Number(data.radius) || 0, sizeRadius);
+  }
+
+  positionInRing(random, ring, ringSize, minDistance, maxDistance, existing, candidate = {}) {
     let best = null;
-    const targetClearance = Math.max(gameBalance.mining?.planetMinSpacing || 10000, ringSize * 0.28);
-    for (let attempt = 0; attempt < 96; attempt += 1) {
+    const minSurfaceGap = gameBalance.mining?.planetSurfaceSpacingMin
+      ?? gameBalance.mining?.planetMinSpacing
+      ?? 5000;
+    const maxSurfaceGap = Math.max(
+      minSurfaceGap,
+      gameBalance.mining?.planetSurfaceSpacingMax ?? 7000,
+    );
+    const targetSurfaceGap = minSurfaceGap + random() * Math.max(0, maxSurfaceGap - minSurfaceGap);
+    const candidateRadius = this.getLayoutPlanetRadius(candidate);
+    const sameRingNeighbors = existing.filter((island) => (island.ringIndex ?? 0) === ring);
+    const getNearestSurfaceGap = (neighbors, point) => neighbors.reduce((nearest, island) => {
+      const dx = point.x - island.worldPosition.x;
+      const dy = point.y - island.worldPosition.y;
+      const centerGap = Math.hypot(dx, dy);
+      const existingRadius = this.getLayoutPlanetRadius(island);
+      return Math.min(nearest, centerGap - candidateRadius - existingRadius);
+    }, Infinity);
+    const considerPoint = (point) => {
+      const sameRingSurfaceGap = getNearestSurfaceGap(sameRingNeighbors, point);
+      const globalSurfaceGap = getNearestSurfaceGap(existing, point);
+      const surfaceGap = sameRingNeighbors.length ? sameRingSurfaceGap : globalSurfaceGap;
+      const inTargetRange = surfaceGap >= minSurfaceGap && surfaceGap <= maxSurfaceGap;
+      const score = globalSurfaceGap < minSurfaceGap
+        ? -2_000_000 + globalSurfaceGap
+        : surfaceGap < minSurfaceGap
+          ? -1_000_000 + surfaceGap
+          : -Math.abs(surfaceGap - targetSurfaceGap);
+      if (!best || score > best.score) best = { ...point, surfaceGap, score };
+      return inTargetRange && globalSurfaceGap >= minSurfaceGap;
+    };
+    for (let attempt = 0; attempt < 160; attempt += 1) {
+      if (sameRingNeighbors.length) {
+        const anchor = sameRingNeighbors[Math.floor(random() * sameRingNeighbors.length)];
+        const anchorRadius = this.getLayoutPlanetRadius(anchor);
+        const desiredCenterGap = candidateRadius + anchorRadius + targetSurfaceGap;
+        const angleFromAnchor = random() * Math.PI * 2;
+        const anchoredPoint = {
+          x: Math.round(anchor.worldPosition.x + Math.cos(angleFromAnchor) * desiredCenterGap),
+          y: Math.round(anchor.worldPosition.y + Math.sin(angleFromAnchor) * desiredCenterGap),
+        };
+        const anchoredDistance = Math.hypot(anchoredPoint.x, anchoredPoint.y);
+        if (
+          anchoredDistance >= minDistance
+          && anchoredDistance <= maxDistance
+          && considerPoint(anchoredPoint)
+        ) break;
+      }
       const angle = random() * Math.PI * 2;
       const distance = minDistance + random() * Math.max(1, maxDistance - minDistance);
       const point = {
         x: Math.round(Math.cos(angle) * distance),
         y: Math.round(Math.sin(angle) * distance),
       };
-      const clearance = existing.reduce((nearest, island) => {
-        const dx = point.x - island.worldPosition.x;
-        const dy = point.y - island.worldPosition.y;
-        return Math.min(nearest, Math.hypot(dx, dy));
-      }, Infinity);
-      if (!best || clearance > best.clearance) best = { ...point, clearance };
-      if (clearance > targetClearance) break;
+      if (considerPoint(point)) break;
     }
     return { x: best?.x || minDistance, y: best?.y || 0 };
   }

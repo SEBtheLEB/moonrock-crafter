@@ -696,6 +696,7 @@ export class TerrainGrid {
     this.wallSystem = new TerrainWallSystem(this);
     this.wallLayerVersion = Number(wallLayerVersion) || 0;
     this.shadowSystem = new TerrainShadowSystem(this);
+    this.progressivePrewarm = null;
     this.airExposureMap = null;
     this.airExposureDirty = true;
     this.airExposureDirtyDeferred = false;
@@ -1656,14 +1657,17 @@ export class TerrainGrid {
   }
 
   getWallCell(col, row) {
+    if (!this.wallConfig.enabled) return 0;
     return this.wallSystem.getCell(col, row);
   }
 
   setWallCell(col, row, value) {
+    if (!this.wallConfig.enabled) return false;
     return this.wallSystem.setCell(col, row, value);
   }
 
   isWallCell(col, row) {
+    if (!this.wallConfig.enabled) return false;
     return this.wallSystem.isCell(col, row);
   }
 
@@ -2555,9 +2559,15 @@ export class TerrainGrid {
       this.markLightingOverlayDirty({ defer: false });
     }
     this.flushDeferredTerrainQualityRedraw(now);
+    if (this.progressivePrewarm) {
+      this.processProgressivePrewarm({
+        budgetMs: TERRAIN_TUNING.progressivePrewarmFrameBudgetMs ?? 3.5,
+        maxChunks: TERRAIN_TUNING.progressivePrewarmChunksPerFrame ?? 3,
+      });
+    }
     if (!this.renderCanvas) {
       this.redrawTerrainCache({ now });
-    } else if (this.renderDirty) {
+    } else if (this.renderDirty && !this.progressivePrewarm) {
       const fastActive = this.isFastTerrainRedrawActive(now);
       const interval = Math.max(16, TERRAIN_TUNING.fastMiningRedrawIntervalMs ?? 42);
       if (!fastActive || now >= (this.fastTerrainNextRedrawAt || 0)) {
@@ -3273,6 +3283,7 @@ export class TerrainGrid {
     this.lightingFieldCanvas = null;
     this.lightingFieldCtx = null;
     this.shadowSystem.release();
+    this.progressivePrewarm = null;
     this.airExposureMap = null;
     this.airExposureDirty = true;
     this.airExposureDirtyDeferred = false;
@@ -3288,11 +3299,95 @@ export class TerrainGrid {
     this.surfaceRadiusLookupCache?.clear();
   }
 
-  prewarmForGameplay() {
+  prewarmForGameplay({
+    progressive = false,
+    priorityPoint = null,
+    budgetMs = 8,
+    maxChunks = 6,
+  } = {}) {
     if (typeof document === 'undefined') return;
+    if (progressive) {
+      this.beginProgressivePrewarm({ priorityPoint });
+      this.processProgressivePrewarm({ budgetMs, maxChunks });
+      return;
+    }
     if (!this.renderCanvas || this.renderDirty) this.redrawTerrainCache();
     this.ensureAirExposureMap();
     if (this.lightingRenderEnabled || this.depthDebugEnabled) this.redrawLightingOverlayCache();
+  }
+
+  beginProgressivePrewarm({ priorityPoint = null, chunkSizeCells = null } = {}) {
+    if (typeof document === 'undefined') return false;
+    if (this.renderCanvas && !this.renderDirty && !this.fullRenderDirty && !this.progressivePrewarm) return true;
+    if (this.progressivePrewarm) return false;
+
+    const chunkSize = Math.max(8, Math.round(chunkSizeCells || this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS));
+    const chunks = [];
+    for (let minRow = 0; minRow < this.rows; minRow += chunkSize) {
+      for (let minCol = 0; minCol < this.cols; minCol += chunkSize) {
+        const bounds = {
+          minCol,
+          maxCol: Math.min(this.cols - 1, minCol + chunkSize - 1),
+          minRow,
+          maxRow: Math.min(this.rows - 1, minRow + chunkSize - 1),
+        };
+        const centerX = ((bounds.minCol + bounds.maxCol + 1) * 0.5) * this.cellSize;
+        const centerY = ((bounds.minRow + bounds.maxRow + 1) * 0.5) * this.cellSize;
+        const priority = priorityPoint
+          ? (centerX - priorityPoint.x) ** 2 + (centerY - priorityPoint.y) ** 2
+          : chunks.length;
+        chunks.push({ bounds, priority });
+      }
+    }
+    chunks.sort((a, b) => a.priority - b.priority);
+
+    const canvas = this.getRenderCanvas();
+    this.renderCtx.clearRect(0, 0, canvas.width, canvas.height);
+    this.progressivePrewarm = {
+      chunks,
+      cursor: 0,
+    };
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+    this.dirtyBounds = null;
+    this.dirtyChunks.clear();
+    return false;
+  }
+
+  processProgressivePrewarm({ budgetMs = 4, maxChunks = 4 } = {}) {
+    const state = this.progressivePrewarm;
+    if (!state) return !this.renderDirty;
+    const canvas = this.getRenderCanvas();
+    const ctx = this.renderCtx;
+    const startedAt = this.getClockNow();
+    let painted = 0;
+    while (state.cursor < state.chunks.length && painted < Math.max(1, maxChunks)) {
+      this.drawTerrainPrewarmChunk(ctx, state.chunks[state.cursor].bounds);
+      state.cursor += 1;
+      painted += 1;
+      if (painted > 0 && this.getClockNow() - startedAt >= Math.max(1, budgetMs)) break;
+    }
+    if (state.cursor < state.chunks.length) return false;
+
+    this.progressivePrewarm = null;
+    this.renderDirty = false;
+    this.fullRenderDirty = false;
+    this.dirtyBounds = null;
+    this.dirtyChunks.clear();
+    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.redrawLightingOverlayCache();
+    return canvas.width > 0 && canvas.height > 0;
+  }
+
+  drawTerrainPrewarmChunk(ctx, bounds) {
+    const rect = this.getDrawRect(bounds, 0);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const paintBounds = this.expandCellBounds(bounds, 4);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x, rect.y, rect.width, rect.height);
+    ctx.clip();
+    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw: false });
+    ctx.restore();
   }
 
   drawBackgroundWalls(ctx, bounds = null) {

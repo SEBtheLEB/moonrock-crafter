@@ -311,6 +311,11 @@ export class MiningScene {
     this.loadedIslandFocusId = '';
     this.departedIslandDecorId = '';
     this.spaceObjectsSuspended = false;
+    this.terrainPrewarmQueue = [];
+    this.deferredCacheReleaseQueued = false;
+    this.deferredCacheReleaseKeepIsland = null;
+    this.autoParkGraceIslandId = '';
+    this.autoParkGraceUntil = 0;
     this.landingIsland = null;
     this.landingTargetPreview = null;
     this.islandMode = 'flight';
@@ -1198,6 +1203,7 @@ export class MiningScene {
   update(delta) {
     if (this.ending) return;
     this.time += delta;
+    this.updateTerrainPrewarmQueue(delta);
     this.updateDeferredPickupSave(delta);
     this.updateHeldItemState();
     this.hotbar?.update();
@@ -2589,11 +2595,18 @@ export class MiningScene {
         nearestDistanceSq = distanceSq;
       }
     }
-    if (nearest && this.landingIsland !== nearest) {
-      this.game.ui.showToast('Landing Zone Detected', 'success', 1300);
+    const prewarmIsland = nearest || strongestAtmosphereIsland || approachingIsland;
+    if (prewarmIsland) {
+      this.prewarmIslandTerrain(prewarmIsland, {
+        priorityLocal: prewarmIsland.worldToLocal(this.ship.x, this.ship.y),
+      });
+    }
+    const shouldAutoPark = Boolean(nearest && this.shouldAutoParkAtInnerAtmosphere(nearest));
+    if (shouldAutoPark && this.landingIsland !== nearest) {
+      this.game.ui.showToast('Autopilot parking at nearest surface block', 'success', 1300);
       this.game.audio.playGpsPing?.();
     }
-    this.landingTargetPreview = nearest ? this.getLandingTargetForIsland(nearest) : null;
+    this.landingTargetPreview = shouldAutoPark ? this.getAutoLandingTargetForIsland(nearest) : null;
     this.atmosphereIsland = nearest || strongestAtmosphereIsland;
     const nearestAtmosphere = nearest
       ? (nearest.getAtmosphereStrength?.(this.ship) ?? nearest.getGravityFieldStrength(this.ship))
@@ -2619,12 +2632,14 @@ export class MiningScene {
         this.backgroundAsteroidFadeTimer,
         gameBalance.mining.backgroundAsteroidFadeDuration || 1.2,
       );
-      this.game.systems.quests?.record?.('enteredSpace', {
-        planetId: previousAtmosphereIsland.id,
-        tag: previousAtmosphereIsland.tag || previousAtmosphereIsland.planetTag || '',
-      }, { save: true, notify: true });
-      this.game.systems.achievements.record('enteredSpace', {
-        planetId: previousAtmosphereIsland.id,
+      this.scheduleIdleTransitionTask(() => {
+        this.game.systems.quests?.record?.('enteredSpace', {
+          planetId: previousAtmosphereIsland.id,
+          tag: previousAtmosphereIsland.tag || previousAtmosphereIsland.planetTag || '',
+        }, { save: true, notify: true });
+        this.game.systems.achievements.record('enteredSpace', {
+          planetId: previousAtmosphereIsland.id,
+        });
       });
     }
     this.backgroundAsteroidFadeTimer = Math.max(0, this.backgroundAsteroidFadeTimer - delta);
@@ -2640,12 +2655,15 @@ export class MiningScene {
         || this.atmosphereIsland.planetTag
         || this.game.systems.islands.getPlanetTag(this.atmosphereIsland.id)
         || 'P??';
-      this.game.systems.quests?.record?.('arrivedPlanet', {
-        planetId: this.atmosphereIsland.id,
-        tag,
-        name: this.atmosphereIsland.name || '',
-        starter: this.atmosphereIsland.id === this.getStoryState().starterPlanetId,
-      }, { save: true, notify: true });
+      const arrivedIsland = this.atmosphereIsland;
+      this.scheduleIdleTransitionTask(() => {
+        this.game.systems.quests?.record?.('arrivedPlanet', {
+          planetId: arrivedIsland.id,
+          tag,
+          name: arrivedIsland.name || '',
+          starter: arrivedIsland.id === this.getStoryState().starterPlanetId,
+        }, { save: true, notify: true });
+      });
       this.game.ui.showToast(`Arrived at ${tag}`, 'success', 1700);
       this.game.audio.playSceneTransition?.();
     }
@@ -2659,7 +2677,7 @@ export class MiningScene {
     const focusId = this.atmosphereIsland?.id || '';
     if (focusId !== this.loadedIslandFocusId) {
       this.loadedIslandFocusId = focusId;
-      this.releaseInactiveIslandRenderCaches(this.atmosphereIsland);
+      this.scheduleInactiveIslandRenderCacheRelease(this.atmosphereIsland);
     }
     if (
       this.atmosphereIsland
@@ -2678,17 +2696,14 @@ export class MiningScene {
       this.backgroundAsteroids = [];
       this.backgroundAsteroidSourceId = '';
     }
-    this.landingIsland = nearest;
-    this.hud?.landingPrompt?.classList.toggle('is-hidden', !nearest);
-    if (nearest) {
-      const atmosphereNote = nearest.atmosphereClass === 'dense' ? ' - Dense Atmosphere' : '';
-      this.setHudText('landingPrompt', this.hud.landingPrompt, `Aim tile + Press ${this.getInteractControlLabel()} to Land - ${nearest.getDisplayName?.() || nearest.name}${atmosphereNote}`);
+    this.landingIsland = shouldAutoPark ? nearest : null;
+    this.hud?.landingPrompt?.classList.toggle('is-hidden', !shouldAutoPark);
+    if (shouldAutoPark) {
+      this.setHudText('landingPrompt', this.hud.landingPrompt, `Autopilot parking - ${nearest.getDisplayName?.() || nearest.name}`);
       if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Land';
       if (this.mineButtonIcon) this.mineButtonIcon.textContent = 'L';
       this.mineButton?.classList.add('is-land-mode');
-      const actions = this.game.input.actions;
-      const useTap = actions.justPressed.primaryUse && document.documentElement.dataset.inputMode === 'touch';
-      if (actions.justPressed.interact || actions.justPressed.confirm || useTap) this.landOnIsland(nearest, this.landingTargetPreview);
+      this.landOnIsland(nearest, this.landingTargetPreview, { auto: true });
       return;
     }
     if (this.mineButtonLabel) this.mineButtonLabel.textContent = 'Use';
@@ -2724,6 +2739,37 @@ export class MiningScene {
       || this.getFallbackLandingHit(island, shipLocal);
     if (!hit) return null;
     return this.createLandingTargetFromHit(island, hit);
+  }
+
+  getAutoLandingTargetForIsland(island) {
+    if (!island?.terrain) return null;
+    const shipLocal = island.worldToLocal(this.ship.x, this.ship.y);
+    const center = island.getCenterLocal?.() || {
+      x: island.width * 0.5,
+      y: island.height * 0.5,
+    };
+    const dx = center.x - shipLocal.x;
+    const dy = center.y - shipLocal.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const end = {
+      x: shipLocal.x + (dx / distance) * Math.max(distance + 80, island.radius + island.landingZoneRadius + 220),
+      y: shipLocal.y + (dy / distance) * Math.max(distance + 80, island.radius + island.landingZoneRadius + 220),
+    };
+    const hit = island.terrain.raycast(shipLocal.x, shipLocal.y, end.x, end.y)
+      || this.getFallbackLandingHit(island, shipLocal);
+    if (!hit) return null;
+    return this.createLandingTargetFromHit(island, hit);
+  }
+
+  shouldAutoParkAtInnerAtmosphere(island) {
+    if (!island || gameBalance.mining?.autoParkInnerAtmosphere === false) return false;
+    if (this.autoParkGraceIslandId === island.id && this.time < (this.autoParkGraceUntil || 0)) return false;
+    const center = island.localToWorld(island.getCenterLocal().x, island.getCenterLocal().y);
+    const dx = this.ship.x - center.x;
+    const dy = this.ship.y - center.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const outwardVelocity = (this.ship.vx * dx + this.ship.vy * dy) / distance;
+    return outwardVelocity < 45;
   }
 
   getFallbackLandingHit(island, shipLocal) {
@@ -2772,9 +2818,13 @@ export class MiningScene {
     return false;
   }
 
-  landOnIsland(island, landingTarget = null) {
+  landOnIsland(island, landingTarget = null, { auto = false } = {}) {
     if (this.ending || this.islandMode !== 'flight') return;
-    const target = landingTarget?.island === island ? landingTarget : this.getLandingTargetForIsland(island);
+    const target = landingTarget?.island === island
+      ? landingTarget
+      : auto
+        ? this.getAutoLandingTargetForIsland(island)
+        : this.getLandingTargetForIsland(island);
     if (target?.local) island.setLandingTargetLocal(target.local);
     else island.setLandingAngleFromWorld(this.ship.x, this.ship.y);
     const anchorLocal = island.getLandingBaseLocal();
@@ -2807,7 +2857,9 @@ export class MiningScene {
     this.game.state.islands.visited ||= {};
     this.game.state.islands.visited[island.id] = true;
     this.game.ui.showToast(
-      island.atmosphereClass === 'dense'
+      auto
+        ? `Autopilot parking on ${island.name}`
+        : island.atmosphereClass === 'dense'
         ? `Landing on ${island.name}. Dense atmosphere detected.`
         : `Landing on ${island.name}`,
       island.atmosphereClass === 'dense' ? 'default' : 'success',
@@ -2815,21 +2867,72 @@ export class MiningScene {
     );
   }
 
-  prewarmIslandTerrain(island) {
+  prewarmIslandTerrain(island, { priorityLocal = null, immediate = false } = {}) {
     const terrain = island?.terrain;
-    if (!terrain?.prewarmForGameplay || terrain.prewarmQueued) return;
+    if (!terrain?.prewarmForGameplay) return;
+    if (this.islandMode === 'onIsland' && island === this.activeIsland && this.time <= 0.05) {
+      terrain.prewarmForGameplay();
+      return;
+    }
+    if (terrain.beginProgressivePrewarm) {
+      const complete = terrain.beginProgressivePrewarm({ priorityPoint: priorityLocal });
+      if (!complete && !this.terrainPrewarmQueue.some((entry) => entry.terrain === terrain)) {
+        this.terrainPrewarmQueue.push({ terrain, island, priorityLocal });
+      }
+      if (immediate) terrain.processProgressivePrewarm?.({ budgetMs: 6, maxChunks: 5 });
+      return;
+    }
+    if (terrain.prewarmQueued) return;
     terrain.prewarmQueued = true;
-    const run = () => {
+    this.scheduleIdleTransitionTask(() => {
       terrain.prewarmQueued = false;
       terrain.prewarmForGameplay();
-    };
-    if (typeof window !== 'undefined' && window.requestIdleCallback) {
-      window.requestIdleCallback(run, { timeout: 800 });
-    } else if (typeof window !== 'undefined') {
-      window.setTimeout(run, 0);
-    } else {
-      run();
+    }, { timeout: 800 });
+  }
+
+  updateTerrainPrewarmQueue(delta = 0) {
+    if (!this.terrainPrewarmQueue.length) return;
+    const frameBudget = gameBalance.mining?.planetPrewarmFrameBudgetMs ?? 3.5;
+    const maxChunks = gameBalance.mining?.planetPrewarmChunksPerFrame ?? 3;
+    const nextQueue = [];
+    let processed = false;
+    for (let index = 0; index < this.terrainPrewarmQueue.length; index += 1) {
+      const entry = this.terrainPrewarmQueue[index];
+      const terrain = entry.terrain;
+      if (!terrain?.processProgressivePrewarm) continue;
+      if (processed) {
+        nextQueue.push(entry);
+        continue;
+      }
+      const done = terrain.processProgressivePrewarm({ budgetMs: frameBudget, maxChunks });
+      processed = true;
+      if (!done) nextQueue.push(entry);
     }
+    this.terrainPrewarmQueue = nextQueue;
+  }
+
+  scheduleIdleTransitionTask(callback, { timeout = 1500 } = {}) {
+    if (typeof callback !== 'function') return;
+    if (typeof window !== 'undefined' && window.requestIdleCallback) {
+      window.requestIdleCallback(() => callback(), { timeout });
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => callback(), Math.min(timeout, 800));
+      return;
+    }
+    callback();
+  }
+
+  scheduleInactiveIslandRenderCacheRelease(keepIsland = null, { timeout = 1700 } = {}) {
+    this.deferredCacheReleaseKeepIsland = keepIsland || null;
+    if (this.deferredCacheReleaseQueued) return;
+    this.deferredCacheReleaseQueued = true;
+    this.scheduleIdleTransitionTask(() => {
+      this.deferredCacheReleaseQueued = false;
+      this.releaseInactiveIslandRenderCaches(this.deferredCacheReleaseKeepIsland);
+      this.deferredCacheReleaseKeepIsland = null;
+    }, { timeout });
   }
 
   localToActiveIslandWorld(localX, localY, viewRotation = this.getIslandViewRotation()) {
@@ -7156,6 +7259,8 @@ export class MiningScene {
     this.islandPickups.length = 0;
     this.activeIsland = null;
     this.atmosphereIsland = departingIsland;
+    this.autoParkGraceIslandId = departingIsland?.id || '';
+    this.autoParkGraceUntil = this.time + 4.5;
     this.atmosphereStrength = clamp01(departingIsland?.getAtmosphereStrength?.(this.ship) ?? 1);
     this.atmosphereSurfaceDistance = departingIsland
       ? Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
@@ -7223,6 +7328,8 @@ export class MiningScene {
     this.islandPickups.length = 0;
     this.activeIsland = null;
     this.atmosphereIsland = departingIsland;
+    this.autoParkGraceIslandId = departingIsland?.id || '';
+    this.autoParkGraceUntil = this.time + 4.5;
     this.atmosphereStrength = Math.max(0.98, clamp01(departingIsland.getAtmosphereStrength?.(this.ship) ?? 1));
     this.atmosphereSurfaceDistance = Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0);
     this.atmosphereViewRotation = preservedViewRotation;
@@ -7313,7 +7420,7 @@ export class MiningScene {
     this.asteroids.length = 0;
     this.pickups.forEach((pickup) => this.releasePickup(pickup));
     this.pickups.length = 0;
-    this.releaseInactiveIslandRenderCaches(island);
+    this.scheduleInactiveIslandRenderCacheRelease(island);
     this.loadedIslandFocusId = island?.id || '';
     this.laserTarget = null;
     this.laserAimPoint = null;
@@ -8718,24 +8825,7 @@ export class MiningScene {
       ctx.arc(x, y, 0.8 + (i % 3) * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
-    this.drawDistantSpaceArt(ctx, width, height);
     this.drawAtmosphereOverlay(ctx, width, height);
-  }
-
-  drawDistantSpaceArt(ctx, width, height) {
-    if (!isGameArtReady()) return;
-    const driftX = -this.camera.x * 0.045;
-    const driftY = -this.camera.y * 0.035;
-    const sunX = ((width * 0.78 + driftX) % (width + 520) + width + 520) % (width + 520) - 260;
-    const sunY = height * 0.18 + Math.sin(this.time * 0.025) * 8 + (driftY % 80) * 0.08;
-    const planetX = ((width * 0.22 - driftX * 0.7) % (width + 360) + width + 360) % (width + 360) - 180;
-    const planetY = height * 0.74 + Math.cos(this.time * 0.018) * 6;
-    ctx.save();
-    drawGameArtSprite(ctx, 'sun', sunX, sunY, 152, 152, {
-      alpha: 0.18 + Math.sin(this.time * 0.05) * 0.025,
-    });
-    drawGameArtSprite(ctx, 'planet', planetX, planetY, 122, 92, { alpha: 0.2 });
-    ctx.restore();
   }
 
   drawAtmosphereOverlay(ctx, width, height) {

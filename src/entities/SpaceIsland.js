@@ -29,15 +29,14 @@ export class SpaceIsland {
     this.width = terrain?.width || data.size?.width || 1500;
     this.height = terrain?.height || data.size?.height || 760;
     this.radius = Math.min(this.width, this.height) * 0.39;
-    this.landingZoneRadius = data.landingZoneRadius || Math.max(320, this.radius * 0.28);
-    this.atmosphereDepth = data.atmosphereDepth || gameBalance.mining?.planetAtmosphereDepth || 5000;
+    this.landingZoneRadius = gameBalance.mining?.planetInnerAtmosphereDepth || 2500;
+    this.atmosphereDepth = gameBalance.mining?.planetAtmosphereDepth || 5000;
     this.landingAngle = data.landingAngle ?? -Math.PI / 2;
     this.landingSurfaceLocal = data.landingSurfaceLocal || null;
-    this.atmosphereRadius = data.atmosphereRadius || this.radius + this.atmosphereDepth;
+    this.atmosphereRadius = this.radius + this.atmosphereDepth;
     this.playerGravityRadius = data.playerGravityRadius
       || Math.hypot(this.width * 0.5, this.height * 0.5) + Math.max(620, this.landingZoneRadius * 1.75);
-    this.gravityFieldRadius = data.gravityFieldRadius
-      || this.atmosphereRadius;
+    this.gravityFieldRadius = this.atmosphereRadius;
     const savedShipAnchor = data.shipAnchor || null;
     if (savedShipAnchor?.landingSurfaceLocal) {
       this.landingAngle = savedShipAnchor.landingAngle ?? this.landingAngle;
@@ -385,7 +384,7 @@ export class SpaceIsland {
 
   drawGravityField(ctx, active, strength, time) {
     const alpha = active ? 0.045 + strength * 0.075 : 0.018;
-    const radius = this.gravityFieldRadius * 1.55;
+    const radius = this.gravityFieldRadius;
     ctx.save();
     const center = this.getCenterLocal();
     ctx.translate(center.x, center.y);
@@ -413,7 +412,7 @@ export class SpaceIsland {
 
   drawLandingAura(ctx, active, discovered, time) {
     const center = this.getCenterLocal();
-    const radius = this.radius + this.landingZoneRadius * 1.08;
+    const radius = this.radius + this.landingZoneRadius;
     ctx.save();
     ctx.globalAlpha = active ? 0.22 + Math.sin(time * 5) * 0.035 : discovered ? 0.055 : 0.025;
     ctx.strokeStyle = active ? '#ffd36b' : '#76f3ff';

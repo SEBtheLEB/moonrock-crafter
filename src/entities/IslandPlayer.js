@@ -1,5 +1,4 @@
 import { gameBalance } from '../data/gameBalance.js?v=158';
-import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
 
 const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
 const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);
@@ -197,14 +196,6 @@ export class IslandPlayer {
     ctx.beginPath();
     ctx.ellipse(this.width / 2, this.height + this.height * 0.07, this.width * 0.47, this.height * 0.064, 0, 0, Math.PI * 2);
     ctx.fill();
-
-    if (isGameArtReady()) {
-      drawGameArtSprite(ctx, 'astronaut', this.width / 2, this.height / 2, this.width * 1.24, this.height * 1.08, {
-        flipX: this.facing < 0,
-      });
-      ctx.restore();
-      return;
-    }
 
     const bodyGradient = ctx.createLinearGradient(0, 1, 0, this.height - 1);
     bodyGradient.addColorStop(0, '#f3e9ce');
