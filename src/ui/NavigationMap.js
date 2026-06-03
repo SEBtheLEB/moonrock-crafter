@@ -2,7 +2,7 @@ import { Button } from './Button.js';
 import { locationTabs } from '../data/locations.js?v=158';
 
 const SEARCH_OPTIONS = [
-  { label: 'Nearest Iron Ore', materialId: 'ironDust', icon: 'Fe' },
+  { label: 'Nearest Surface Iron', materialId: 'ironDust', icon: 'Fe' },
   { label: 'Nearest Copper Shards', materialId: 'copperShards', icon: 'Cu' },
   { label: 'Nearest Crystal Asteroid', materialId: 'glassCrystal', icon: 'Gl' },
   { label: 'Nearest Rock Island', materialId: 'rockIsland', icon: 'IS' },

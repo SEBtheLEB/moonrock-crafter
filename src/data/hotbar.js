@@ -145,7 +145,7 @@ export const hotbarSlotCatalog = [
     iconHtml: '<span class="tool-icon-shape icon-build-block icon-build-iron"><i></i></span>',
     action: 'build',
     tone: 'metal',
-    description: 'Place iron ore as foreground blocks.',
+    description: 'Place iron as foreground blocks.',
     itemType: 'block',
     placeable: true,
     placedTileType: 2,

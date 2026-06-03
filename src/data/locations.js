@@ -22,7 +22,7 @@ export const locations = [
     discovered: true,
     dangerLevel: 1,
     recommendedFuel: 36,
-    description: 'A tight knot of stone and iron-rich rocks near the Scrap Belt.',
+    description: 'A tight knot of moonstone crust and iron-rich surface rocks near the Scrap Belt.',
     resources: ['ironDust', 'stoneOre'],
     icon: 'Fe',
     requiredScannerLevel: 1,

@@ -13,7 +13,7 @@ import { TerrainWallSystem } from './terrain/TerrainWallSystem.js?v=158';
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
   1: { id: 'moonstone', name: 'Moonstone', color: '#6b625a', edge: '#91867a', hardness: 1.675, yield: 1, materialId: 'stoneOre', miningPowerRequired: 0 },
-  2: { id: 'ironOre', name: 'Iron Ore', color: '#9b7a5b', edge: '#d0ad84', hardness: 7.8, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
+  2: { id: 'ironDeposit', name: 'Iron Deposit', color: '#9b7a5b', edge: '#d0ad84', hardness: 7.8, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   3: { id: 'copperOre', name: 'Copper Ore', color: '#b87333', edge: '#ffad63', hardness: 6.8, yield: 1, materialId: 'copperShards', miningPowerRequired: 0 },
   4: { id: 'crystal', name: 'Crystal', color: '#3d9fc5', edge: '#65d6ff', hardness: 10.5, yield: 1, materialId: 'glassCrystal', miningPowerRequired: 1.15 },
   5: { id: 'coreFragment', name: 'Core Fragment', color: '#c99235', edge: '#ffcf5a', hardness: 13.5, yield: 1, materialId: 'researchFragment', miningPowerRequired: 1.45 },
@@ -29,6 +29,7 @@ const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
 const TERRAIN_SAVE_VERSION = 25;
 const TERRAIN_WALL_LAYER_VERSION = 4;
+const SURFACE_IRON_TERRAIN_MIGRATION_VERSION = 1;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -738,7 +739,7 @@ export class TerrainGrid {
 
   static createForIsland(island, world, savedTerrain = null) {
     if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length) {
-      return new TerrainGrid({
+      const terrain = new TerrainGrid({
         cols: savedTerrain.cols,
         rows: savedTerrain.rows,
         cellSize: savedTerrain.cellSize || 18,
@@ -750,6 +751,11 @@ export class TerrainGrid {
         landingX: savedTerrain.landingX || world.landingX || 150,
         landingY: savedTerrain.landingY || Math.round(world.height * 0.62),
       });
+      terrain.surfaceIronMigrationVersion = Number(savedTerrain.surfaceIronMigrationVersion) || 0;
+      if (terrain.surfaceIronMigrationVersion < SURFACE_IRON_TERRAIN_MIGRATION_VERSION) {
+        terrain.migrateEmbeddedIronToMoonstone();
+      }
+      return terrain;
     }
 
     const cellSize = DEFAULT_TERRAIN_CELL_SIZE;
@@ -780,6 +786,7 @@ export class TerrainGrid {
       seed: this.seed,
       biome: this.biome,
       wallLayerVersion: TERRAIN_WALL_LAYER_VERSION,
+      surfaceIronMigrationVersion: SURFACE_IRON_TERRAIN_MIGRATION_VERSION,
       landingX: this.landingX,
       landingY: this.landingY,
       cells: Array.from(this.cells),
@@ -841,8 +848,49 @@ export class TerrainGrid {
     this.flattenSurfaceTeeth(2);
     this.flattenStarterLandingPlateau(island);
     this.generateWallLayerForPlanet(island);
+    this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
     this.renderDirty = true;
     this.fullRenderDirty = true;
+  }
+
+  migrateEmbeddedIronToMoonstone() {
+    let changed = false;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const index = this.index(col, row);
+        if (this.cells[index] !== 2) continue;
+        const naturalWall = (this.wallCells?.[index] || 0) > 0;
+        const embedded = this.countSolidNeighbors(col, row) >= 5;
+        if (!naturalWall && !embedded) continue;
+        this.cells[index] = 1;
+        changed = true;
+      }
+    }
+    this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
+    if (!changed) return;
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+    this.dirtyChunks.clear();
+    this.textureCache.clear();
+    this.contourCache.clear();
+    this.roughEdgeCache.clear();
+    this.roughContourCache.clear();
+    this.collisionContours = null;
+    this.surfacePathCache = null;
+    this.surfaceRadiusLookupCache.clear();
+    this.markAirExposureDirty?.({ defer: true });
+    this.rebuildSurfaceProfiles();
+  }
+
+  countSolidNeighbors(col, row) {
+    let count = 0;
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        if (ox === 0 && oy === 0) continue;
+        if (this.isSolidCell(col + ox, row + oy)) count += 1;
+      }
+    }
+    return count;
   }
 
   shapeGentlePlanetSurface(island) {
@@ -1196,11 +1244,9 @@ export class TerrainGrid {
     const oreDensity = TERRAIN_TUNING.oreDensity || 1;
     if (island.type === 'crashPlanet') {
       const starterVeins = [
-        { material: 2, count: Math.round(16 * oreDensity), radius: [42, 86], minDepth: 5, depthBias: 0.5, shallowChance: 0.1 },
         { material: 9, count: Math.round(5 * oreDensity), radius: [22, 48], minDepth: 7, depthBias: 0.62, shallowChance: 0.04 },
       ];
       this.paintVeinPlan(random, starterVeins, surfaceRows);
-      this.paintStarterTopIronDustPatch(random);
       this.paintStarterBottomCopperPatch(random);
       return;
     }
@@ -1213,7 +1259,6 @@ export class TerrainGrid {
       cave: 1.25,
     }[island.type] || 1) * oreDensity;
     const veinPlan = [
-      { material: 2, count: Math.round(6 * richness), radius: [32, 70], minDepth: 5, depthBias: 0.48, shallowChance: 0.12 },
       { material: 3, count: Math.round(6 * richness), radius: [30, 68], minDepth: 6, depthBias: 0.54, shallowChance: 0.1 },
       { material: 4, count: Math.round((island.biome === 'crystal' ? 9 : 4) * richness), radius: [26, 58], minDepth: 7, depthBias: 0.64, shallowChance: 0.08 },
       { material: 5, count: island.dangerLevel >= 3 || island.biome === 'crystal' ? 3 : 1, radius: [20, 42], minDepth: 10, depthBias: 0.78, shallowChance: 0.04 },
@@ -1272,33 +1317,6 @@ export class TerrainGrid {
         this.cellSize * (blob.radius + random() * 0.18),
         this.cellSize * (blob.radius * 0.74 + random() * 0.14),
         3,
-      );
-    });
-  }
-
-  paintStarterTopIronDustPatch(random) {
-    const angle = -Math.PI / 2;
-    const surfaceRadius = this.getSurfaceRadiusAtAngle(angle);
-    const normal = { x: Math.cos(angle), y: Math.sin(angle) };
-    const centerX = this.planetCenterX + normal.x * Math.max(0, surfaceRadius - this.cellSize * 1.35);
-    const centerY = this.planetCenterY + normal.y * Math.max(0, surfaceRadius - this.cellSize * 1.35);
-    const tangent = { x: -normal.y, y: normal.x };
-    const blobs = [
-      { offset: -2.2, radius: 1.85 },
-      { offset: -0.75, radius: 2.1 },
-      { offset: 0.85, radius: 2.25 },
-      { offset: 2.25, radius: 1.75 },
-    ];
-    blobs.forEach((blob) => {
-      const wobble = (random() - 0.5) * this.cellSize * 0.42;
-      const cx = centerX + tangent.x * blob.offset * this.cellSize + normal.x * wobble * 0.22;
-      const cy = centerY + tangent.y * blob.offset * this.cellSize + normal.y * wobble * 0.22;
-      this.paintOreEllipse(
-        cx,
-        cy,
-        this.cellSize * (blob.radius + random() * 0.16),
-        this.cellSize * (blob.radius * 0.72 + random() * 0.12),
-        2,
       );
     });
   }

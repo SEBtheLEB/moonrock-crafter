@@ -430,6 +430,7 @@ export class MiningScene {
         placedTorches: this.game.systems.islands.getSavedTorches(island.id),
         placedPlatforms: this.game.systems.islands.getSavedPlatforms(island.id),
         placedDoors: this.game.systems.islands.getSavedDoors(island.id),
+        surfaceIronNodes: this.game.systems.islands.getSavedSurfaceIronNodes(island.id),
         shipAnchor: this.game.systems.islands.getSavedShipAnchor(island.id),
       }, terrain);
     });
@@ -474,6 +475,7 @@ export class MiningScene {
     runtimeIsland.placedPlatforms = [];
     runtimeIsland.placedDoors = [];
     runtimeIsland.terrain = this.game.systems.islands.createTerrain(islandData, this.createIslandWorld(islandData));
+    runtimeIsland.surfaceIronNodes = new SpaceIsland({ ...islandData }, runtimeIsland.terrain).surfaceIronNodes;
     if (islandData.id === this.getStoryState().starterPlanetId) this.ensureStarterBaseCamp(runtimeIsland);
     if (this.activeIsland?.id === runtimeIsland.id) {
       this.activeIsland = runtimeIsland;
@@ -3096,6 +3098,7 @@ export class MiningScene {
     if (!island || !player) return;
     const actions = this.game.input.actions;
     this.updateIslandPlacedDoors(delta);
+    this.updateSurfaceIronNodes(delta);
     this.updateUnsupportedTorchCleanup(delta);
     if (actions.justPressed.crafting) this.tryOpenCraftingStation();
     const keyboardJump = actions.justPressed.up
@@ -8111,6 +8114,10 @@ export class MiningScene {
       this.islandMiningHitFeedback = null;
       return;
     }
+    if (hit.nodeType === 'surfaceIron' && hit.node) {
+      this.mineSurfaceIronNode(hit.node, hit, delta, laser);
+      return;
+    }
     if (!this.canMineTerrainMaterial(hit.material)) {
       this.stopIslandTerrainLaser();
       this.islandMiningBeam = {
@@ -8142,6 +8149,69 @@ export class MiningScene {
     this.removeUnsupportedTorches({ brokenCells: broken, drop: true });
     this.collectIslandTerrainCells(broken);
     this.game.audio.playMineNode?.();
+  }
+
+  updateSurfaceIronNodes(delta) {
+    this.activeIsland?.surfaceIronNodes?.forEach((node) => node.update?.(delta));
+  }
+
+  findSurfaceIronNodeHit(start, end) {
+    const nodes = this.activeIsland?.surfaceIronNodes || [];
+    let best = null;
+    for (const node of nodes) {
+      const hit = node.raycast?.(start, end);
+      if (!hit) continue;
+      if (!best || hit.distance < best.distance) best = hit;
+    }
+    return best;
+  }
+
+  mineSurfaceIronNode(node, hit, delta, laser) {
+    const beforeRatio = node.damageRatio || 0;
+    const power = this.getTerrainMiningPower();
+    const broken = node.mine(power, delta);
+    this.islandMiningHitFeedback = {
+      ...hit,
+      ratio: Math.max(beforeRatio, node.damageRatio || 0),
+      blocked: false,
+      surfaceNode: node,
+    };
+    this.islandMiningBeam = {
+      ...laser,
+      end: { x: hit.x, y: hit.y },
+      hit: this.islandMiningHitFeedback,
+    };
+    const world = this.activeIsland.localToWorldRotated(hit.x, hit.y, this.getIslandViewRotation());
+    this.spawnHitParticles(world.x, world.y, TERRAIN_MATERIALS[2]?.edge || '#d0ad84');
+    if (!broken) return;
+    this.spawnSurfaceIronDrop(node);
+    this.saveSurfaceIronNodes();
+    this.game.audio.playMineNode?.();
+  }
+
+  spawnSurfaceIronDrop(node) {
+    if (!this.activeIsland || !node) return;
+    const material = this.game.systems.materials.getMaterial('ironDust');
+    this.islandPickups.push(this.acquireIslandPickup({
+      materialId: 'ironDust',
+      amount: Math.max(1, node.yield || 1),
+      x: node.x,
+      y: node.y,
+      seed: Math.random(),
+      material,
+      pickupDelay: 0.18,
+    }));
+    const world = this.activeIsland.localToWorldRotated(node.x, node.y, this.getIslandViewRotation());
+    this.spawnBurst(world.x, world.y, material?.color || '#c2a889', node.kind === 'giant' ? 18 : node.kind === 'boulder' ? 13 : 8, 150);
+  }
+
+  saveSurfaceIronNodes({ skipSave = false } = {}) {
+    if (!this.activeIsland) return;
+    this.game.systems.islands.saveSurfaceIronNodes?.(
+      this.activeIsland.id,
+      this.activeIsland.surfaceIronNodes || [],
+      { skipSave },
+    );
   }
 
   getTerrainMiningPower() {
@@ -8577,11 +8647,15 @@ export class MiningScene {
     if (!this.activeIsland || !this.islandPlayer) return null;
     const snapAim = this.getMinerSnapAimState();
     const laser = this.getIslandTerrainLaserState(snapAim?.aimPoint || this.getIslandAimPoint(), { updateFacing });
-    const hit = laser.length > 8
+    const terrainHit = laser.length > 8
       ? this.activeIsland.terrain.raycast(laser.start.x, laser.start.y, laser.end.x, laser.end.y)
       : null;
+    const nodeHit = laser.length > 8 ? this.findSurfaceIronNodeHit(laser.start, laser.end) : null;
+    const hit = nodeHit && (!terrainHit || nodeHit.distance <= terrainHit.distance)
+      ? nodeHit
+      : terrainHit;
     const target = hit
-      ? { col: hit.col, row: hit.row }
+      ? (hit.nodeType === 'surfaceIron' ? null : { col: hit.col, row: hit.row })
       : (snapAim?.target || null);
     return {
       ...laser,
@@ -8590,7 +8664,7 @@ export class MiningScene {
       end: hit ? { x: hit.x, y: hit.y } : laser.end,
       target,
       center: target ? this.game.systems.building?.planetTileToWorld?.(target.col, target.row, { terrain: this.activeIsland.terrain }) : null,
-      valid: hit ? this.canMineTerrainMaterial(hit.material) : false,
+      valid: hit ? (hit.nodeType === 'surfaceIron' || this.canMineTerrainMaterial(hit.material)) : false,
       snapCursor: Boolean(snapAim?.snapped),
     };
   }
@@ -9093,6 +9167,7 @@ export class MiningScene {
         placedTorches: island.placedTorches || [],
         placedPlatforms: island.placedPlatforms || [],
         placedDoors: island.placedDoors || [],
+        surfaceIronNodes: island.surfaceIronNodes || [],
         baseLab: drawLocalIslandDetails && this.baseLab?.id ? this.baseLab : null,
         placedCraftingStations: drawLocalIslandDetails && this.placedCraftingStation ? [this.placedCraftingStation] : [],
         placedResearchStations: drawLocalIslandDetails && this.placedResearchStation ? [this.placedResearchStation] : [],
@@ -9724,7 +9799,11 @@ export class MiningScene {
     if (!gridCursorMode) this.drawControllerIslandAimIndicator(ctx);
     this.drawLaserSightGuide(ctx);
     if (this.islandMiningHitFeedback) {
-      this.activeIsland.terrain.drawDamageFeedback(ctx, this.islandMiningHitFeedback, this.time);
+      if (this.islandMiningHitFeedback.nodeType === 'surfaceIron') {
+        this.islandMiningHitFeedback.node?.drawTargetGlow?.(ctx, this.time);
+      } else {
+        this.activeIsland.terrain.drawDamageFeedback(ctx, this.islandMiningHitFeedback, this.time);
+      }
     }
     if (this.islandMiningBeam) {
       const beamState = state || this.islandMiningBeam;
@@ -10168,6 +10247,10 @@ export class MiningScene {
 
   drawIslandTerrainTargetGlow(ctx, state) {
     if (!state?.hit || !this.activeIsland?.terrain) return;
+    if (state.hit.nodeType === 'surfaceIron' && state.hit.node?.drawTargetGlow) {
+      state.hit.node.drawTargetGlow(ctx, this.time);
+      return;
+    }
     this.activeIsland.terrain.drawCellTargetGlow(ctx, state.hit, this.time, {
       brushRadius: TERRAIN_MINING_BRUSH_RADIUS,
     });
@@ -10175,6 +10258,10 @@ export class MiningScene {
 
   drawMinerSnapCursorPreview(ctx, state) {
     const terrain = this.activeIsland?.terrain;
+    if (state?.hit?.nodeType === 'surfaceIron') {
+      state.hit.node?.drawTargetGlow?.(ctx, this.time);
+      return;
+    }
     const target = state?.target || (state?.hit ? { col: state.hit.col, row: state.hit.row } : null);
     const building = this.game.systems.building;
     if (!terrain || !target || !building) return;

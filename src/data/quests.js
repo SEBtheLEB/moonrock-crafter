@@ -27,7 +27,7 @@ export const quests = [
         detail: 'Collect the starter minerals for the Gravity Machine body and core mount.',
         condition: { type: 'inventoryAll', items: { stoneOre: 10, ironDust: 4, fireCore: 1 } },
         location: 'P01 crust and core',
-        tips: ['Moonstone and iron are near the surface.', 'Fire Core chunks live near the center of beginner planets.'],
+        tips: ['Moonstone is in the crust; iron sits in surface rocks.', 'Fire Core chunks live near the center of beginner planets.'],
       },
       {
         id: 'craftGravityMachine',
@@ -57,7 +57,7 @@ export const quests = [
         id: 'gatherFurnaceParts',
         label: 'Gather furnace materials',
         trackerText: 'Gather furnace parts',
-        detail: 'Collect enough stone for the body, Iron Dust for the heat mount, and one Fire Core.',
+        detail: 'Collect enough Moonstone for the body, Iron Dust from surface rocks for the heat mount, and one Fire Core.',
         condition: { type: 'inventoryAll', items: { stoneOre: 20, ironDust: 1, fireCore: 1 } },
         location: 'P01 caves and core',
         tips: ['The Fire Core must be placed on Iron Dust inside the blueprint.', 'The furnace needs 9 connected open spaces.'],
