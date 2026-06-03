@@ -245,7 +245,7 @@ export const gameBalance = {
       cornerRoundAmount: 0.03,
     },
     lighting: {
-      enabled: true,
+      enabled: false,
       darknessStartDepth: 2.5,
       fullDarkDepth: 10.5,
       maxDarknessOpacity: 0.94,
