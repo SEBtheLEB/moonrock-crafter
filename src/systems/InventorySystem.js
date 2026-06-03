@@ -1,3 +1,5 @@
+import { gameBalance } from '../data/gameBalance.js?v=158';
+
 export class InventorySystem {
   constructor(game) {
     this.game = game;
@@ -78,19 +80,40 @@ export class InventorySystem {
     return this.game.systems.materials.getCargoValue(cargo);
   }
 
-  canAddToRunCargo(itemId, amount = 1, capacity = this.game.state.ship.cargoMax) {
-    const addedWeight = this.game.systems.materials.getWeight(itemId) * amount;
-    return this.getRunCargoWeight() + addedWeight <= capacity;
+  getRunCargoSlotCount(cargo = this.runCargo) {
+    return Object.values(cargo || {}).filter((amount) => amount > 0).length;
   }
 
-  addToRunCargo(itemId, amount = 1, { capacity = this.game.state.ship.cargoMax } = {}) {
-    if (!this.canAddToRunCargo(itemId, amount, capacity)) {
+  getRunCargoSlotCapacity() {
+    const ship = this.game.state.ship || {};
+    return Math.max(
+      1,
+      Math.round(
+        ship.cargoSlots
+          ?? ship.cargoMax
+          ?? gameBalance.inventory?.shipCargoSlots
+          ?? Math.ceil((gameBalance.inventory?.playerSlots || 28) / 2),
+      ),
+    );
+  }
+
+  canAddToRunCargo(itemId, amount = 1, capacity = this.getRunCargoSlotCapacity()) {
+    const slotCapacity = Math.max(1, Math.round(Number(capacity) || this.getRunCargoSlotCapacity()));
+    if (!itemId || amount <= 0) return false;
+    if ((this.runCargo[itemId] || 0) > 0) return true;
+    return this.getRunCargoSlotCount() < slotCapacity;
+  }
+
+  addToRunCargo(itemId, amount = 1, { capacity = this.getRunCargoSlotCapacity() } = {}) {
+    const slotCapacity = Math.max(1, Math.round(Number(capacity) || this.getRunCargoSlotCapacity()));
+    if (!this.canAddToRunCargo(itemId, amount, slotCapacity)) {
       return {
         ok: false,
         reason: 'cargo-full',
         currentWeight: this.getRunCargoWeight(),
+        currentSlots: this.getRunCargoSlotCount(),
         addedWeight: this.game.systems.materials.getWeight(itemId) * amount,
-        capacity,
+        capacity: slotCapacity,
       };
     }
     this.runCargo[itemId] = (this.runCargo[itemId] || 0) + amount;
@@ -98,7 +121,8 @@ export class InventorySystem {
       ok: true,
       cargo: this.runCargo,
       currentWeight: this.getRunCargoWeight(),
-      capacity,
+      currentSlots: this.getRunCargoSlotCount(),
+      capacity: slotCapacity,
     };
   }
 

@@ -29,7 +29,7 @@ export class AsteroidFragmentationSystem {
     if (childCount <= 0) return { didFragment: false, childCount: 0 };
 
     const childTier = Math.max(0, asteroid.fragmentTier - 1);
-    const speed = this.config.childSpreadSpeed || 90;
+    const speed = this.config.childSpreadSpeed || 18;
     const baseAngle = Math.atan2(asteroid.vy || Math.sin(asteroid.seed), asteroid.vx || Math.cos(asteroid.seed)) + Math.PI * 0.5;
     for (let i = 0; i < childCount; i += 1) {
       const spreadAngle = baseAngle + (Math.PI * 2 * i) / childCount + (Math.random() - 0.5) * 0.45;
@@ -45,8 +45,8 @@ export class AsteroidFragmentationSystem {
       const offset = Math.max(asteroid.radius * 0.36, child.radius * 0.86);
       child.x += Math.cos(spreadAngle) * offset;
       child.y += Math.sin(spreadAngle) * offset;
-      child.vx = asteroid.vx * 0.24 + Math.cos(spreadAngle) * speed * (0.66 + seed * 0.42);
-      child.vy = asteroid.vy * 0.24 + Math.sin(spreadAngle) * speed * (0.66 + seed * 0.42);
+      child.vx = asteroid.vx * 0.72 + Math.cos(spreadAngle) * speed * (0.42 + seed * 0.18);
+      child.vy = asteroid.vy * 0.72 + Math.sin(spreadAngle) * speed * (0.42 + seed * 0.18);
       child.scannerRevealed = asteroid.scannerRevealed;
       asteroids.push(child);
     }

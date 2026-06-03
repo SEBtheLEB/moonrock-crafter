@@ -8,17 +8,25 @@ export class Ship {
     this.sizeScale = stats.sizeScale || 1.22;
     this.radius = 30 * this.sizeScale;
     this.acceleration = 326 + (stats.acceleration || 1) * 36;
-    this.drag = 0.68;
+    this.drag = 0.34;
     this.activeControl = 2.9 + (stats.handling || 1) * 0.35;
     this.maxSpeed = 176 + (stats.speed || 1) * 21;
     this.turnSpeed = 9.5 + (stats.handling || 1) * 1.2;
     this.hitCooldown = 0;
     this.steerX = 0;
     this.steerY = 0;
+    this.boostCarry = 0;
+    this.lastBoostStrength = 0;
   }
 
   update(delta, input, fuelRatio = 1, { boost = false, boostPower = boost ? 1 : 0 } = {}) {
     const boostStrength = boost ? Math.max(0.1, boostPower || 1) : 0;
+    if (boost) {
+      this.boostCarry = 1;
+      this.lastBoostStrength = boostStrength;
+    } else {
+      this.boostCarry = Math.max(0, this.boostCarry - delta / 1.65);
+    }
     const rawMove = input.moveVector || { x: 0, y: 0 };
     const inputMode = input.inputMode
       || (typeof document !== 'undefined' ? document.documentElement.dataset.inputMode : 'keyboard')
@@ -60,11 +68,14 @@ export class Ship {
       this.angle = this.rotateToward(this.angle, driftAngle, this.turnSpeed * 0.35 * delta);
     }
 
-    this.vx *= Math.max(0, 1 - this.drag * delta);
-    this.vy *= Math.max(0, 1 - this.drag * delta);
+    const carryEase = this.boostCarry * this.boostCarry * (3 - 2 * this.boostCarry);
+    const dragScale = boost ? 0.72 : (carryEase > 0 ? 0.54 : 1);
+    this.vx *= Math.max(0, 1 - this.drag * dragScale * delta);
+    this.vy *= Math.max(0, 1 - this.drag * dragScale * delta);
 
     const speed = Math.hypot(this.vx, this.vy);
-    const maxSpeed = this.maxSpeed * fuelFactor * (1 + boostStrength * 1.4);
+    const carriedBoostStrength = boostStrength || this.lastBoostStrength * carryEase;
+    const maxSpeed = this.maxSpeed * fuelFactor * (1 + carriedBoostStrength * 1.4);
     if (speed > maxSpeed) {
       this.vx = (this.vx / speed) * maxSpeed;
       this.vy = (this.vy / speed) * maxSpeed;

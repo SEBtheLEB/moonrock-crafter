@@ -253,8 +253,9 @@ export class MiningScene {
       this.stats = { ...this.stats, ...(payload.miningStats || {}) };
       this.runCargo = game.systems.inventory.getRunCargo();
       this.runCargoCount = Object.values(this.runCargo).reduce((total, amount) => total + amount, 0);
+      this.runCargoSlots = game.systems.inventory.getRunCargoSlotCount(this.runCargo);
       this.runCargoWeight = game.systems.inventory.getRunCargoWeight(this.runCargo);
-      this.stats.cargo = Math.ceil(this.runCargoWeight);
+      this.stats.cargo = this.runCargoSlots;
       this.ship.x = payload.shipPosition?.x ?? 0;
       this.ship.y = payload.shipPosition?.y ?? 0;
       this.ship.vx = 0;
@@ -262,6 +263,7 @@ export class MiningScene {
     } else {
       this.runCargo = game.systems.inventory.beginRunCargo();
       this.runCargoCount = 0;
+      this.runCargoSlots = 0;
       this.runCargoWeight = 0;
     }
     this.mineTick = 0;
@@ -491,6 +493,7 @@ export class MiningScene {
     this.game.systems.inventory.clearRunCargo();
     this.runCargo = this.game.systems.inventory.getRunCargo();
     this.runCargoCount = 0;
+    this.runCargoSlots = 0;
     this.runCargoWeight = 0;
     this.stats.cargo = 0;
 
@@ -812,7 +815,7 @@ export class MiningScene {
       hull: ship.hull ?? ship.maxHull ?? 100,
       maxHull: ship.maxHull ?? 100,
       cargo: 0,
-      cargoCapacity: ship.cargoMax ?? 20,
+      cargoCapacity: this.game.systems.inventory.getRunCargoSlotCapacity?.() ?? ship.cargoSlots ?? ship.cargoMax ?? 14,
       speed: ship.speed ?? 1,
       miningPower: ship.miningPower ?? 1,
       miningRange: ship.miningRange ?? 210 + (ship.range ?? 1) * 18,
@@ -1426,6 +1429,7 @@ export class MiningScene {
     });
     this.runCargo = this.game.systems.inventory.getRunCargo();
     this.runCargoCount = 0;
+    this.runCargoSlots = 0;
     this.runCargoWeight = 0;
     this.stats.cargo = 0;
     this.cargoDumping = false;
@@ -1656,7 +1660,7 @@ export class MiningScene {
         a.y -= ny * overlap;
         b.x += nx * overlap;
         b.y += ny * overlap;
-        const impulse = Math.min(52, overlap * 0.35);
+        const impulse = Math.min(8, overlap * 0.06);
         a.vx -= nx * impulse;
         a.vy -= ny * impulse;
         b.vx += nx * impulse;
@@ -2446,7 +2450,8 @@ export class MiningScene {
       });
       this.runCargoCount += pickup.amount;
       this.runCargoWeight = cargoResult.currentWeight;
-      this.stats.cargo = Math.ceil(this.runCargoWeight);
+      this.runCargoSlots = cargoResult.currentSlots;
+      this.stats.cargo = this.runCargoSlots;
       const material = this.game.systems.materials.getMaterial(pickup.materialId);
       this.addPickupFloatingText(
         pickup.x,
@@ -4561,7 +4566,8 @@ export class MiningScene {
     content.className = 'survival-inventory';
     const grid = document.createElement('div');
     grid.className = 'survival-inventory-grid';
-    const slotCount = Math.max(28, Math.ceil(entries.length / 7) * 7 || 28);
+    const playerInventorySlots = gameBalance.inventory?.playerSlots || 28;
+    const slotCount = Math.max(playerInventorySlots, Math.ceil(entries.length / 7) * 7 || playerInventorySlots);
     for (let index = 0; index < slotCount; index += 1) {
       const entry = entries[index];
       grid.append(this.createInventorySlot(entry?.[0], entry?.[1] || 0));
@@ -7835,7 +7841,8 @@ export class MiningScene {
     }
     this.runCargo = result.cargo;
     this.runCargoWeight = result.currentWeight;
-    this.stats.cargo = Math.ceil(this.runCargoWeight);
+    this.runCargoSlots = result.currentSlots;
+    this.stats.cargo = this.runCargoSlots;
     this.runCargoCount += pickup.amount;
     this.game.systems.objectives.record('materialCollected', {
       materialId: pickup.materialId,
@@ -8357,7 +8364,7 @@ export class MiningScene {
 
   updateHud(force = false) {
     const hullRatio = this.stats.hull / this.stats.maxHull;
-    const cargoRatio = this.stats.cargo / this.stats.cargoCapacity;
+    const cargoRatio = this.stats.cargo / Math.max(1, this.stats.cargoCapacity);
     this.setHudText('hullText', this.hud.hullText, `${Math.ceil(this.stats.hull)}/${this.stats.maxHull}`, force);
     this.setHudText('cargoText', this.hud.cargoText, `${this.stats.cargo}/${this.stats.cargoCapacity}`, force);
     this.setHudWidth('hullFill', this.hud.hullFill, Math.round(hullRatio * 100), force);

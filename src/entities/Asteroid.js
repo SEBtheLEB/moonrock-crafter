@@ -169,10 +169,10 @@ export class Asteroid {
       child.splitChipTarget = child.getSplitChipTarget();
       const angle = Math.atan2(fragment.localCenter.y, fragment.localCenter.x) + this.rotation;
       const tangent = angle + Math.PI * 0.5 * (index % 2 === 0 ? 1 : -1);
-      const speed = 88 + Math.min(170, fragment.cellCount * 8);
-      child.vx = this.vx * 0.7 + Math.cos(angle) * speed + Math.cos(tangent) * speed * 0.26;
-      child.vy = this.vy * 0.7 + Math.sin(angle) * speed + Math.sin(tangent) * speed * 0.26;
-      child.rotationSpeed = this.rotationSpeed + (seed - 0.5) * 1.35;
+      const speed = 10 + Math.min(24, fragment.cellCount * 0.9);
+      child.vx = this.vx * 0.84 + Math.cos(angle) * speed + Math.cos(tangent) * speed * 0.08;
+      child.vy = this.vy * 0.84 + Math.sin(angle) * speed + Math.sin(tangent) * speed * 0.08;
+      child.rotationSpeed = this.rotationSpeed + (seed - 0.5) * 0.28;
       child.flash = 0.12;
       child.scannerRevealed = this.scannerRevealed;
       return child;

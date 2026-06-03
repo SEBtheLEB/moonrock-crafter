@@ -118,12 +118,14 @@ export class UpgradeSystem {
 
     const maxFuel = Math.round(stats.ship.maxFuel);
     const maxHull = Math.round(stats.ship.maxHull);
+    const cargoSlots = Math.round(stats.ship.cargoSlots ?? stats.ship.cargoMax);
     this.game.state.ship = {
       ...previousShip,
       ...stats.ship,
       maxFuel,
       maxHull,
-      cargoMax: Math.round(stats.ship.cargoMax),
+      cargoSlots,
+      cargoMax: cargoSlots,
       miningRange: Math.round(stats.ship.miningRange),
       fuel: refuel ? maxFuel : Math.min(previousShip.fuel ?? maxFuel, maxFuel),
       hull: repair ? maxHull : Math.min(previousShip.hull ?? maxHull, maxHull),

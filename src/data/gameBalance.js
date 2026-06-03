@@ -1,3 +1,6 @@
+const PLAYER_INVENTORY_SLOT_COUNT = 28;
+const SHIP_BASE_CARGO_SLOT_COUNT = Math.ceil(PLAYER_INVENTORY_SLOT_COUNT / 2);
+
 export const gameBalance = {
   stationEnabled: false,
   tutorialDialogueEnabled: false,
@@ -16,6 +19,10 @@ export const gameBalance = {
     metalCaseBackWall: 100,
     metalDoor: 20,
   },
+  inventory: {
+    playerSlots: PLAYER_INVENTORY_SLOT_COUNT,
+    shipCargoSlots: SHIP_BASE_CARGO_SLOT_COUNT,
+  },
   miningFuelCost: 12,
   sellMultiplier: 1,
   shipBaseStats: {
@@ -24,7 +31,8 @@ export const gameBalance = {
     hull: 90,
     maxHull: 90,
     cargo: 0,
-    cargoMax: 64,
+    cargoSlots: SHIP_BASE_CARGO_SLOT_COUNT,
+    cargoMax: SHIP_BASE_CARGO_SLOT_COUNT,
     speed: 0.88,
     acceleration: 0.9,
     handling: 1,
@@ -101,7 +109,7 @@ export const gameBalance = {
     asteroidSpawnGap: 520,
     asteroidSeparationPadding: 260,
     asteroidFragmentation: {
-      childSpreadSpeed: 92,
+      childSpreadSpeed: 18,
       distanceTierWeights: [
         { minDistance: 0, maxDistance: 36000, weights: { 0: 50, 1: 40, 2: 10, 3: 0 } },
         { minDistance: 36000, maxDistance: 72000, weights: { 0: 34, 1: 42, 2: 21, 3: 3 } },
@@ -380,7 +388,7 @@ export const gameBalance = {
     },
     upgrades: {
       fuelTank: { levelOneCost: { credits: 45, materials: { ironDust: 1 } }, effect: 28 },
-      cargoHold: { levelOneCost: { credits: 50, materials: { stoneOre: 2 } }, effect: 48 },
+      cargoHold: { levelOneCost: { credits: 50, materials: { stoneOre: 2 } }, effect: 4 },
       laserPower: { levelOneCost: { credits: 70, materials: { ironDust: 1, copperShards: 1 } }, effect: 0.45 },
       engineSpeed: {
         levelOneCost: { credits: 75, materials: { copperShards: 2 } },

@@ -21,8 +21,14 @@ export class IslandScene {
     this.shipPosition = payload.shipPosition || this.island.worldPosition;
     this.miningStats = {
       ...(payload.miningStats || {}),
-      cargoCapacity: payload.miningStats?.cargoCapacity || this.game.state.ship.cargoMax || 20,
+      cargoCapacity: payload.miningStats?.cargoCapacity
+        || this.game.systems.inventory.getRunCargoSlotCapacity?.()
+        || this.game.state.ship.cargoSlots
+        || this.game.state.ship.cargoMax
+        || 14,
     };
+    const currentCargoSlots = this.game.systems.inventory.getRunCargoSlotCount?.();
+    this.miningStats.cargo = Number.isFinite(currentCargoSlots) ? currentCargoSlots : (this.miningStats.cargo || 0);
     this.world = null;
     this.terrain = null;
     this.player = null;
@@ -474,8 +480,7 @@ export class IslandScene {
       index += 1;
     }
 
-    const weight = this.game.systems.inventory.getRunCargoWeight();
-    this.miningStats.cargo = Math.ceil(weight);
+    this.miningStats.cargo = this.game.systems.inventory.getRunCargoSlotCount();
   }
 
   acquireTerrainPickup(options) {
@@ -556,8 +561,7 @@ export class IslandScene {
       pickup.y,
     );
     this.game.audio.playIslandPickup?.();
-    const weight = this.game.systems.inventory.getRunCargoWeight();
-    this.miningStats.cargo = Math.ceil(weight);
+    this.miningStats.cargo = result.currentSlots;
     return true;
   }
 
@@ -674,8 +678,7 @@ export class IslandScene {
   collectDrops(drops, soundName = 'islandPickup') {
     const result = this.game.systems.islands.addDropsToCargo(drops, this.miningStats.cargoCapacity, this);
     if (result.ok) this.playNodeSound(soundName);
-    const weight = this.game.systems.inventory.getRunCargoWeight();
-    this.miningStats.cargo = Math.ceil(weight);
+    this.miningStats.cargo = this.game.systems.inventory.getRunCargoSlotCount();
   }
 
   playNodeSound(soundName) {
@@ -711,12 +714,13 @@ export class IslandScene {
   }
 
   updateHud(force = false) {
-    const cargoWeight = Math.ceil(this.game.systems.inventory.getRunCargoWeight());
+    const cargoSlots = this.game.systems.inventory.getRunCargoSlotCount();
     const cargoCapacity = this.miningStats.cargoCapacity || 20;
+    this.miningStats.cargo = cargoSlots;
     this.setHudText('healthText', this.hud.healthText, `${Math.ceil(this.player.health)}/${this.player.maxHealth}`, force);
     this.setHudWidth('healthFill', this.hud.healthFill, Math.round((this.player.health / this.player.maxHealth) * 100), force);
-    this.setHudText('cargoText', this.hud.cargoText, `${cargoWeight}/${cargoCapacity}`, force);
-    this.setHudWidth('cargoFill', this.hud.cargoFill, Math.round((cargoWeight / cargoCapacity) * 100), force);
+    this.setHudText('cargoText', this.hud.cargoText, `${cargoSlots}/${cargoCapacity}`, force);
+    this.setHudWidth('cargoFill', this.hud.cargoFill, Math.round((cargoSlots / Math.max(1, cargoCapacity)) * 100), force);
     const promptText = this.promptTarget
       ? `${this.promptTarget.label} - ${this.promptTarget.detail}`
       : (this.isFlagToolSelected() ? 'Aim at solid ground and click Use to place a flag' : 'Mine the terrain, then board the ship');

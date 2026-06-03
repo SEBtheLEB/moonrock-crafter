@@ -66,7 +66,7 @@ export const upgrades = [
       { credits: 170, materials: { copperShards: 2, denseNickel: 1 } },
       { credits: 315, materials: { starsteel: 1, denseNickel: 2 }, researchPoints: 2 },
     ],
-    effects: [{ target: 'ship.cargoMax', mode: 'add', value: earlyUpgrades.cargoHold.effect, label: 'Cargo' }],
+    effects: [{ target: 'ship.cargoSlots', mode: 'add', value: earlyUpgrades.cargoHold.effect, label: 'Cargo Slots' }],
   },
   {
     id: 'shipFrame',
@@ -83,7 +83,7 @@ export const upgrades = [
     ],
     effects: [
       { target: 'ship.sizeScale', mode: 'add', value: 0.16, label: 'Ship Size', unit: 'x', precision: 2 },
-      { target: 'ship.cargoMax', mode: 'add', value: 22, label: 'Cargo' },
+      { target: 'ship.cargoSlots', mode: 'add', value: 2, label: 'Cargo Slots' },
       { target: 'ship.maxHull', mode: 'add', value: 14, label: 'Max Hull' },
     ],
   },
