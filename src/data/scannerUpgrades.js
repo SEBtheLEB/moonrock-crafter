@@ -19,7 +19,7 @@ export const scannerUpgrades = [
     name: 'Resource Sweep',
     description: 'Finds nearby common ore clusters.',
     cost: { credits: 120, materials: { copperShards: 2 } },
-    unlocks: ['Iron Dust search', 'Copper Shards search', 'Stone Ore search'],
+    unlocks: ['Iron Dust search', 'Copper Shards search', 'Moonstone search'],
   },
   {
     level: 3,

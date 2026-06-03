@@ -12,7 +12,7 @@ import { TerrainWallSystem } from './terrain/TerrainWallSystem.js?v=158';
 
 export const TERRAIN_MATERIALS = {
   0: { id: 'empty', name: 'Empty', color: 'transparent', hardness: 0, yield: 0, materialId: null },
-  1: { id: 'rock', name: 'Rock', color: '#6b625a', edge: '#91867a', hardness: 3.35, yield: 1, materialId: 'stoneOre', miningPowerRequired: 0 },
+  1: { id: 'moonstone', name: 'Moonstone', color: '#6b625a', edge: '#91867a', hardness: 1.675, yield: 1, materialId: 'stoneOre', miningPowerRequired: 0 },
   2: { id: 'ironOre', name: 'Iron Ore', color: '#9b7a5b', edge: '#d0ad84', hardness: 7.8, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   3: { id: 'copperOre', name: 'Copper Ore', color: '#b87333', edge: '#ffad63', hardness: 6.8, yield: 1, materialId: 'copperShards', miningPowerRequired: 0 },
   4: { id: 'crystal', name: 'Crystal', color: '#3d9fc5', edge: '#65d6ff', hardness: 10.5, yield: 1, materialId: 'glassCrystal', miningPowerRequired: 1.15 },

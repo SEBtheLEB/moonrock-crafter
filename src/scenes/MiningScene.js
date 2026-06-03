@@ -1351,7 +1351,8 @@ export class MiningScene {
 
   isShipBoosting() {
     if (this.islandMode !== 'flight') return false;
-    const wantsBoost = Boolean(this.game.input.actions.jump || this.game.input.actions.boost);
+    const actions = this.game.input.actions;
+    const wantsBoost = Boolean(actions.boost || (actions.jump && !actions.leftTrigger));
     if (!wantsBoost) return false;
     return true;
   }
@@ -1379,8 +1380,9 @@ export class MiningScene {
   }
 
   isAtmosphereEscapeBoosting() {
+    const actions = this.game.input.actions;
     return this.isAtmosphereEscapeBoostAvailable()
-      && Boolean(this.game.input.actions.jump || this.game.input.actions.boost);
+      && Boolean(actions.boost || (actions.jump && !actions.leftTrigger));
   }
 
   updateAtmosphereEscape(delta) {
@@ -1412,9 +1414,13 @@ export class MiningScene {
   }
 
   isMiningInputActive() {
-    if (!this.game.input.actions.mine) return false;
+    const actions = this.game.input.actions;
+    const shipTriggerMining = this.islandMode === 'flight' && Boolean(actions.leftTrigger);
+    if (this.islandMode === 'flight' && actions.rightTrigger && !shipTriggerMining) return false;
+    if (!actions.mine && !shipTriggerMining) return false;
+    if (shipTriggerMining) return true;
     if (!this.isGodMode() || !this.game.input.keys.has(' ')) return true;
-    return (this.game.input.actions.primaryUse || this.game.input.actions.aimUse)
+    return (actions.primaryUse || actions.aimUse)
       && this.game.input.getSelectedHotbarAction?.() === 'mine';
   }
 
@@ -1760,20 +1766,26 @@ export class MiningScene {
   }
 
   updateDroneCombat(delta) {
-    const weaponSelected = this.isWeaponToolSelected();
+    const weaponSelected = this.isShipAttackInstalled();
     if (!weaponSelected && !this.combatDrone.projectiles.length) return;
     const threats = this.spaceEnemies;
     this.combatDrone.update(delta, this.getDroneAnchor(), {
       threats,
       onHit: (target, projectile, damage) => this.handleDroneHit(target, projectile, damage),
     });
-    if (!weaponSelected || !this.game.input.actions.justPressed.attack || this.landingIsland) return;
+    const actions = this.game.input.actions;
+    const attackPressed = Boolean(actions.justPressed.attack || actions.justPressed.rightTrigger);
+    if (!weaponSelected || !attackPressed || this.landingIsland) return;
     this.combatDrone.tryShoot({
       anchor: this.getDroneAnchor(),
       aimPoint: this.getDroneAimPoint(),
       threats,
       onShoot: () => this.game.audio.playDroneShot?.(),
     });
+  }
+
+  isShipAttackInstalled() {
+    return Boolean(this.combatDrone);
   }
 
   getDroneAnchor() {
@@ -3378,6 +3390,13 @@ export class MiningScene {
   }
 
   getControllerToolAimRange(context = 'island') {
+    if (context === 'ship') {
+      return Math.max(
+        this.stats?.miningRange || 420,
+        this.combatDrone?.targetRange || 0,
+        150,
+      );
+    }
     const slot = this.game.input.getSelectedHotbarSlot?.();
     const id = slot?.id || '';
     const action = slot?.action || '';
@@ -4743,18 +4762,17 @@ export class MiningScene {
       <strong data-held-item-count>x${this.formatStackCount(amount)}</strong>
     `;
     document.body.append(ghost);
-    const startX = pointerEvent?.clientX ?? this.game.input.mousePointer?.x ?? window.innerWidth * 0.5;
-    const startY = pointerEvent?.clientY ?? this.game.input.mousePointer?.y ?? window.innerHeight * 0.5;
+    const start = this.getHeldItemStartScreenPoint(itemId, pointerEvent);
     this.heldItemState = {
       itemId,
       source,
       hotbarSlotIndex,
       amount,
       ghost,
-      lastClientX: startX,
-      lastClientY: startY,
+      lastClientX: start.x,
+      lastClientY: start.y,
     };
-    this.updateHeldItemGhost(startX, startY);
+    this.updateHeldItemGhost(start.x, start.y);
     this.heldItemMoveHandler = (event) => this.updateHeldItemGhost(event.clientX, event.clientY);
     window.addEventListener('pointermove', this.heldItemMoveHandler, { passive: true });
     if (this.game.systems.building?.isBuildableItem?.(itemId)) {
@@ -4766,6 +4784,40 @@ export class MiningScene {
     this.game.audio.playButtonClick?.();
     this.game.ui.showToast(`${this.game.systems.materials.getDisplayName(itemId)} held`, 'default', 900);
     return true;
+  }
+
+  getHeldItemStartScreenPoint(itemId, pointerEvent = null) {
+    if (this.game.systems.building?.isBuildableItem?.(itemId)) {
+      const playerScreen = this.getIslandPlayerScreenCenter();
+      if (playerScreen) return playerScreen;
+    }
+    if (Number.isFinite(pointerEvent?.clientX) && Number.isFinite(pointerEvent?.clientY)) {
+      return { x: pointerEvent.clientX, y: pointerEvent.clientY };
+    }
+    const pointer = this.game.input.mousePointer;
+    if (pointer?.inside && Number.isFinite(pointer.x) && Number.isFinite(pointer.y)) {
+      return { x: pointer.x, y: pointer.y };
+    }
+    return {
+      x: (window.innerWidth || this.game.viewport?.width || 0) * 0.5,
+      y: (window.innerHeight || this.game.viewport?.height || 0) * 0.5,
+    };
+  }
+
+  getIslandPlayerScreenCenter() {
+    if (!this.activeIsland || !this.islandPlayer) return null;
+    const world = this.localToActiveIslandWorld(this.islandPlayer.centerX, this.islandPlayer.centerY);
+    return this.worldToViewportScreenPoint(world.x, world.y);
+  }
+
+  worldToViewportScreenPoint(worldX, worldY) {
+    const viewport = this.game.viewport || { width: window.innerWidth || 0, height: window.innerHeight || 0 };
+    const scale = Math.max(0.1, this.getActiveViewScale());
+    const unscaled = this.cameraView.worldToScreen(worldX, worldY);
+    return {
+      x: viewport.width * 0.5 + (unscaled.x - viewport.width * 0.5) * scale,
+      y: viewport.height * 0.5 + (unscaled.y - viewport.height * 0.5) * scale,
+    };
   }
 
   updateHeldItemGhost(clientX, clientY) {
@@ -8413,12 +8465,18 @@ export class MiningScene {
     return pickup;
   }
 
-  getIslandAimPoint() {
+  getIslandAimPoint({ fallback = 'foot' } = {}) {
     const controllerAim = this.getControllerIslandAimPoint();
     if (controllerAim) return controllerAim;
     const pointer = this.game.input.mousePointer;
     if (pointer?.inside && pointer.source === 'canvas' && document.documentElement.dataset.inputMode !== 'touch') {
       return this.screenToIslandLocal(pointer.canvasX, pointer.canvasY);
+    }
+    if (fallback === 'center') {
+      return {
+        x: this.islandPlayer.centerX,
+        y: this.islandPlayer.centerY,
+      };
     }
     const foot = this.getIslandPlayerFootCursorPoint();
     if (foot) return foot;
@@ -8928,6 +8986,7 @@ export class MiningScene {
     const onFoot = this.islandMode === 'onIsland' || this.islandMode === 'boarding';
     this.setHudClass('mapStackOnFoot', this.hud.mapStack, 'is-on-foot', onFoot, force);
     this.setHudClass('mapStackShip', this.hud.mapStack, 'is-ship', !onFoot, force);
+    this.setHudClass('hotbarShipHidden', this.hotbar?.element, 'is-hidden', !onFoot, force);
   }
 
   getPlanetVisorState() {
@@ -9067,7 +9126,7 @@ export class MiningScene {
       this.ship.draw(ctx, camera, this.game.input, { boost: this.isShipBoosting() });
       this.drawShipDestinationIndicator(ctx);
     }
-    if (this.isWeaponToolSelected() && this.islandMode === 'flight') {
+    if (this.isShipAttackInstalled() && this.islandMode === 'flight') {
       this.combatDrone.draw(ctx, camera);
     }
     this.drawCargoTransferEffects(ctx);
@@ -9581,7 +9640,7 @@ export class MiningScene {
       ship: this.ship,
       radius: this.stats.miningRange,
       aimPoint: visualAimPoint,
-      active: this.game.input.actions.mine,
+      active: this.isMiningInputActive(),
       time: this.time,
     });
     this.laserRenderer.drawBeam(ctx, {

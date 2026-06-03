@@ -424,8 +424,8 @@ export const gameBalance = {
       },
       {
         id: 'mineStoneOre',
-        label: 'Mine 5 Stone Ore',
-        description: 'Gather starter ore from the Inner Circle.',
+        label: 'Mine 5 Moonstone',
+        description: 'Gather moonstone from the Inner Circle.',
         condition: { type: 'materialCollected', materialId: 'stoneOre', amount: 5 },
         reward: { credits: 8 },
       },

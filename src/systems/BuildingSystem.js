@@ -6,7 +6,7 @@ const STARTER_BASE_REINFORCED_MATERIAL = 11;
 const SMOOTH_BUILD_MATERIAL_IDS = new Set(['facilityIron', 'reinforcedIron']);
 
 export const BUILDABLE_TERRAIN_ITEMS = {
-  stoneOre: { itemId: 'stoneOre', label: 'Stone', terrainMaterial: 1, wallMaterial: 1, edgeStyle: 'rough' },
+  stoneOre: { itemId: 'stoneOre', label: 'Moonstone', terrainMaterial: 1, wallMaterial: 1, edgeStyle: 'rough' },
   ironDust: { itemId: 'ironDust', label: 'Iron', terrainMaterial: 2, wallMaterial: 2, edgeStyle: 'rough' },
   copperShards: { itemId: 'copperShards', label: 'Copper', terrainMaterial: 3, wallMaterial: 3, edgeStyle: 'rough' },
   glassCrystal: { itemId: 'glassCrystal', label: 'Glass Crystal', terrainMaterial: 4, wallMaterial: 4, edgeStyle: 'rough' },
@@ -279,7 +279,7 @@ export class BuildingSystem {
   getAimState(scene, { rangeOverride = null } = {}) {
     if (!scene?.activeIsland || !scene?.islandPlayer) return null;
     const terrain = scene.activeIsland.terrain;
-    const rawAimPoint = scene.getIslandAimPoint();
+    const rawAimPoint = scene.getIslandAimPoint({ fallback: 'center' });
     const origin = {
       x: scene.islandPlayer.centerX,
       y: scene.islandPlayer.centerY - 7,

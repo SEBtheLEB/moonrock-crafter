@@ -27,7 +27,7 @@ export const quests = [
         detail: 'Collect the starter minerals for the Gravity Machine body and core mount.',
         condition: { type: 'inventoryAll', items: { stoneOre: 10, ironDust: 4, fireCore: 1 } },
         location: 'P01 crust and core',
-        tips: ['Stone and iron are near the surface.', 'Fire Core chunks live near the center of beginner planets.'],
+        tips: ['Moonstone and iron are near the surface.', 'Fire Core chunks live near the center of beginner planets.'],
       },
       {
         id: 'craftGravityMachine',

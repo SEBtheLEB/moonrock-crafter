@@ -169,6 +169,8 @@ export class InputManager {
       buildModeToggle: false,
       buildWallModifier: false,
       buildSnapToggle: false,
+      leftTrigger: false,
+      rightTrigger: false,
       dropHeldAll: false,
       dropHeldOne: false,
       inventory: false,
@@ -708,7 +710,7 @@ export class InputManager {
     this.virtualButtons.forEach((held, actionName) => {
       if (held) next[actionName] = true;
     });
-    if (next.jump) next.boost = true;
+    if (next.jump && !next.leftTrigger) next.boost = true;
 
     this.pointers.forEach((pointer) => {
       if (pointer.down && pointer.source === 'canvas' && pointer.type === 'mouse') {
@@ -801,8 +803,12 @@ export class InputManager {
       actions.add('cancel');
       actions.add('dropHeldAll');
     }
-    if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) actions.add('primaryUse');
+    if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) {
+      actions.add('rightTrigger');
+      actions.add('primaryUse');
+    }
     if (buttonHeld(GAMEPAD_BUTTONS.leftTrigger)) {
+      actions.add('leftTrigger');
       actions.add('jump');
       actions.add('buildWallModifier');
     }

@@ -5,7 +5,7 @@ const earlyAsteroids = gameBalance.earlyGame.asteroids;
 export const asteroids = [
   {
     id: 'stone',
-    name: 'Stone Asteroid',
+    name: 'Moonstone Asteroid',
     rarity: 'common',
     health: earlyAsteroids.stone.health,
     radius: 34,

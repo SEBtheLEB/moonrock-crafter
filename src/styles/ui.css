@@ -1463,6 +1463,10 @@
   transform: translateX(-50%);
 }
 
+.tool-hotbar.is-hidden {
+  display: none;
+}
+
 .tool-hotbar-slot {
   position: relative;
   width: 100%;

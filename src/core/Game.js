@@ -885,6 +885,8 @@ export class Game {
       'placeCraftingStation',
       'placeResearchStation',
       'crafting',
+      'leftTrigger',
+      'rightTrigger',
       'inventory',
     ].forEach((actionName) => {
       this.input.actions[actionName] = false;
