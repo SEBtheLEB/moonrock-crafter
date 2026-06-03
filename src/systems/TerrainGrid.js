@@ -1200,6 +1200,7 @@ export class TerrainGrid {
         { material: 9, count: Math.round(5 * oreDensity), radius: [22, 48], minDepth: 7, depthBias: 0.62, shallowChance: 0.04 },
       ];
       this.paintVeinPlan(random, starterVeins, surfaceRows);
+      this.paintStarterTopIronDustPatch(random);
       this.paintStarterBottomCopperPatch(random);
       return;
     }
@@ -1271,6 +1272,33 @@ export class TerrainGrid {
         this.cellSize * (blob.radius + random() * 0.18),
         this.cellSize * (blob.radius * 0.74 + random() * 0.14),
         3,
+      );
+    });
+  }
+
+  paintStarterTopIronDustPatch(random) {
+    const angle = -Math.PI / 2;
+    const surfaceRadius = this.getSurfaceRadiusAtAngle(angle);
+    const normal = { x: Math.cos(angle), y: Math.sin(angle) };
+    const centerX = this.planetCenterX + normal.x * Math.max(0, surfaceRadius - this.cellSize * 1.35);
+    const centerY = this.planetCenterY + normal.y * Math.max(0, surfaceRadius - this.cellSize * 1.35);
+    const tangent = { x: -normal.y, y: normal.x };
+    const blobs = [
+      { offset: -2.2, radius: 1.85 },
+      { offset: -0.75, radius: 2.1 },
+      { offset: 0.85, radius: 2.25 },
+      { offset: 2.25, radius: 1.75 },
+    ];
+    blobs.forEach((blob) => {
+      const wobble = (random() - 0.5) * this.cellSize * 0.42;
+      const cx = centerX + tangent.x * blob.offset * this.cellSize + normal.x * wobble * 0.22;
+      const cy = centerY + tangent.y * blob.offset * this.cellSize + normal.y * wobble * 0.22;
+      this.paintOreEllipse(
+        cx,
+        cy,
+        this.cellSize * (blob.radius + random() * 0.16),
+        this.cellSize * (blob.radius * 0.72 + random() * 0.12),
+        2,
       );
     });
   }

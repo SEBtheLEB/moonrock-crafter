@@ -372,6 +372,16 @@ export const gameBalance = {
         gridSize: 16,
         shapeRules: {},
       },
+      laserSightRecipe: {
+        id: 'laserSight',
+        name: 'Laser Sight',
+        requirements: { ironIngot: 1, copperIngot: 1 },
+        gridSize: 16,
+        shapeRules: {
+          connected: true,
+          mustBeConnected: true,
+        },
+      },
       smelting: {
         ironDust: { output: 'ironIngot', time: 4.8 },
         copperShards: { output: 'copperIngot', time: 4.2 },

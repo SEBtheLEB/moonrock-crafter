@@ -5205,6 +5205,12 @@ export class MiningScene {
       selectedDetailId: null,
       detailMode: false,
       eraseMode: false,
+      editingEquipmentItemId: null,
+      importedEquipmentBlueprintId: null,
+      selectedModuleItemId: null,
+      selectedModuleBlueprintId: null,
+      pendingModuleItemId: null,
+      pendingModuleBlueprintId: null,
       grid: this.createEmptyVoxelGrid(recipe.gridSize),
       detailGrid: this.createEmptyVoxelGrid(recipe.gridSize),
     };
@@ -5230,6 +5236,7 @@ export class MiningScene {
     const gravityRecipe = gameBalance.earlyGame?.crashStart?.gravityMachineRecipe || {};
     const furnaceRecipe = gameBalance.earlyGame?.crashStart?.furnaceRecipe || {};
     const laserGunRecipe = gameBalance.earlyGame?.crashStart?.laserGunRecipe || {};
+    const laserSightRecipe = gameBalance.earlyGame?.crashStart?.laserSightRecipe || {};
     return [
     {
       id: gravityRecipe.id || 'gravityMachine',
@@ -5264,7 +5271,224 @@ export class MiningScene {
       gridSize: laserGunRecipe.gridSize || 16,
       shapeRules: laserGunRecipe.shapeRules || {},
     },
+    {
+      id: laserSightRecipe.id || 'laserSight',
+      name: laserSightRecipe.name || 'Laser Sight',
+      icon: 'LS',
+      category: 'Module',
+      description: 'Draw a compact sight module, then attach it to an imported Laser Gun to add an aim indicator.',
+      outputItemId: 'laserSight',
+      requirements: laserSightRecipe.requirements || { ironIngot: 1, copperIngot: 1 },
+      gridSize: laserSightRecipe.gridSize || 16,
+      shapeRules: laserSightRecipe.shapeRules || { connected: true, mustBeConnected: true },
+      moduleType: 'laserSight',
+      moduleTargetItemId: 'laserGun',
+    },
     ];
+  }
+
+  isVoxelCraftEditingRecipe(recipe, state = this.voxelCraftState) {
+    return Boolean(recipe?.outputItemId && state?.editingEquipmentItemId === recipe.outputItemId);
+  }
+
+  getEquipmentBlueprint(itemId) {
+    return this.getStoryState().equipmentBlueprints?.[itemId] || null;
+  }
+
+  canImportVoxelCraftEquipment(recipe) {
+    if (recipe?.outputItemId !== 'laserGun') return false;
+    const owned = this.game.systems.inventory.getStoredAmount(recipe.outputItemId);
+    const blueprint = this.getEquipmentBlueprint(recipe.outputItemId);
+    return owned > 0 && Boolean(blueprint?.shape?.cells?.length);
+  }
+
+  importVoxelCraftEquipment(recipe, state, { silent = false } = {}) {
+    if (!recipe?.outputItemId || !state) return false;
+    const blueprint = this.getEquipmentBlueprint(recipe.outputItemId);
+    if (!blueprint?.shape?.cells?.length || this.game.systems.inventory.getStoredAmount(recipe.outputItemId) <= 0) {
+      this.game.audio.playError?.();
+      if (!silent) this.game.ui.showToast('Craft a Laser Gun before importing it', 'danger', 1300);
+      return false;
+    }
+    this.loadVoxelCraftShapeIntoState(blueprint.shape, state, recipe);
+    state.editingEquipmentItemId = recipe.outputItemId;
+    state.importedEquipmentBlueprintId = blueprint.id || null;
+    state.selectedModuleItemId = null;
+    state.selectedModuleBlueprintId = null;
+    state.pendingModuleItemId = null;
+    state.pendingModuleBlueprintId = null;
+    state.heldMaterialId = null;
+    state.eraseMode = false;
+    state.detailMode = false;
+    if (!silent) {
+      this.game.audio.playButtonClick?.();
+      this.game.ui.showToast('Laser Gun imported', 'success', 1100);
+    }
+    return true;
+  }
+
+  loadVoxelCraftShapeIntoState(shape, state, recipe) {
+    const size = recipe?.gridSize || shape?.gridSize || 16;
+    state.grid = this.createEmptyVoxelGrid(size);
+    state.detailGrid = this.createEmptyVoxelGrid(size);
+    const details = shape?.details || [];
+    (shape?.cells || []).forEach((cell) => {
+      const x = Math.floor(cell.x);
+      const y = Math.floor(cell.y);
+      if (x < 0 || x >= size || y < 0 || y >= size) return;
+      const normalized = this.normalizeVoxelCraftCell(cell);
+      if (!normalized) return;
+      const index = y * size + x;
+      state.grid[index] = {
+        ...normalized,
+        layers: [...normalized.layers],
+        moduleHint: normalized.moduleHint || cell.moduleHint || null,
+        moduleItemId: normalized.moduleItemId || cell.moduleItemId || null,
+        moduleBlueprintId: normalized.moduleBlueprintId || normalized.moduleId || cell.moduleBlueprintId || cell.moduleId || null,
+        moduleId: normalized.moduleId || normalized.moduleBlueprintId || cell.moduleId || cell.moduleBlueprintId || null,
+      };
+      state.detailGrid[index] = cell.detailId ?? details[index] ?? null;
+    });
+  }
+
+  getModuleBlueprints(moduleItemId) {
+    const blueprints = this.getStoryState().moduleBlueprints?.[moduleItemId];
+    return Array.isArray(blueprints)
+      ? blueprints.filter((blueprint) => blueprint?.shape?.cells?.length)
+      : [];
+  }
+
+  getAttachableModulesForRecipe(recipe) {
+    if (recipe?.outputItemId !== 'laserGun') return [];
+    const owned = this.game.systems.inventory.getStoredAmount('laserSight');
+    if (owned <= 0) return [];
+    return this.getModuleBlueprints('laserSight')
+      .slice(0, owned)
+      .map((blueprint, index) => ({
+        itemId: 'laserSight',
+        name: blueprint.name || 'Laser Sight',
+        blueprint,
+        index,
+      }));
+  }
+
+  getVoxelCraftModuleBlueprint(moduleItemId, blueprintId = null) {
+    const blueprints = this.getModuleBlueprints(moduleItemId);
+    return blueprints.find((blueprint) => blueprint.id === blueprintId) || blueprints[0] || null;
+  }
+
+  selectVoxelCraftModule(moduleItemId, blueprintId, state) {
+    state.selectedModuleItemId = moduleItemId;
+    state.selectedModuleBlueprintId = blueprintId || null;
+    state.heldMaterialId = null;
+    state.eraseMode = false;
+    state.detailMode = false;
+  }
+
+  isVoxelCraftModuleCell(cell, moduleItemId = null) {
+    const normalized = this.normalizeVoxelCraftCell(cell);
+    if (!normalized) return false;
+    if (moduleItemId) {
+      return normalized.moduleItemId === moduleItemId || normalized.moduleHint === moduleItemId;
+    }
+    return Boolean(normalized.moduleHint || normalized.moduleItemId);
+  }
+
+  placeSelectedVoxelModule(index, state, recipe) {
+    if (!state?.selectedModuleItemId) return false;
+    const size = recipe.gridSize || Math.sqrt(state.grid.length) || 16;
+    const moduleItemId = state.selectedModuleItemId;
+    if (this.hasVoxelCraftModuleAttached(state.grid, size, moduleItemId)) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Laser Sight already placed', 'danger', 1100);
+      return false;
+    }
+    const blueprint = this.getVoxelCraftModuleBlueprint(moduleItemId, state.selectedModuleBlueprintId);
+    if (!blueprint?.shape?.cells?.length) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Craft a Laser Sight first', 'danger', 1200);
+      return false;
+    }
+    const moduleCells = blueprint.shape.cells
+      .map((cell) => ({ ...this.normalizeVoxelCraftCell(cell), x: cell.x, y: cell.y }))
+      .filter((cell) => cell?.layers?.length);
+    if (!moduleCells.length) return false;
+    const minX = Math.min(...moduleCells.map((cell) => cell.x));
+    const minY = Math.min(...moduleCells.map((cell) => cell.y));
+    const anchorCol = index % size;
+    const anchorRow = Math.floor(index / size);
+    const placements = moduleCells.map((cell) => ({
+      cell,
+      col: anchorCol + cell.x - minX,
+      row: anchorRow + cell.y - minY,
+    }));
+    const blocked = placements.some(({ col, row }) => (
+      col < 0 || col >= size || row < 0 || row >= size || this.getVoxelCraftGridCell(state.grid, row * size + col)
+    ));
+    if (blocked) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Place the module on free grid cells', 'danger', 1200);
+      return false;
+    }
+    placements.forEach(({ cell, col, row }) => {
+      const targetIndex = row * size + col;
+      const layers = [...cell.layers];
+      const topId = layers[layers.length - 1];
+      state.grid[targetIndex] = {
+        ...cell,
+        layers,
+        materialId: topId,
+        itemId: topId,
+        moduleHint: moduleItemId,
+        moduleItemId,
+        moduleBlueprintId: blueprint.id || null,
+        moduleId: blueprint.id || null,
+      };
+      state.detailGrid[targetIndex] = cell.detailId || null;
+    });
+    state.pendingModuleItemId = moduleItemId;
+    state.pendingModuleBlueprintId = blueprint.id || null;
+    this.game.audio.playButtonClick?.();
+    return true;
+  }
+
+  eraseVoxelCraftModuleCell(index, state) {
+    const cell = this.getVoxelCraftGridCell(state.grid, index);
+    if (!cell) return false;
+    if (!this.isVoxelCraftModuleCell(cell)) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Imported gun body is locked', 'danger', 900);
+      return false;
+    }
+    state.grid[index] = null;
+    if (state.detailGrid) state.detailGrid[index] = null;
+    const size = Math.sqrt(state.grid.length) || 16;
+    if (state.pendingModuleItemId && !this.hasVoxelCraftModuleAttached(state.grid, size, state.pendingModuleItemId)) {
+      state.pendingModuleItemId = null;
+      state.pendingModuleBlueprintId = null;
+    }
+    return true;
+  }
+
+  hasVoxelCraftModuleAttached(grid = [], size = 16, moduleItemId = 'laserSight') {
+    return getVoxelEntries(grid, size).some((entry) => (
+      entry.moduleHint === moduleItemId || entry.moduleItemId === moduleItemId
+    ));
+  }
+
+  areVoxelCraftModuleCellsAttachedToBase(grid = [], size = 16, moduleItemId = 'laserSight') {
+    const isModule = (cell) => this.isVoxelCraftModuleCell(cell, moduleItemId);
+    for (const entry of getVoxelEntries(grid, size)) {
+      if (!isModule(entry)) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const x = entry.x + dx;
+        const y = entry.y + dy;
+        if (x < 0 || x >= size || y < 0 || y >= size) continue;
+        const neighbor = this.getVoxelCraftGridCell(grid, y * size + x);
+        if (neighbor && !isModule(neighbor)) return true;
+      }
+    }
+    return false;
   }
 
   getVoxelCraftDisplayRules(recipe, grid, validation = null) {
@@ -5329,6 +5553,12 @@ export class MiningScene {
           selectedDetailId: null,
           detailMode: false,
           eraseMode: false,
+          editingEquipmentItemId: null,
+          importedEquipmentBlueprintId: null,
+          selectedModuleItemId: null,
+          selectedModuleBlueprintId: null,
+          pendingModuleItemId: null,
+          pendingModuleBlueprintId: null,
           grid: this.createEmptyVoxelGrid(item.gridSize),
           detailGrid: this.createEmptyVoxelGrid(item.gridSize),
         };
@@ -5370,7 +5600,11 @@ export class MiningScene {
       });
       cell.addEventListener('contextmenu', (event) => {
         event.preventDefault();
-        this.cycleVoxelCraftCellShape(index);
+        if (!editingEquipment || this.isVoxelCraftModuleCell(craftCell)) this.cycleVoxelCraftCellShape(index);
+        else {
+          this.game.audio.playError?.();
+          this.game.ui.showToast('Imported gun body is locked', 'danger', 900);
+        }
         this.populateVoxelCraftingContent(content);
       });
       grid.append(cell);
@@ -5497,6 +5731,7 @@ export class MiningScene {
     const validation = this.validateVoxelCraft(recipe, state.grid);
     const displayRules = this.getVoxelCraftDisplayRules(recipe, state.grid, validation);
     const renderGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
+    const editingEquipment = this.isVoxelCraftEditingRecipe(recipe, state);
     content.replaceChildren();
 
     const shell = document.createElement('div');
@@ -5525,6 +5760,12 @@ export class MiningScene {
           selectedDetailId: null,
           detailMode: false,
           eraseMode: false,
+          editingEquipmentItemId: null,
+          importedEquipmentBlueprintId: null,
+          selectedModuleItemId: null,
+          selectedModuleBlueprintId: null,
+          pendingModuleItemId: null,
+          pendingModuleBlueprintId: null,
           grid: this.createEmptyVoxelGrid(item.gridSize),
           detailGrid: this.createEmptyVoxelGrid(item.gridSize),
         };
@@ -5554,23 +5795,37 @@ export class MiningScene {
       const layers = this.getVoxelCraftCellLayers(craftCell);
       const itemId = layers[layers.length - 1] || null;
       const shapeLabel = craftCell ? getShapeStateLabel(craftCell.shapeState) : 'Full Block';
+      const moduleLabel = craftCell?.moduleHint === 'laserSight' || craftCell?.moduleItemId === 'laserSight'
+        ? 'Laser Sight module - '
+        : '';
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = this.getVoxelCraftCellClassName(index, recipe.gridSize, renderGrid);
       cell.title = itemId
-        ? `${layers.map((layerId) => this.game.systems.materials.getDisplayName(layerId)).join(' + ')} - ${shapeLabel}. Right-click cycles shape. Middle-click erases.`
+        ? `${moduleLabel}${layers.map((layerId) => this.game.systems.materials.getDisplayName(layerId)).join(' + ')} - ${shapeLabel}. Right-click cycles shape. Middle-click erases.`
         : 'Empty voxel. Left-click places material.';
       cell.setAttribute('aria-label', cell.title);
       cell.addEventListener('click', (event) => {
-        if (state.detailMode) this.paintVoxelCraftDetail(index, event.shiftKey ? null : state.selectedDetailId);
+        if (editingEquipment) {
+          if (state.detailMode) this.paintVoxelCraftDetail(index, event.shiftKey ? null : state.selectedDetailId);
+          else if (event.shiftKey || state.eraseMode) this.eraseVoxelCraftModuleCell(index, state);
+          else if (state.selectedModuleItemId) this.placeSelectedVoxelModule(index, state, recipe);
+          else {
+            this.game.audio.playError?.();
+            this.game.ui.showToast('Select a module first', 'danger', 900);
+          }
+        } else if (state.detailMode) this.paintVoxelCraftDetail(index, event.shiftKey ? null : state.selectedDetailId);
         else this.paintVoxelCraftCell(index, event.shiftKey || state.eraseMode ? null : state.selectedMaterialId);
         this.populateVoxelCraftingContent(content);
       });
       cell.addEventListener('auxclick', (event) => {
         if (event.button !== 1) return;
         event.preventDefault();
-        this.paintVoxelCraftCell(index, null);
-        if (state.detailGrid) state.detailGrid[index] = null;
+        if (editingEquipment) this.eraseVoxelCraftModuleCell(index, state);
+        else {
+          this.paintVoxelCraftCell(index, null);
+          if (state.detailGrid) state.detailGrid[index] = null;
+        }
         this.populateVoxelCraftingContent(content);
       });
       cell.addEventListener('contextmenu', (event) => {
@@ -5597,42 +5852,78 @@ export class MiningScene {
 
     const palette = document.createElement('div');
     palette.className = 'voxel-material-palette';
-    palette.innerHTML = '<h2>3. Inventory Materials</h2>';
+    palette.innerHTML = `<h2>3. ${editingEquipment ? 'Available Modules' : 'Inventory Materials'}</h2>`;
     const materialGrid = document.createElement('div');
     materialGrid.className = 'voxel-material-grid';
-    Object.entries(recipe.requirements).forEach(([itemId, needed]) => {
-      const material = this.game.systems.materials.getMaterial(itemId);
-      const used = usage[itemId] || 0;
-      const have = this.game.systems.inventory.getStoredAmount(itemId);
-      const complete = used === needed && have >= needed;
-      const missing = Math.max(0, needed - have);
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = [
-        'voxel-material-card',
-        state.selectedMaterialId === itemId ? 'is-selected' : '',
-        state.heldMaterialId === itemId ? 'is-held' : '',
-        itemId === 'fireCore' ? 'is-fire-core' : '',
-        have < needed ? 'is-short' : '',
-        complete ? 'is-complete' : 'is-incomplete',
-      ].filter(Boolean).join(' ');
-      button.title = `${material?.name || itemId}: ${have} owned, ${needed} needed, ${used} used`;
-      button.innerHTML = `
-        <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-material-icon')}</span>
-        <strong>${material?.name || itemId}</strong>
-        <em>x${have}</em>
-        <small>${used}/${needed} used${missing ? ` - need ${missing}` : ''}</small>
-      `;
-      button.addEventListener('pointerdown', (event) => {
-        state.selectedMaterialId = itemId;
-        state.heldMaterialId = itemId;
-        state.eraseMode = false;
-        state.detailMode = false;
-        this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
-        this.populateVoxelCraftingContent(content);
+    if (editingEquipment) {
+      const modules = this.getAttachableModulesForRecipe(recipe);
+      if (!modules.length) {
+        const empty = document.createElement('article');
+        empty.className = 'voxel-module-empty';
+        empty.innerHTML = '<strong>No modules ready</strong><p>Craft a Laser Sight to install it here.</p>';
+        materialGrid.append(empty);
+      }
+      modules.forEach(({ itemId, blueprint, index }) => {
+        const material = this.game.systems.materials.getMaterial(itemId);
+        const selected = state.selectedModuleItemId === itemId && state.selectedModuleBlueprintId === (blueprint.id || null);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = [
+          'voxel-material-card',
+          'voxel-module-card',
+          selected ? 'is-selected is-held' : '',
+        ].filter(Boolean).join(' ');
+        button.title = `${material?.name || itemId} module ${index + 1}`;
+        button.innerHTML = `
+          <span class="voxel-material-icon" style="--item-color: ${material?.color || '#ff5a68'}">${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-material-icon')}</span>
+          <strong>${material?.name || itemId}</strong>
+          <em>#${index + 1}</em>
+          <small>module</small>
+        `;
+        button.addEventListener('pointerdown', (event) => {
+          this.selectVoxelCraftModule(itemId, blueprint.id || null, state);
+          this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
+          this.populateVoxelCraftingContent(content);
+        });
+        materialGrid.append(button);
       });
-      materialGrid.append(button);
-    });
+    } else {
+      Object.entries(recipe.requirements).forEach(([itemId, needed]) => {
+        const material = this.game.systems.materials.getMaterial(itemId);
+        const used = usage[itemId] || 0;
+        const have = this.game.systems.inventory.getStoredAmount(itemId);
+        const complete = used === needed && have >= needed;
+        const missing = Math.max(0, needed - have);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = [
+          'voxel-material-card',
+          state.selectedMaterialId === itemId ? 'is-selected' : '',
+          state.heldMaterialId === itemId ? 'is-held' : '',
+          itemId === 'fireCore' ? 'is-fire-core' : '',
+          have < needed ? 'is-short' : '',
+          complete ? 'is-complete' : 'is-incomplete',
+        ].filter(Boolean).join(' ');
+        button.title = `${material?.name || itemId}: ${have} owned, ${needed} needed, ${used} used`;
+        button.innerHTML = `
+          <span class="voxel-material-icon" style="--item-color: ${material?.color || '#fff2cf'}">${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-material-icon')}</span>
+          <strong>${material?.name || itemId}</strong>
+          <em>x${have}</em>
+          <small>${used}/${needed} used${missing ? ` - need ${missing}` : ''}</small>
+        `;
+        button.addEventListener('pointerdown', (event) => {
+          state.selectedMaterialId = itemId;
+          state.heldMaterialId = itemId;
+          state.selectedModuleItemId = null;
+          state.selectedModuleBlueprintId = null;
+          state.eraseMode = false;
+          state.detailMode = false;
+          this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
+          this.populateVoxelCraftingContent(content);
+        });
+        materialGrid.append(button);
+      });
+    }
     palette.append(materialGrid);
 
     const tools = document.createElement('div');
@@ -5684,10 +5975,21 @@ export class MiningScene {
     actions.innerHTML = '<h2>7. Actions</h2>';
     const actionRow = document.createElement('div');
     actionRow.className = 'voxel-action-row';
+    const canImportEquipment = !editingEquipment && this.canImportVoxelCraftEquipment(recipe);
+    if (canImportEquipment) actionRow.classList.add('has-import');
+    const importButton = document.createElement('button');
+    importButton.type = 'button';
+    importButton.className = 'voxel-action-button secondary import';
+    importButton.innerHTML = '<span>IN</span><strong>Import Gun</strong>';
+    importButton.addEventListener('click', () => {
+      this.importVoxelCraftEquipment(recipe, state);
+      this.populateVoxelCraftingContent(content);
+    });
     const autoButton = document.createElement('button');
     autoButton.type = 'button';
     autoButton.className = 'voxel-action-button secondary';
     autoButton.innerHTML = '<span>A</span><strong>Auto Layout</strong>';
+    autoButton.disabled = editingEquipment;
     autoButton.addEventListener('click', () => {
       this.autofillVoxelRecipe(recipe, state);
       this.populateVoxelCraftingContent(content);
@@ -5695,21 +5997,30 @@ export class MiningScene {
     const clearButton = document.createElement('button');
     clearButton.type = 'button';
     clearButton.className = 'voxel-action-button secondary';
-    clearButton.innerHTML = '<span>X</span><strong>Clear</strong>';
+    clearButton.innerHTML = `<span>${editingEquipment ? 'RS' : 'X'}</span><strong>${editingEquipment ? 'Reset' : 'Clear'}</strong>`;
     clearButton.addEventListener('click', () => {
-      state.grid.fill(null);
-      state.detailGrid?.fill(null);
+      if (editingEquipment) this.importVoxelCraftEquipment(recipe, state, { silent: true });
+      else {
+        state.grid.fill(null);
+        state.detailGrid?.fill(null);
+      }
       this.populateVoxelCraftingContent(content);
     });
     const craftButton = document.createElement('button');
     craftButton.type = 'button';
     craftButton.className = 'voxel-action-button craft-primary';
     craftButton.disabled = !validation.ok;
-    craftButton.innerHTML = `<span>${this.getItemIconMarkup(recipe.outputItemId, recipe.icon || 'C', 'item-icon-img action-item-icon')}</span><strong>${recipe.outputItemId === 'starterFurnace' ? 'Craft' : 'Craft Item'}</strong>`;
+    const craftLabel = editingEquipment
+      ? 'Update Gun'
+      : recipe.outputItemId === 'starterFurnace'
+        ? 'Craft'
+        : 'Craft Item';
+    craftButton.innerHTML = `<span>${this.getItemIconMarkup(recipe.outputItemId, recipe.icon || 'C', 'item-icon-img action-item-icon')}</span><strong>${craftLabel}</strong>`;
     craftButton.addEventListener('click', () => {
       this.craftVoxelRecipe(recipe, state);
       this.populateVoxelCraftingContent(content);
     });
+    if (canImportEquipment) actionRow.append(importButton);
     actionRow.append(autoButton, clearButton, craftButton);
     actions.append(actionRow);
 
@@ -5758,16 +6069,19 @@ export class MiningScene {
   }
 
   mountVoxelCraftHeldCursor(content, state, recipe, usage = this.getVoxelCraftUsage(state.grid)) {
-    const itemId = state.heldMaterialId && !state.eraseMode && !state.detailMode
-      ? state.heldMaterialId
+    const moduleItemId = this.isVoxelCraftEditingRecipe(recipe, state) && state.selectedModuleItemId && !state.eraseMode && !state.detailMode
+      ? state.selectedModuleItemId
       : null;
+    const itemId = moduleItemId || (state.heldMaterialId && !state.eraseMode && !state.detailMode
+      ? state.heldMaterialId
+      : null);
     if (!itemId) {
       this.clearVoxelCraftHeldCursor();
       content.onpointermove = null;
       return;
     }
     const material = this.game.systems.materials.getMaterial(itemId);
-    const needed = recipe.requirements?.[itemId] || 0;
+    const needed = moduleItemId ? Math.max(1, this.game.systems.inventory.getStoredAmount(itemId)) : recipe.requirements?.[itemId] || 0;
     const used = usage[itemId] || 0;
     const have = this.game.systems.inventory.getStoredAmount(itemId);
     const cursor = this.voxelCraftHeldCursor ||= {
@@ -5790,7 +6104,7 @@ export class MiningScene {
       <span>${this.getMaterialIconMarkup(itemId, material, 'item-icon-img craft-held-icon')}</span>
       <strong>${material?.name || itemId}</strong>
       <em>x${have}</em>
-      <small>${used}/${needed}</small>
+      <small>${moduleItemId ? 'module' : `${used}/${needed}`}</small>
     `;
     content.onpointermove = (event) => this.setVoxelCraftHeldCursorTarget(event, { visible: true });
     content.onpointerdown = (event) => this.setVoxelCraftHeldCursorTarget(event, { visible: true });
@@ -5856,6 +6170,7 @@ export class MiningScene {
     classes.push('has-voxel', `shape-${getShapeState(cell.shapeState)}`, `auto-${getAutoShapeType(col, row, grid, size)}`);
     if (layers.length > 1) classes.push('has-layers');
     if (cell.detailId) classes.push('has-detail');
+    if (cell.moduleHint || cell.moduleItemId) classes.push('has-module');
     if (hasNeighbor(0, -1)) classes.push('join-n');
     if (hasNeighbor(1, 0)) classes.push('join-e');
     if (hasNeighbor(0, 1)) classes.push('join-s');
@@ -5990,10 +6305,46 @@ export class MiningScene {
   }
 
   validateVoxelCraft(recipe, grid) {
+    if (this.isVoxelCraftEditingRecipe(recipe)) return this.validateVoxelCraftEquipmentEdit(recipe, grid);
     return validateMachineRecipe(grid, recipe, {
       getOwnedAmount: (itemId) => this.game.systems.inventory.getStoredAmount(itemId),
       getDisplayName: (itemId) => this.game.systems.materials.getDisplayName(itemId),
     });
+  }
+
+  validateVoxelCraftEquipmentEdit(recipe, grid) {
+    const size = recipe.gridSize || Math.sqrt(grid.length) || 16;
+    const state = this.voxelCraftState || {};
+    const blueprint = this.getEquipmentBlueprint(recipe.outputItemId);
+    const ownedGun = this.game.systems.inventory.getStoredAmount(recipe.outputItemId) > 0;
+    const entries = getVoxelEntries(grid, size);
+    const baseCells = entries.filter((entry) => !this.isVoxelCraftModuleCell(entry));
+    const hasLaserSight = this.hasVoxelCraftModuleAttached(grid, size, 'laserSight')
+      || Boolean(blueprint?.modules?.laserSight);
+    const moduleAttached = this.hasVoxelCraftModuleAttached(grid, size, 'laserSight')
+      ? this.areVoxelCraftModuleCellsAttachedToBase(grid, size, 'laserSight')
+      : Boolean(blueprint?.modules?.laserSight);
+    const moduleAvailable = !state.pendingModuleItemId
+      || this.game.systems.inventory.getStoredAmount(state.pendingModuleItemId) > 0;
+    const messages = [
+      { id: 'importedGun', ok: ownedGun && Boolean(blueprint?.shape?.cells?.length), text: 'Laser Gun imported' },
+      { id: 'gunBody', ok: baseCells.length > 0, text: 'Gun body preserved' },
+      { id: 'laserSightAttached', ok: hasLaserSight, text: 'Laser Sight placed on gun' },
+      { id: 'moduleAttached', ok: moduleAttached, text: 'Laser Sight touches gun body' },
+    ];
+    if (state.pendingModuleItemId) {
+      messages.push({
+        id: 'moduleAvailable',
+        ok: moduleAvailable,
+        text: `${this.game.systems.materials.getDisplayName(state.pendingModuleItemId)} ready to install`,
+      });
+    }
+    return {
+      ok: messages.every((message) => message.ok),
+      messages,
+      usage: this.getVoxelCraftUsage(grid),
+      chambers: [],
+    };
   }
 
   getVoxelCraftCells(recipe, grid) {
@@ -6018,6 +6369,9 @@ export class MiningScene {
       shapeState: normalized?.shapeState || normalized?.shape || 'full',
       detailId: normalized?.detailId || null,
       moduleHint: normalized?.moduleHint || null,
+      moduleItemId: normalized?.moduleItemId || null,
+      moduleBlueprintId: normalized?.moduleBlueprintId || normalized?.moduleId || null,
+      moduleId: normalized?.moduleId || normalized?.moduleBlueprintId || null,
       color: material?.color || '#fff2cf',
       icon: material?.icon || '?',
     };
@@ -6086,6 +6440,15 @@ export class MiningScene {
       if (recipe.requirements.fireCore) set(8, 8, 'fireCore');
       return;
     }
+    if (recipe.outputItemId === 'laserSight') {
+      [
+        [7, 7],
+      ].slice(0, recipe.requirements.ironIngot || 0).forEach(([x, y]) => set(x, y, 'ironIngot'));
+      [
+        [8, 7],
+      ].slice(0, recipe.requirements.copperIngot || 0).forEach(([x, y]) => set(x, y, 'copperIngot'));
+      return;
+    }
     if (recipe.outputItemId === 'laserGun') {
       [
         [5, 7], [6, 7], [7, 7], [8, 7], [9, 7],
@@ -6122,6 +6485,7 @@ export class MiningScene {
   }
 
   craftVoxelRecipe(recipe, state) {
+    if (this.isVoxelCraftEditingRecipe(recipe, state)) return this.craftVoxelEquipmentUpdate(recipe, state);
     const validation = this.validateVoxelCraft(recipe, state.grid);
     if (!validation.ok) {
       this.game.audio.playError?.();
@@ -6136,8 +6500,7 @@ export class MiningScene {
     const cells = this.getVoxelCraftCells(recipe, sculptGrid);
     const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
     if (recipe.outputItemId !== 'starterFurnace') {
-      story.equipmentBlueprints ||= {};
-      story.equipmentBlueprints[recipe.outputItemId] = {
+      const blueprint = {
         id: `${recipe.outputItemId}-blueprint-${Date.now().toString(36)}`,
         recipeId: recipe.id,
         name: recipe.name,
@@ -6148,8 +6511,23 @@ export class MiningScene {
           details: [...(state.detailGrid || [])],
         },
       };
+      if (recipe.moduleType) {
+        story.moduleBlueprints ||= {};
+        story.moduleBlueprints[recipe.outputItemId] ||= [];
+        story.moduleBlueprints[recipe.outputItemId].push({
+          ...blueprint,
+          moduleType: recipe.moduleType,
+          targetItemId: recipe.moduleTargetItemId || 'laserGun',
+        });
+      } else {
+        story.equipmentBlueprints ||= {};
+        story.equipmentBlueprints[recipe.outputItemId] = {
+          ...blueprint,
+          modules: {},
+        };
+      }
       this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
-      this.autoAssignItemToHotbar(recipe.outputItemId);
+      if (!recipe.moduleType) this.autoAssignItemToHotbar(recipe.outputItemId);
       if (recipe.outputItemId === 'gravityStabilizer') story.gravityMachineBuilt = true;
       this.game.state.stats ||= {};
       this.game.state.stats.totalItemsCrafted = (this.game.state.stats.totalItemsCrafted || 0) + 1;
@@ -6183,6 +6561,67 @@ export class MiningScene {
     state.grid.fill(null);
     state.detailGrid?.fill(null);
     this.startCrashTutorialHint('smeltingHint');
+    return true;
+  }
+
+  craftVoxelEquipmentUpdate(recipe, state) {
+    const validation = this.validateVoxelCraft(recipe, state.grid);
+    if (!validation.ok) {
+      this.game.audio.playError?.();
+      this.game.ui.showToast('Attach a Laser Sight to the gun first', 'danger', 1400);
+      return false;
+    }
+    const story = this.getStoryState();
+    const existing = this.getEquipmentBlueprint(recipe.outputItemId);
+    const sculptGrid = this.getVoxelCraftRenderGrid(state.grid, state.detailGrid);
+    const cells = this.getVoxelCraftCells(recipe, sculptGrid);
+    const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
+    const modules = {
+      ...(existing?.modules || {}),
+      laserSight: this.hasVoxelCraftModuleAttached(sculptGrid, recipe.gridSize || 16, 'laserSight')
+        || Boolean(existing?.modules?.laserSight),
+    };
+    if (state.pendingModuleItemId) {
+      if (!this.game.systems.inventory.remove(state.pendingModuleItemId, 1, { skipSave: true })) {
+        this.game.audio.playError?.();
+        this.game.ui.showToast(`Need ${this.game.systems.materials.getDisplayName(state.pendingModuleItemId)}`, 'danger', 1200);
+        return false;
+      }
+      this.removeModuleBlueprint(state.pendingModuleItemId, state.pendingModuleBlueprintId);
+    }
+    story.equipmentBlueprints ||= {};
+    story.equipmentBlueprints[recipe.outputItemId] = {
+      id: existing?.id || `${recipe.outputItemId}-blueprint-${Date.now().toString(36)}`,
+      recipeId: recipe.id,
+      name: recipe.name,
+      modules,
+      shape: {
+        gridSize: recipe.gridSize || 16,
+        tileSize,
+        cells,
+        details: [...(state.detailGrid || [])],
+      },
+    };
+    state.importedEquipmentBlueprintId = story.equipmentBlueprints[recipe.outputItemId].id;
+    state.pendingModuleItemId = null;
+    state.pendingModuleBlueprintId = null;
+    state.selectedModuleItemId = null;
+    state.selectedModuleBlueprintId = null;
+    this.game.systems.objectives?.checkCurrentObjective?.();
+    this.game.saveGame();
+    this.game.audio.playSuccess?.();
+    this.game.ui.showToast('Laser Gun upgraded', 'success', 1600);
+    return true;
+  }
+
+  removeModuleBlueprint(moduleItemId, blueprintId = null) {
+    const story = this.getStoryState();
+    const blueprints = story.moduleBlueprints?.[moduleItemId];
+    if (!Array.isArray(blueprints) || !blueprints.length) return false;
+    const index = blueprintId
+      ? blueprints.findIndex((blueprint) => blueprint.id === blueprintId)
+      : 0;
+    blueprints.splice(index >= 0 ? index : 0, 1);
     return true;
   }
 
@@ -9224,6 +9663,7 @@ export class MiningScene {
       if (buildPlacementMode) this.game.systems.building?.drawPreview?.(ctx, state, this.time);
     }
     if (!gridCursorMode) this.drawControllerIslandAimIndicator(ctx);
+    this.drawLaserSightGuide(ctx);
     if (this.islandMiningHitFeedback) {
       this.activeIsland.terrain.drawDamageFeedback(ctx, this.islandMiningHitFeedback, this.time);
     }
@@ -9277,6 +9717,38 @@ export class MiningScene {
       x: this.islandPlayer.centerX,
       y: this.islandPlayer.centerY - 5,
     };
+  }
+
+  drawLaserSightGuide(ctx) {
+    if (!this.isLaserGunToolSelected() || !this.hasLaserGunModule('laserSight')) return;
+    const origin = this.getIslandGunOriginLocal();
+    const aim = this.getIslandAimPoint();
+    let dx = aim.x - origin.x;
+    let dy = aim.y - origin.y;
+    let length = Math.hypot(dx, dy);
+    if (length < 0.001) {
+      dx = this.islandPlayer?.facing || 1;
+      dy = 0;
+      length = 1;
+    }
+    const dirX = dx / length;
+    const dirY = dy / length;
+    const end = {
+      x: origin.x + dirX * LASER_GUN_COMBAT.range,
+      y: origin.y + dirY * LASER_GUN_COMBAT.range,
+    };
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = 'rgba(255, 58, 72, 0.72)';
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(255, 58, 72, 0.5)';
+    ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.moveTo(origin.x, origin.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.restore();
   }
 
   getIslandPlayerAimScreenAngle() {
@@ -9349,6 +9821,14 @@ export class MiningScene {
   getCraftedEquipmentShape(itemId) {
     const blueprint = this.getStoryState().equipmentBlueprints?.[itemId];
     return blueprint?.shape || null;
+  }
+
+  hasLaserGunModule(moduleId = 'laserSight') {
+    const blueprint = this.getEquipmentBlueprint('laserGun');
+    if (blueprint?.modules?.[moduleId]) return true;
+    return Boolean(blueprint?.shape?.cells?.some((cell) => (
+      cell.moduleHint === moduleId || cell.moduleItemId === moduleId
+    )));
   }
 
   drawCraftedEquipmentShapeOnPlayer(ctx, shape, {

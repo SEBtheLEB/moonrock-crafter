@@ -40,6 +40,17 @@ export const materials = [
     zoneAvailability: ['crafted'],
   },
   {
+    id: 'laserSight',
+    name: 'Laser Sight',
+    rarity: 'uncommon',
+    icon: 'LS',
+    color: '#ff5a68',
+    baseValue: 0,
+    weight: 0.2,
+    description: 'A drawn laser gun module that projects a faint aim indicator after installation.',
+    zoneAvailability: ['crafted'],
+  },
+  {
     id: 'gravityStabilizer',
     name: 'Gravity Machine',
     rarity: 'common',

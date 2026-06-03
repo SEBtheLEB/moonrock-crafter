@@ -106,6 +106,7 @@ export class Game {
         baseLab: null,
         gravityMachineBuilt: false,
         equipmentBlueprints: {},
+        moduleBlueprints: {},
         stationRouteUnlocked: false,
         nextObjectiveIslandId: null,
       },
@@ -217,6 +218,10 @@ export class Game {
         equipmentBlueprints: {
           ...(defaultState.story?.equipmentBlueprints || {}),
           ...(savedState.story?.equipmentBlueprints || {}),
+        },
+        moduleBlueprints: {
+          ...(defaultState.story?.moduleBlueprints || {}),
+          ...(savedState.story?.moduleBlueprints || {}),
         },
         baseLab: savedState.story?.baseLab
           ? { ...defaultState.story.baseLab, ...savedState.story.baseLab }
