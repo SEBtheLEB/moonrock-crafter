@@ -28,7 +28,7 @@ export const TERRAIN_MATERIALS = {
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
 const TERRAIN_SAVE_VERSION = 25;
-const TERRAIN_WALL_LAYER_VERSION = 2;
+const TERRAIN_WALL_LAYER_VERSION = 4;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -712,7 +712,8 @@ export class TerrainGrid {
     });
     if (cells && TERRAIN_WALLS.enabled) {
       if (wallCells?.length !== cellCount) this.generateWallLayerForPlanet();
-      else if (this.wallLayerVersion < TERRAIN_WALL_LAYER_VERSION && this.repairNaturalWallLayerForPlanet()) {
+      else if (this.wallLayerVersion < TERRAIN_WALL_LAYER_VERSION) {
+        this.repairNaturalWallLayerForPlanet();
         this.wallLayerVersion = TERRAIN_WALL_LAYER_VERSION;
       }
     }
@@ -3304,7 +3305,7 @@ export class TerrainGrid {
     ctx.save();
     for (const material of wallMaterials) {
       const style = this.getWallStyleForMaterial(material);
-      const predicate = (col, row) => this.getWallCell(col, row) === material && !this.isSolidCell(col, row);
+      const predicate = (col, row) => this.getWallCell(col, row) === material;
       this.drawPatternInMask(
         ctx,
         predicate,

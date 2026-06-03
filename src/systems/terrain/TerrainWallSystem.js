@@ -64,17 +64,28 @@ export class TerrainWallSystem {
     return bestMaterial || 1;
   }
 
+  shouldHaveNaturalWallCell(col, row, { stableDepth = false } = {}) {
+    const terrain = this.terrain;
+    if (!terrain.isInside(col, row)) return false;
+    const material = terrain.getCell(col, row);
+    if (material > 0 && !terrain.isConstructedMaterial(material)) return true;
+
+    const startDepth = Math.max(0, (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize);
+    const x = col * terrain.cellSize + terrain.cellSize * 0.5;
+    const y = row * terrain.cellSize + terrain.cellSize * 0.5;
+    const depth = stableDepth && typeof terrain.getStablePlanetDepthAt === 'function'
+      ? terrain.getStablePlanetDepthAt(x, y)
+      : terrain.getTerrainDepthAt(x, y);
+    return depth >= startDepth;
+  }
+
   generateLayerForPlanet() {
     const terrain = this.terrain;
     if (!terrain.wallConfig.enabled) return;
-    const startDepth = Math.max(0, (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize);
     terrain.wallCells.fill(0);
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
-        const x = col * terrain.cellSize + terrain.cellSize * 0.5;
-        const y = row * terrain.cellSize + terrain.cellSize * 0.5;
-        const depth = terrain.getTerrainDepthAt(x, y);
-        if (depth < startDepth) continue;
+        if (!this.shouldHaveNaturalWallCell(col, row)) continue;
         const material = terrain.getCell(col, row);
         terrain.wallCells[terrain.index(col, row)] = this.getTypeForTile(col, row, material || 1);
       }
@@ -89,18 +100,12 @@ export class TerrainWallSystem {
   repairNaturalLayerForPlanet() {
     const terrain = this.terrain;
     if (!terrain.wallConfig.enabled || !terrain.wallCells?.length) return false;
-    const startDepth = Math.max(0, (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize);
     let changed = false;
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
         const index = terrain.index(col, row);
         if (terrain.wallCells[index] > 0) continue;
-        const x = col * terrain.cellSize + terrain.cellSize * 0.5;
-        const y = row * terrain.cellSize + terrain.cellSize * 0.5;
-        const depth = typeof terrain.getStablePlanetDepthAt === 'function'
-          ? terrain.getStablePlanetDepthAt(x, y)
-          : terrain.getTerrainDepthAt(x, y);
-        if (depth < startDepth) continue;
+        if (!this.shouldHaveNaturalWallCell(col, row, { stableDepth: true })) continue;
         const material = terrain.getCell(col, row);
         terrain.wallCells[index] = this.getTypeForTile(col, row, material || 1);
         changed = true;
