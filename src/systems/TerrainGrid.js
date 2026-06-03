@@ -29,7 +29,7 @@ const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
 const TERRAIN_SAVE_VERSION = 25;
 const TERRAIN_WALL_LAYER_VERSION = 4;
-const SURFACE_IRON_TERRAIN_MIGRATION_VERSION = 1;
+const SURFACE_IRON_TERRAIN_MIGRATION_VERSION = 2;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -753,7 +753,7 @@ export class TerrainGrid {
       });
       terrain.surfaceIronMigrationVersion = Number(savedTerrain.surfaceIronMigrationVersion) || 0;
       if (terrain.surfaceIronMigrationVersion < SURFACE_IRON_TERRAIN_MIGRATION_VERSION) {
-        terrain.migrateEmbeddedIronToMoonstone();
+        terrain.migrateSurfaceIronTiles(island);
       }
       return terrain;
     }
@@ -847,8 +847,25 @@ export class TerrainGrid {
     this.shapeGentlePlanetSurface(island);
     this.flattenSurfaceTeeth(2);
     this.flattenStarterLandingPlateau(island);
+    const placedSurfaceIron = this.placeSurfaceIronDeposits(random, island);
+    if (placedSurfaceIron) this.rebuildSurfaceProfiles();
     this.generateWallLayerForPlanet(island);
     this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
+    this.renderDirty = true;
+    this.fullRenderDirty = true;
+  }
+
+  migrateSurfaceIronTiles(island = {}) {
+    const convertedEmbeddedIron = this.migrateEmbeddedIronToMoonstone();
+    const random = createRandom(hashString(`${this.seed}:${island?.id || 'planet'}:surface-iron-tiles`));
+    const placedSurfaceIron = this.placeSurfaceIronDeposits(random, island);
+    const changed = convertedEmbeddedIron || placedSurfaceIron;
+    this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
+    if (!changed) return;
+    this.invalidateTerrainGeometry();
+    this.textureCache.clear();
+    this.rebuildSurfaceProfiles();
+    this.generateWallLayerForPlanet(island);
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -866,20 +883,134 @@ export class TerrainGrid {
         changed = true;
       }
     }
-    this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
-    if (!changed) return;
-    this.renderDirty = true;
-    this.fullRenderDirty = true;
-    this.dirtyChunks.clear();
-    this.textureCache.clear();
-    this.contourCache.clear();
-    this.roughEdgeCache.clear();
-    this.roughContourCache.clear();
-    this.collisionContours = null;
-    this.surfacePathCache = null;
-    this.surfaceRadiusLookupCache.clear();
-    this.markAirExposureDirty?.({ defer: true });
-    this.rebuildSurfaceProfiles();
+    return changed;
+  }
+
+  placeSurfaceIronDeposits(random, island = {}) {
+    const profiles = {
+      pebble: { widthCells: [1.7, 2.6], heightCells: [0.9, 1.35], inwardCells: 0.65 },
+      rock: { widthCells: [3.0, 4.8], heightCells: [1.5, 2.4], inwardCells: 0.95 },
+      boulder: { widthCells: [5.2, 7.6], heightCells: [2.6, 4.0], inwardCells: 1.35 },
+      giant: { widthCells: [8.0, 11.5], heightCells: [4.0, 6.4], inwardCells: 1.8 },
+    };
+    const chooseProfile = () => {
+      const roll = random();
+      if (roll < 0.24) return profiles.pebble;
+      if (roll < 0.62) return profiles.rock;
+      if (roll < 0.88) return profiles.boulder;
+      return profiles.giant;
+    };
+    const deposits = [];
+
+    if (island?.type === 'crashPlanet') {
+      deposits.push(
+        { angle: -Math.PI / 2 - 0.78, profile: profiles.rock },
+        { angle: -Math.PI / 2 - 0.36, profile: profiles.boulder },
+        { angle: -Math.PI / 2 + 0.43, profile: profiles.rock },
+        { angle: -Math.PI / 2 + 0.9, profile: profiles.giant },
+      );
+    } else {
+      const sizeScale = clamp(this.planetRadius / 720, 0.65, 2.2);
+      const count = clamp(Math.round((2 + random() * 3) * sizeScale), 2, 8);
+      for (let index = 0; index < count; index += 1) {
+        deposits.push({
+          angle: random() * Math.PI * 2,
+          profile: chooseProfile(),
+        });
+      }
+    }
+
+    return deposits.reduce((changed, deposit) => (
+      this.paintSurfaceIronDeposit(deposit.angle, deposit.profile, random) || changed
+    ), false);
+  }
+
+  paintSurfaceIronDeposit(angle, profile, random) {
+    const surface = this.getSurfacePointAtAngle(angle, 0);
+    const outward = { x: Math.cos(angle), y: Math.sin(angle) };
+    const tangent = { x: -outward.y, y: outward.x };
+    const widthCells = profile.widthCells[0] + random() * (profile.widthCells[1] - profile.widthCells[0]);
+    const heightCells = profile.heightCells[0] + random() * (profile.heightCells[1] - profile.heightCells[0]);
+    const halfWidth = this.cellSize * widthCells * 0.5;
+    const height = this.cellSize * heightCells;
+    const inwardDepth = this.cellSize * (profile.inwardCells || 1);
+    const centerLift = height * 0.34 - inwardDepth * 0.08;
+    const centerX = surface.x + outward.x * centerLift + tangent.x * signedNoise(angle * 41.3 + this.seed * 0.002) * this.cellSize * 0.6;
+    const centerY = surface.y + outward.y * centerLift + tangent.y * signedNoise(angle * 41.3 + this.seed * 0.002) * this.cellSize * 0.6;
+    const radius = Math.max(halfWidth, height + inwardDepth) + this.cellSize * 2;
+    const startCol = clamp(Math.floor((centerX - radius) / this.cellSize), 0, this.cols - 1);
+    const endCol = clamp(Math.ceil((centerX + radius) / this.cellSize), 0, this.cols - 1);
+    const startRow = clamp(Math.floor((centerY - radius) / this.cellSize), 0, this.rows - 1);
+    const endRow = clamp(Math.ceil((centerY + radius) / this.cellSize), 0, this.rows - 1);
+    const candidates = [];
+    const candidateMap = new Map();
+
+    for (let row = startRow; row <= endRow; row += 1) {
+      for (let col = startCol; col <= endCol; col += 1) {
+        const current = this.getCell(col, row);
+        if (current !== 0 && current !== 1 && current !== 2) continue;
+        const x = col * this.cellSize + this.cellSize * 0.5;
+        const y = row * this.cellSize + this.cellSize * 0.5;
+        const dx = x - surface.x;
+        const dy = y - surface.y;
+        const along = dx * tangent.x + dy * tangent.y;
+        const lift = dx * outward.x + dy * outward.y;
+        if (lift < -inwardDepth || lift > height) continue;
+        const widthTaper = 1 - clamp01((lift - height * 0.28) / Math.max(1, height * 0.92)) * 0.28;
+        const nx = along / Math.max(1, halfWidth * widthTaper);
+        const ny = (lift - centerLift) / Math.max(1, (height + inwardDepth) * 0.54);
+        const wobble = signedNoise(col * 31.7 + row * 47.9 + this.seed * 0.006) * 0.2
+          + signedNoise(col * 11.1 - row * 19.3 + this.seed * 0.011) * 0.08;
+        if (nx * nx + ny * ny > 1 + wobble) continue;
+        const candidate = { col, row, current };
+        candidates.push(candidate);
+        candidateMap.set(`${col},${row}`, candidate);
+      }
+    }
+
+    const isAnchored = (candidate) => {
+      if (candidate.current > 0) return true;
+      const neighbors = [
+        [candidate.col + 1, candidate.row],
+        [candidate.col - 1, candidate.row],
+        [candidate.col, candidate.row + 1],
+        [candidate.col, candidate.row - 1],
+      ];
+      return neighbors.some(([col, row]) => this.isSolidCell(col, row));
+    };
+    const queue = candidates.filter(isAnchored);
+    const attached = new Set(queue.map((candidate) => `${candidate.col},${candidate.row}`));
+    for (let index = 0; index < queue.length; index += 1) {
+      const candidate = queue[index];
+      const neighbors = [
+        [candidate.col + 1, candidate.row],
+        [candidate.col - 1, candidate.row],
+        [candidate.col, candidate.row + 1],
+        [candidate.col, candidate.row - 1],
+      ];
+      for (const [col, row] of neighbors) {
+        const key = `${col},${row}`;
+        const next = candidateMap.get(key);
+        if (!next || attached.has(key)) continue;
+        attached.add(key);
+        queue.push(next);
+      }
+    }
+
+    let changed = false;
+    for (const key of attached) {
+      const candidate = candidateMap.get(key);
+      if (!candidate) continue;
+      const index = this.index(candidate.col, candidate.row);
+      if (this.cells[index] !== 2) {
+        this.cells[index] = 2;
+        this.damage[index] = 0;
+        this.damagedCells.delete(index);
+        changed = true;
+      }
+      if (this.wallCells?.length) this.wallCells[index] = 2;
+    }
+    return changed;
   }
 
   countSolidNeighbors(col, row) {

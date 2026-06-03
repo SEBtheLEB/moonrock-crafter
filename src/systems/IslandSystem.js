@@ -114,11 +114,6 @@ export class IslandSystem {
     return this.game.state.islands?.shipAnchors?.[islandId] || null;
   }
 
-  getSavedSurfaceIronNodes(islandId) {
-    const nodes = this.game.state.islands?.surfaceIronNodes?.[islandId];
-    return Array.isArray(nodes) ? nodes : null;
-  }
-
   saveFlags(islandId, flags = []) {
     this.game.state.islands ||= { visited: {} };
     this.game.state.islands.flags ||= {};
@@ -174,16 +169,6 @@ export class IslandSystem {
     if (!skipSave) this.game.saveGame();
   }
 
-  saveSurfaceIronNodes(islandId, nodes = [], { skipSave = false } = {}) {
-    if (!islandId) return;
-    this.game.state.islands ||= { visited: {} };
-    this.game.state.islands.surfaceIronNodes ||= {};
-    this.game.state.islands.surfaceIronNodes[islandId] = nodes
-      .filter(Boolean)
-      .map((node) => (typeof node.serialize === 'function' ? node.serialize() : node));
-    if (!skipSave) this.game.saveGame();
-  }
-
   saveTerrain(islandId, terrain) {
     if (!terrain) return;
     this.game.state.islands ||= { visited: {} };
@@ -211,7 +196,6 @@ export class IslandSystem {
       this.game.state.islands.platforms = {};
       this.game.state.islands.doors = {};
       this.game.state.islands.shipAnchors = {};
-      this.game.state.islands.surfaceIronNodes = {};
     } else {
       this.game.state.islands.terrain ||= {};
       this.game.state.islands.flags ||= {};
@@ -219,7 +203,6 @@ export class IslandSystem {
       this.game.state.islands.platforms ||= {};
       this.game.state.islands.doors ||= {};
       this.game.state.islands.shipAnchors ||= {};
-      this.game.state.islands.surfaceIronNodes ||= {};
     }
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
@@ -272,7 +255,6 @@ export class IslandSystem {
     if (this.game.state.islands.platforms) delete this.game.state.islands.platforms[island.id];
     if (this.game.state.islands.doors) delete this.game.state.islands.doors[island.id];
     if (this.game.state.islands.shipAnchors) delete this.game.state.islands.shipAnchors[island.id];
-    if (this.game.state.islands.surfaceIronNodes) delete this.game.state.islands.surfaceIronNodes[island.id];
     if (this.game.state.base?.islandId === island.id) {
       this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
     }
@@ -328,7 +310,7 @@ export class IslandSystem {
       animals: [],
       layoutId: 'crashPlanet',
       requiredScannerLevel: 1,
-      description: 'The chunky starter planet where the ship crashed. Moonstone, surface iron rocks, copper, and sealed crystal rooms are scattered around the crust.',
+      description: 'The chunky starter planet where the ship crashed. Moonstone, surface iron deposits, copper, and sealed crystal rooms are scattered around the crust.',
     });
 
     const starter = islands[0];

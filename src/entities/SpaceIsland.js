@@ -2,7 +2,6 @@ import { PlacedFlag } from './PlacedFlag.js?v=158';
 import { PlacedTorch } from './PlacedTorch.js?v=158';
 import { PlacedPlatform } from './PlacedPlatform.js?v=158';
 import { PlacedDoor } from './PlacedDoor.js?v=158';
-import { PlanetSurfaceIronNode } from './PlanetSurfaceIronNode.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -48,9 +47,6 @@ export class SpaceIsland {
     this.placedTorches = (data.placedTorches || []).map((torch) => PlacedTorch.deserialize(torch));
     this.placedPlatforms = (data.placedPlatforms || []).map((platform) => PlacedPlatform.deserialize(platform));
     this.placedDoors = (data.placedDoors || []).map((door) => PlacedDoor.deserialize(door));
-    this.surfaceIronNodes = Array.isArray(data.surfaceIronNodes)
-      ? data.surfaceIronNodes.map((node) => PlanetSurfaceIronNode.deserialize(node))
-      : PlanetSurfaceIronNode.generateForIsland(data, terrain);
     this.world = {
       width: this.width,
       height: this.height,
@@ -293,7 +289,6 @@ export class SpaceIsland {
     placedTorches = this.placedTorches,
     placedPlatforms = this.placedPlatforms,
     placedDoors = this.placedDoors,
-    surfaceIronNodes = this.surfaceIronNodes,
     baseLab = null,
     placedCraftingStations = [],
     placedResearchStations = [],
@@ -332,7 +327,6 @@ export class SpaceIsland {
     this.terrain.draw(ctx, { x: 0, y: 0 }, this.width, this.height, terrainDebug);
     this.terrain.drawDebug?.(ctx, terrainDebug);
     this.drawEmbeddedLights(ctx, time, discovered);
-    (surfaceIronNodes || []).forEach((node) => node.draw?.(ctx, { time }));
     baseLab?.draw?.(ctx, { time });
     (placedCraftingStations || []).forEach((station) => station.draw(ctx, { time }));
     (placedResearchStations || []).forEach((station) => station.draw(ctx, { time }));

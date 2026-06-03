@@ -4,7 +4,7 @@ export const dialogue = {
       'Oh good, you are awake! Tiny update: we hit a planet on the way back to the station.',
       'The ship is mostly fine. Except the thrusters. And the dignity. We need iron and copper to patch them.',
       'Use A/D to walk, Space to jump, and G to restabilize gravity when the ground gets rude.',
-      'Select the Miner, aim at surface iron rocks, and hold left click or Use. Moonstone, iron, copper, and a buried Fire Core should be enough to get us moving.',
+      'Select the Miner, aim at surface iron deposits, and hold left click or Use. Moonstone, iron, copper, and a buried Fire Core should be enough to get us moving.',
     ],
     furnaceHint: [
       'Raw ore will not fix a thruster by itself. We need a furnace.',
