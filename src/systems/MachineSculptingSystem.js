@@ -159,6 +159,10 @@ export function isConnectedShape(grid = [], size = 16) {
       [-1, 0],
       [0, 1],
       [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
     ].forEach(([dx, dy]) => {
       const key = `${entry.x + dx},${entry.y + dy}`;
       if (!occupied.has(key) || visited.has(key)) return;
@@ -235,6 +239,17 @@ export function detectInternalChambers(grid = [], size = 16) {
           if (isOccupied(grid, nx, ny, size)) {
             closedSides += 1;
             getCellLayers(grid[gridIndex(nx, ny, size)]).forEach((materialId) => adjacentMaterials.add(materialId));
+          } else {
+            const diagonalSeal = Math.abs(dx) > 0
+              ? (
+                isOccupied(grid, cell.x + dx, cell.y - 1, size)
+                && isOccupied(grid, cell.x + dx, cell.y + 1, size)
+              )
+              : (
+                isOccupied(grid, cell.x - 1, cell.y + dy, size)
+                && isOccupied(grid, cell.x + 1, cell.y + dy, size)
+              );
+            if (diagonalSeal) closedSides += 1;
           }
         });
       });

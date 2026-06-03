@@ -366,9 +366,15 @@ export class BuildingSystem {
   getInitialSnapCursorTile(scene, terrain) {
     if (!scene?.islandPlayer || !terrain) return null;
     const player = scene.islandPlayer;
-    const basis = scene.getIslandGravityBasis?.(scene.activeIsland) || { outward: { x: 0, y: -1 } };
-    const x = player.centerX + basis.outward.x * (terrain.cellSize * 1.15);
-    const y = player.centerY - 7 + basis.outward.y * (terrain.cellSize * 1.15);
+    const basis = scene.getIslandGravityBasis?.(scene.activeIsland) || {
+      inward: { x: 0, y: 1 },
+    };
+    const foot = scene.getIslandPlayerFootCursorPoint?.({ intoGround: terrain.cellSize * 0.35 }) || {
+      x: player.centerX + (basis.inward?.x || 0) * (terrain.cellSize * 1.15),
+      y: player.centerY + (basis.inward?.y || 1) * (terrain.cellSize * 1.15),
+    };
+    const x = foot.x;
+    const y = foot.y;
     const tile = this.worldToPlanetTile(x, y, { terrain });
     if (terrain.isInside(tile.col, tile.row)) return { col: tile.col, row: tile.row };
     const centerTile = this.worldToPlanetTile(player.centerX, player.centerY - 7, { terrain });

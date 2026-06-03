@@ -105,6 +105,7 @@ export class Game {
         researchStation: null,
         baseLab: null,
         gravityMachineBuilt: false,
+        equipmentBlueprints: {},
         stationRouteUnlocked: false,
         nextObjectiveIslandId: null,
       },
@@ -213,6 +214,10 @@ export class Game {
         researchStation: savedState.story?.researchStation
           ? { ...defaultState.story.researchStation, ...savedState.story.researchStation }
           : defaultState.story.researchStation,
+        equipmentBlueprints: {
+          ...(defaultState.story?.equipmentBlueprints || {}),
+          ...(savedState.story?.equipmentBlueprints || {}),
+        },
         baseLab: savedState.story?.baseLab
           ? { ...defaultState.story.baseLab, ...savedState.story.baseLab }
           : defaultState.story.baseLab,

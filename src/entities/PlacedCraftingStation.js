@@ -1,4 +1,4 @@
-import { drawGameArtSprite, isGameArtReady } from '../data/gameArt.js?v=158';
+import { PlacedFurnace } from './PlacedFurnace.js?v=158';
 
 const STATION_WIDTH = 132;
 const STATION_HEIGHT = 78;
@@ -13,6 +13,7 @@ export class PlacedCraftingStation {
     compact = false,
     color = '#76f3ff',
     accent = '#ffd36b',
+    shape = null,
   } = {}) {
     this.id = id || `crafting-station-${Date.now().toString(36)}-${Math.floor(Math.random() * 9999).toString(36)}`;
     this.x = x;
@@ -21,6 +22,7 @@ export class PlacedCraftingStation {
     this.compact = compact;
     this.color = color;
     this.accent = accent;
+    this.shape = shape || PlacedCraftingStation.createDefaultShape();
     this.pulse = 0;
   }
 
@@ -37,6 +39,7 @@ export class PlacedCraftingStation {
       compact: this.compact,
       color: this.color,
       accent: this.accent,
+      shape: this.shape,
     };
   }
 
@@ -63,11 +66,59 @@ export class PlacedCraftingStation {
       ghost,
       color: this.color,
       accent: this.accent,
+      shape: this.shape,
     });
   }
 
-  static drawGhost(ctx, { x, y, viewRotation = 0, rotation = -viewRotation, compact = false, time = 0, color = '#76f3ff', accent = '#ffd36b' } = {}) {
-    PlacedCraftingStation.drawShape(ctx, { x, y, rotation, compact, time, ghost: true, color, accent });
+  static drawGhost(ctx, {
+    x,
+    y,
+    viewRotation = 0,
+    rotation = -viewRotation,
+    compact = false,
+    time = 0,
+    color = '#76f3ff',
+    accent = '#ffd36b',
+    shape = null,
+  } = {}) {
+    PlacedCraftingStation.drawShape(ctx, { x, y, rotation, compact, time, ghost: true, color, accent, shape });
+  }
+
+  static createDefaultShape() {
+    const tileSize = 12;
+    const makeCell = (x, y, layers, shapeState = 'full', detailId = null) => ({
+      x,
+      y,
+      itemId: layers[layers.length - 1],
+      materialId: layers[layers.length - 1],
+      layers: [...layers],
+      shape: shapeState,
+      shapeState,
+      detailId,
+      color: '#76f3ff',
+    });
+    return {
+      gridSize: 8,
+      tileSize,
+      cells: [
+        makeCell(0, 3, ['stoneOre'], 'roundedCorner'),
+        makeCell(1, 3, ['stoneOre'], 'full'),
+        makeCell(2, 3, ['stoneOre', 'ironDust'], 'full', 'bolts'),
+        makeCell(3, 3, ['stoneOre', 'ironDust'], 'full', 'bolts'),
+        makeCell(4, 3, ['stoneOre', 'ironDust'], 'full', 'bolts'),
+        makeCell(5, 3, ['stoneOre', 'ironDust'], 'full', 'bolts'),
+        makeCell(6, 3, ['stoneOre'], 'full'),
+        makeCell(7, 3, ['stoneOre'], 'roundedCorner'),
+        makeCell(1, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(2, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(3, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(4, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(5, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(6, 2, ['copperShards'], 'halfBlock', 'glowingLines'),
+        makeCell(2, 1, ['ironDust'], 'pipeCorner', 'bolts'),
+        makeCell(5, 1, ['ironDust'], 'pipeCorner', 'bolts'),
+      ],
+    };
   }
 
   static drawShape(ctx, {
@@ -79,6 +130,7 @@ export class PlacedCraftingStation {
     ghost = false,
     color = '#76f3ff',
     accent = '#ffd36b',
+    shape = null,
   } = {}) {
     ctx.save();
     ctx.translate(x, y);
@@ -86,31 +138,26 @@ export class PlacedCraftingStation {
     if (compact) ctx.scale(0.68, 0.68);
     ctx.globalAlpha *= ghost ? 0.56 : 1;
 
+    const voxelShape = shape || PlacedCraftingStation.createDefaultShape();
+    if (voxelShape?.cells?.length) {
+      PlacedFurnace.drawVoxelShape(ctx, {
+        shape: voxelShape,
+        tileSize: voxelShape.tileSize || 12,
+        time,
+        ghost,
+        active: true,
+        progress: 0,
+        color,
+        accent,
+      });
+      ctx.restore();
+      return;
+    }
+
     ctx.fillStyle = ghost ? 'rgba(118, 243, 255, 0.14)' : 'rgba(3, 9, 16, 0.3)';
     ctx.beginPath();
     ctx.ellipse(0, 7, STATION_WIDTH * 0.52, 9, 0, 0, Math.PI * 2);
     ctx.fill();
-
-    if (isGameArtReady()) {
-      drawGameArtSprite(ctx, 'craftingStation', 0, -STATION_HEIGHT * 0.42, STATION_WIDTH * 1.1, STATION_HEIGHT * 1.02, {
-        alpha: ghost ? 0.7 : 1,
-      });
-      if (!ghost) {
-        const glow = 0.42 + Math.sin(time * 4) * 0.08;
-        ctx.save();
-        ctx.globalAlpha = glow;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 12;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(-STATION_WIDTH * 0.36, -STATION_HEIGHT * 0.72, STATION_WIDTH * 0.72, STATION_HEIGHT * 0.34, 8);
-        ctx.stroke();
-        ctx.restore();
-      }
-      ctx.restore();
-      return;
-    }
 
     ctx.fillStyle = ghost ? 'rgba(118, 243, 255, 0.18)' : '#253847';
     ctx.strokeStyle = ghost ? 'rgba(118, 243, 255, 0.7)' : 'rgba(5, 12, 19, 0.82)';

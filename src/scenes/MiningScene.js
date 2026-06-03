@@ -645,6 +645,7 @@ export class MiningScene {
         y: craftPoint.y,
         rotation: craftPoint.rotation,
         compact: true,
+        shape: PlacedCraftingStation.createDefaultShape(),
       });
       const research = new PlacedResearchStation({
         x: researchPoint.x,
@@ -4048,6 +4049,7 @@ export class MiningScene {
       y: pad.y,
       rotation: -this.getIslandViewRotation(),
       compact: true,
+      shape: PlacedCraftingStation.createDefaultShape(),
     });
     story.craftingStationPlaced = true;
     story.craftingStation = { ...this.placedCraftingStation.serialize(), islandId: island.id };
@@ -6134,6 +6136,18 @@ export class MiningScene {
     const cells = this.getVoxelCraftCells(recipe, sculptGrid);
     const tileSize = Math.max(7, Math.round((this.activeIsland?.terrain?.cellSize || 22) / 3));
     if (recipe.outputItemId !== 'starterFurnace') {
+      story.equipmentBlueprints ||= {};
+      story.equipmentBlueprints[recipe.outputItemId] = {
+        id: `${recipe.outputItemId}-blueprint-${Date.now().toString(36)}`,
+        recipeId: recipe.id,
+        name: recipe.name,
+        shape: {
+          gridSize: recipe.gridSize || 16,
+          tileSize,
+          cells,
+          details: [...(state.detailGrid || [])],
+        },
+      };
       this.game.systems.inventory.add(recipe.outputItemId, 1, { skipSave: true });
       this.autoAssignItemToHotbar(recipe.outputItemId);
       if (recipe.outputItemId === 'gravityStabilizer') story.gravityMachineBuilt = true;
@@ -7967,9 +7981,27 @@ export class MiningScene {
     if (pointer?.inside && pointer.source === 'canvas' && document.documentElement.dataset.inputMode !== 'touch') {
       return this.screenToIslandLocal(pointer.canvasX, pointer.canvasY);
     }
+    const foot = this.getIslandPlayerFootCursorPoint();
+    if (foot) return foot;
     return {
-      x: this.islandPlayer.centerX + this.islandPlayer.facing * this.getControllerToolAimRange('island'),
-      y: this.islandPlayer.centerY - 8,
+      x: this.islandPlayer.centerX,
+      y: this.islandPlayer.centerY + this.islandPlayer.height * 0.5,
+    };
+  }
+
+  getIslandPlayerFootCursorPoint({ intoGround = 0 } = {}) {
+    if (!this.activeIsland || !this.islandPlayer) return null;
+    const basis = this.getIslandGravityBasis(this.activeIsland);
+    const foot = this.getPlanetPlayerFootPoint(
+      this.islandPlayer,
+      this.activeIsland,
+      this.islandPlayer.x,
+      this.islandPlayer.y,
+      basis,
+    );
+    return {
+      x: foot.x + basis.inward.x * intoGround,
+      y: foot.y + basis.inward.y * intoGround,
     };
   }
 
@@ -9270,6 +9302,18 @@ export class MiningScene {
     const angle = this.getIslandPlayerAimScreenAngle();
     const torsoX = player.centerX + Math.cos(angle) * 4;
     const torsoY = player.centerY + 2 + Math.sin(angle) * 2;
+    const craftedShape = this.getCraftedEquipmentShape('laserGun');
+    if (craftedShape?.cells?.length) {
+      this.drawCraftedEquipmentShapeOnPlayer(ctx, craftedShape, {
+        x: torsoX,
+        y: torsoY,
+        angle,
+        maxWidth: 35,
+        maxHeight: 18,
+        accent: '#6ee7ff',
+      });
+      return;
+    }
     ctx.save();
     ctx.translate(torsoX, torsoY);
     ctx.rotate(angle);
@@ -9298,6 +9342,99 @@ export class MiningScene {
     ctx.beginPath();
     ctx.roundRect(-1, 5, 8, 13, 3);
     ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  getCraftedEquipmentShape(itemId) {
+    const blueprint = this.getStoryState().equipmentBlueprints?.[itemId];
+    return blueprint?.shape || null;
+  }
+
+  drawCraftedEquipmentShapeOnPlayer(ctx, shape, {
+    x = 0,
+    y = 0,
+    angle = 0,
+    maxWidth = 34,
+    maxHeight = 18,
+    accent = '#6ee7ff',
+  } = {}) {
+    const cells = shape?.cells || [];
+    if (!cells.length) return;
+    const xs = cells.map((cell) => cell.x);
+    const ys = cells.map((cell) => cell.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const widthCells = maxX - minX + 1;
+    const heightCells = maxY - minY + 1;
+    const tile = Math.max(2.1, Math.min(
+      maxWidth / Math.max(1, widthCells),
+      maxHeight / Math.max(1, heightCells),
+      4.2,
+    ));
+    const width = widthCells * tile;
+    const height = heightCells * tile;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.translate(4 - width * 0.36, -height * 0.5);
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 7;
+    for (const cell of cells) {
+      const cx = (cell.x - minX) * tile;
+      const cy = (cell.y - minY) * tile;
+      const layers = Array.isArray(cell.layers) && cell.layers.length
+        ? cell.layers
+        : [cell.itemId || cell.materialId].filter(Boolean);
+      const baseId = layers[0] || cell.itemId || cell.materialId;
+      const topId = layers[layers.length - 1] || baseId;
+      const baseVisual = this.getVoxelCraftMaterialVisual(baseId);
+      const topVisual = this.getVoxelCraftMaterialVisual(topId);
+      ctx.fillStyle = baseVisual.color || cell.color || '#a7adb4';
+      ctx.strokeStyle = 'rgba(4, 10, 18, 0.72)';
+      ctx.lineWidth = Math.max(0.65, tile * 0.16);
+      ctx.beginPath();
+      PlacedFurnace.traceVoxelCell(ctx, cx, cy, tile, cell.shapeState || cell.shape || 'full');
+      ctx.fill();
+      ctx.stroke();
+      if (layers.length > 1) {
+        ctx.fillStyle = topVisual.color || ctx.fillStyle;
+        ctx.beginPath();
+        ctx.roundRect(cx + tile * 0.24, cy + tile * 0.24, tile * 0.52, tile * 0.52, Math.max(1.2, tile * 0.18));
+        ctx.fill();
+      }
+      if (layers.includes('fireCore')) {
+        ctx.fillStyle = 'rgba(255, 244, 204, 0.78)';
+        ctx.beginPath();
+        ctx.arc(cx + tile * 0.5, cy + tile * 0.5, tile * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (cell.detailId === 'bolts' || cell.shapeState === 'boltedPlate') {
+        ctx.fillStyle = 'rgba(255, 242, 207, 0.46)';
+        [[0.28, 0.28], [0.72, 0.28], [0.28, 0.72], [0.72, 0.72]].forEach(([px, py]) => {
+          ctx.beginPath();
+          ctx.arc(cx + tile * px, cy + tile * py, Math.max(0.45, tile * 0.06), 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      if (cell.detailId === 'glowingLines' || topId === 'copperIngot') {
+        ctx.strokeStyle = `${accent}cc`;
+        ctx.lineWidth = Math.max(0.7, tile * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(cx + tile * 0.22, cy + tile * 0.5);
+        ctx.lineTo(cx + tile * 0.78, cy + tile * 0.5);
+        ctx.stroke();
+      }
+    }
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `${accent}dd`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(width + 1, height * 0.5);
+    ctx.lineTo(width + 9, height * 0.5);
     ctx.stroke();
     ctx.restore();
   }
