@@ -1,0 +1,247 @@
+:root {
+  --plt-bg: #050a12;
+  --plt-panel: rgba(13, 22, 34, 0.9);
+  --plt-panel-soft: rgba(255, 255, 255, 0.055);
+  --plt-line: rgba(236, 231, 216, 0.14);
+  --plt-text: #ecf5ff;
+  --plt-muted: rgba(236, 245, 255, 0.62);
+  --plt-cyan: #76f3ff;
+  --plt-gold: #ffd36b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: linear-gradient(145deg, #07101d 0%, #030711 62%, #070a0f 100%);
+  color: var(--plt-text);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid rgba(118, 243, 255, 0.26);
+  border-radius: 8px;
+  background: rgba(118, 243, 255, 0.1);
+  color: var(--plt-text);
+  font-weight: 850;
+}
+
+button:hover {
+  border-color: rgba(118, 243, 255, 0.62);
+}
+
+.plt-gen {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(340px, 430px);
+  gap: 14px;
+  width: 100vw;
+  height: 100vh;
+  padding: 14px;
+}
+
+.plt-preview-panel,
+.plt-controls {
+  min-height: 0;
+  border: 1px solid var(--plt-line);
+  border-radius: 8px;
+  background: var(--plt-panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+}
+
+.plt-preview-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px;
+}
+
+.plt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plt-header span {
+  color: var(--plt-cyan);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.plt-header h1 {
+  margin: 2px 0 0;
+  font-size: 2rem;
+}
+
+.plt-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.plt-header-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.plt-header-actions button:last-child {
+  border-color: rgba(255, 211, 107, 0.38);
+  background: rgba(255, 211, 107, 0.14);
+  color: #fff2cf;
+}
+
+[data-preview] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid rgba(118, 243, 255, 0.16);
+  border-radius: 8px;
+  background: #040914;
+}
+
+.plt-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.plt-stats div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--plt-line);
+  border-radius: 8px;
+  background: var(--plt-panel-soft);
+}
+
+.plt-stats strong {
+  display: block;
+  color: var(--plt-gold);
+  font-size: 1rem;
+}
+
+.plt-stats span {
+  display: block;
+  margin-top: 2px;
+  color: var(--plt-muted);
+  font-size: 0.72rem;
+}
+
+.plt-controls {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.plt-control-section {
+  display: grid;
+  gap: 9px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--plt-line);
+  background: transparent;
+}
+
+.plt-control-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.plt-control-section h2 {
+  margin: 0;
+  color: var(--plt-cyan);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.plt-control {
+  display: grid;
+  grid-template-columns: minmax(112px, 1fr) minmax(110px, 1.15fr) 58px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.plt-control span,
+.plt-control output {
+  color: var(--plt-muted);
+  font-size: 0.78rem;
+}
+
+.plt-control output {
+  color: var(--plt-gold);
+  text-align: right;
+  font-weight: 800;
+}
+
+.plt-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--plt-cyan);
+}
+
+.plt-control input[type="number"],
+.plt-control select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--plt-line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--plt-text);
+  padding: 7px 8px;
+}
+
+.plt-control.is-checkbox {
+  grid-template-columns: minmax(112px, 1fr) 28px 58px;
+}
+
+.plt-control.is-checkbox input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--plt-gold);
+}
+
+.plt-error {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid #ff756f;
+  border-radius: 8px;
+  background: #14080c;
+  color: #ffd36b;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
+  }
+
+  .plt-gen {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  [data-preview] {
+    height: min(78vw, 640px);
+  }
+
+  .plt-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plt-header h1 {
+    font-size: 1.5rem;
+  }
+}

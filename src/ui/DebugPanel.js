@@ -79,6 +79,7 @@ export class DebugPanel {
       terrainLightingButton,
       terrainLightDebugButton,
       terrainDepthDebugButton,
+      new Button('PLT Gen', () => this.openPlanetGenerator(), { icon: 'P', variant: 'forge' }).element,
       new Button('Refill Fuel', () => this.refillShip(), { icon: 'F', variant: 'metal' }).element,
       new Button('Fix Rocket', () => this.fixRocket(), { icon: 'R', variant: 'forge' }).element,
       new Button('Regen Planet', () => this.regenerateCurrentPlanet(), { icon: 'P', variant: 'metal' }).element,
@@ -117,6 +118,21 @@ export class DebugPanel {
     this.game.saveGame();
     this.updateToggleButtons();
     this.note(`Terrain lighting ${next ? 'on' : 'off'}.`);
+  }
+
+  openPlanetGenerator() {
+    const url = new URL('/planet-generator.html', window.location.href);
+    const popup = window.open(
+      url.href,
+      'moonrock-planet-generator',
+      'popup=yes,width=1320,height=920,menubar=no,toolbar=no,location=no,status=no',
+    );
+    if (popup) {
+      popup.focus();
+      this.note('Planet generator opened.');
+    } else {
+      this.note('Popup blocked. Allow popups for this site.');
+    }
   }
 
   addCredits() {

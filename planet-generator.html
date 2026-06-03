@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102033" />
+    <title>Moonrock PLT Gen</title>
+    <link rel="icon" href="./assets/img/moonrock-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./src/styles/base.css?v=158" />
+    <link rel="stylesheet" href="./src/styles/planet-generator.css?v=158" />
+  </head>
+  <body>
+    <main class="plt-gen" data-plt-gen>
+      <section class="plt-preview-panel">
+        <header class="plt-header">
+          <div>
+            <span>Dev Tool</span>
+            <h1>PLT Gen</h1>
+          </div>
+          <div class="plt-header-actions">
+            <button type="button" data-randomize>Random Seed</button>
+            <button type="button" data-save-po1>Save P01 JSON</button>
+          </div>
+        </header>
+        <canvas data-preview width="920" height="920" aria-label="Generated planet preview"></canvas>
+        <div class="plt-stats" data-stats></div>
+      </section>
+      <aside class="plt-controls" data-controls></aside>
+    </main>
+    <script type="module" src="./src/tools/PlanetGeneratorTool.js?v=158"></script>
+  </body>
+</html>
