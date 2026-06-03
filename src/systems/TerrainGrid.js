@@ -1563,6 +1563,10 @@ export class TerrainGrid {
     return this.blockSystem.getLocalRedrawPaddingPixels(...materialIds);
   }
 
+  isRoughnessOutlineOnly() {
+    return TERRAIN_ROUGHNESS.outlineOnly === true;
+  }
+
   getDirtyPaddingCellsForMaterialChange(previousMaterial = 0, nextMaterial = 0) {
     return this.blockSystem.getDirtyPaddingCellsForMaterialChange(previousMaterial, nextMaterial);
   }
@@ -4406,7 +4410,12 @@ export class TerrainGrid {
         const a = sourcePoints[index];
         const b = sourcePoints[(index + 1) % sourcePoints.length];
         const segmentLength = Math.hypot(b.x - a.x, b.y - a.y);
-        const subdivisions = Math.max(1, Math.min(4, Math.ceil(segmentLength / Math.max(6, this.cellSize * 0.55))));
+        const maxSubdivisions = Math.max(1, Math.floor(TERRAIN_ROUGHNESS.maxContourSubdivisions ?? 4));
+        const segmentCellScale = Math.max(0.4, TERRAIN_ROUGHNESS.contourSegmentCellScale ?? 0.55);
+        const subdivisions = Math.max(
+          1,
+          Math.min(maxSubdivisions, Math.ceil(segmentLength / Math.max(6, this.cellSize * segmentCellScale))),
+        );
         for (let sub = 0; sub < subdivisions; sub += 1) {
           const t = sub / subdivisions;
           const base = {
@@ -4496,17 +4505,30 @@ export class TerrainGrid {
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
+    if (fastRedraw && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
+      this.drawEdgeContours(ctx, bounds);
+      return;
+    }
+    const outlineOnly = this.isRoughnessOutlineOnly();
     if (bounds) {
       const segments = this.getLocalRoughContourSegments(bounds);
-      this.drawLocalRoughContourShadows(ctx, segments);
-      if (!fastRedraw) this.drawRoughSurfaceDetails(ctx, bounds);
+      if (!outlineOnly && TERRAIN_ROUGHNESS.edgeShadows !== false) {
+        this.drawLocalRoughContourShadows(ctx, segments);
+      }
+      if (!outlineOnly && !fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+        this.drawRoughSurfaceDetails(ctx, bounds);
+      }
       this.drawLocalRoughContourLines(ctx, segments);
       return;
     }
-    this.drawRoughContourChipCuts(ctx, bounds);
-    this.drawRoughContourShadows(ctx, bounds);
-    this.drawRoughSurfaceDetails(ctx, bounds);
-    this.drawRoughContourPebbleLips(ctx, bounds);
+    if (outlineOnly) {
+      this.drawRoughContourLines(ctx, bounds);
+      return;
+    }
+    if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
+    if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughContourShadows(ctx, bounds);
+    if (TERRAIN_ROUGHNESS.surfaceDetails !== false) this.drawRoughSurfaceDetails(ctx, bounds);
+    if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughContourPebbleLips(ctx, bounds);
     this.drawRoughContourLines(ctx, bounds);
   }
 

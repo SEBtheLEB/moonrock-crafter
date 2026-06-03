@@ -69,7 +69,8 @@ export class TerrainBlockEditSystem {
 
   getLocalRedrawPaddingPixels() {
     const terrain = this.terrain;
-    const roughPadding = terrain.roughnessRenderEnabled ? terrain.cellSize * 5.5 : terrain.cellSize * 4;
+    const outlineOnly = terrain.roughnessRenderEnabled && terrain.isRoughnessOutlineOnly?.();
+    const roughPadding = terrain.roughnessRenderEnabled && !outlineOnly ? terrain.cellSize * 5.5 : terrain.cellSize * 4;
     const texturePadding = terrain.cellSize * 3.5;
     return Math.ceil(Math.max(roughPadding, texturePadding));
   }
