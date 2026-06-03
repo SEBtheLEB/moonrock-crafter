@@ -264,6 +264,9 @@ export class IslandSystem {
       this.game.state.story.craftingStation = null;
       this.game.state.story.researchStationPlaced = false;
       this.game.state.story.researchStation = null;
+      this.game.state.story.starterEngineTower = null;
+      this.game.state.story.starterEngine = null;
+      this.game.state.story.starterEngineRecovered = false;
       this.game.systems.inventory?.add?.('craftingStationKit', 1, { skipSave: true });
       this.game.systems.inventory?.add?.('researchStationKit', 1, { skipSave: true });
     }

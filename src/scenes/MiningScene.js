@@ -278,6 +278,7 @@ export class MiningScene {
     this.mouseAimWorld = null;
     this.mouseAimTarget = null;
     this.mouseAimHit = null;
+    this.controllerAimVisuals = new Map();
     this.lowFuelToastReady = true;
     this.cargoFullToastReady = true;
     this.scannerPingCooldown = 0;
@@ -570,6 +571,9 @@ export class MiningScene {
     this.game.state.story.researchStationPlaced ||= false;
     this.game.state.story.researchStation ||= null;
     this.game.state.story.baseLab ||= null;
+    this.game.state.story.starterEngineTower ||= null;
+    this.game.state.story.starterEngine ||= null;
+    this.game.state.story.starterEngineRecovered ||= this.game.systems.inventory?.getStoredAmount?.('shipEngine') > 0;
     this.game.state.story.gravityMachineBuilt ||= this.game.systems.inventory?.getStoredAmount?.('gravityStabilizer') > 0;
     this.game.state.story.nextObjectiveIslandId ||= null;
     return this.game.state.story;
@@ -708,8 +712,81 @@ export class MiningScene {
       this.game.systems.navigation?.refreshLocations?.();
       this.game.saveGame();
     }
+    this.ensureStarterEngineTower(island);
     if (this.baseLab) this.ensureStarterBaseDoor(island, this.baseLab);
     return this.baseLab;
+  }
+
+  ensureStarterEngineTower(island) {
+    if (!island?.terrain || island.id !== this.getStoryState().starterPlanetId) return null;
+    const story = this.getStoryState();
+    const needsTower = !story.starterEngineTower
+      || story.starterEngineTower.islandId !== island.id
+      || story.starterEngineTower.buildVersion !== 1
+      || (!story.thrustersRepaired && !story.starterEngineRecovered && !story.starterEngine);
+    if (!needsTower) return story.starterEngine || null;
+
+    const stamp = this.game.systems.building?.stampStarterEngineTowerOnIsland?.(island);
+    if (!stamp?.engine) return null;
+    story.starterEngineTower = {
+      islandId: island.id,
+      buildVersion: stamp.buildVersion || 1,
+      angle: stamp.engine.angle,
+      towerHeight: stamp.engine.towerHeight,
+    };
+    if (!story.starterEngineRecovered && !story.thrustersRepaired) {
+      story.starterEngine = {
+        id: `${island.id}-starter-engine`,
+        islandId: island.id,
+        x: stamp.engine.x,
+        y: stamp.engine.y,
+        rotation: stamp.engine.rotation,
+        collected: false,
+      };
+    }
+    if (stamp.changed) this.game.systems.islands.saveTerrain(island.id, island.terrain);
+    this.game.saveGame();
+    return story.starterEngine || null;
+  }
+
+  getStarterEngineState(island = this.activeIsland) {
+    const story = this.getStoryState();
+    const engine = story.starterEngine;
+    if (!engine || story.thrustersRepaired || story.starterEngineRecovered || engine.collected) return null;
+    if (island && engine.islandId !== island.id) return null;
+    return engine;
+  }
+
+  getNearbyStarterEngine(player = this.islandPlayer) {
+    const engine = this.getStarterEngineState(this.activeIsland);
+    if (!engine || !player) return null;
+    const dx = player.centerX - engine.x;
+    const dy = player.centerY - engine.y;
+    return dx * dx + dy * dy <= 92 ** 2 ? engine : null;
+  }
+
+  collectStarterEngine(engine = this.getNearbyStarterEngine()) {
+    const story = this.getStoryState();
+    if (!engine || story.starterEngineRecovered || story.thrustersRepaired) return false;
+    story.starterEngineRecovered = true;
+    story.starterEngine = {
+      ...engine,
+      collected: true,
+    };
+    this.game.systems.inventory.add('shipEngine', 1, { skipSave: true });
+    this.game.systems.quests?.refresh?.({ notify: true, save: false });
+    this.refreshHotbar(true);
+    this.updateQuickInventory(true);
+    this.game.saveGame();
+    const world = this.activeIsland?.localToWorldRotated(engine.x, engine.y, this.getIslandViewRotation()) || engine;
+    this.spawnBurst(world.x, world.y, '#76f3ff', 30, 145);
+    this.addFloatingText(world.x, world.y - 36, '+ Replacement Engine', {
+      color: '#76f3ff',
+      rarity: 'rare',
+    });
+    this.game.audio.playSuccess?.();
+    this.game.ui.showToast('Replacement engine recovered. Return to the ship.', 'success', 2400);
+    return true;
   }
 
   ensureStarterBaseDoor(island, lab = this.baseLab) {
@@ -3151,12 +3228,15 @@ export class MiningScene {
     if (actions.justPressed.interact || actions.justPressed.confirm) {
       const nearbyFurnace = this.getNearbyFurnace(player);
       const nearbyWorkbench = this.getNearbyWorkbench(player);
+      const nearbyEngine = this.getNearbyStarterEngine(player);
       if (nearbyWorkbench?.type === 'crafting') {
         this.showCraftingModal();
       } else if (nearbyWorkbench?.type === 'research') {
         this.showResearchStationModal();
       } else if (nearbyFurnace) {
         this.showFurnaceModal(nearbyFurnace.id);
+      } else if (nearbyEngine) {
+        this.collectStarterEngine(nearbyEngine);
       } else if (this.getNearbyFlag(player)) {
         this.packUpNearbyFlag();
       } else if (island.isPlayerNearShip(player)) {
@@ -7848,9 +7928,9 @@ export class MiningScene {
     this.shipSmoke?.clear();
     this.stopIslandTerrainLaser();
     this.hud?.landingPrompt?.classList.remove('is-hidden');
-    this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding rocket...', true);
+    this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding ship...', true);
     this.game.audio.playGpsPing?.();
-    this.game.ui.showToast('Rocket boarding sequence started.', 'success', 1200);
+    this.game.ui.showToast('Ship boarding sequence started.', 'success', 1200);
   }
 
   updateIslandBoarding(delta) {
@@ -7881,7 +7961,7 @@ export class MiningScene {
 
     if (elapsed < chargeStart) {
       this.pinShipToBoardingStart(launch);
-      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding rocket...', true);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding ship...', true);
       return;
     }
 
@@ -7898,7 +7978,7 @@ export class MiningScene {
         this.spawnBurst(this.ship.x, this.ship.y, '#76f3ff', 5, 72);
       }
       this.camera.shake = Math.max(this.camera.shake, 0.035);
-      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Rocket charging...', true);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Ship charging...', true);
       return;
     }
 
@@ -8027,15 +8107,6 @@ export class MiningScene {
       return;
     }
     const story = this.getStoryState();
-    if (!story.furnaceBuilt) {
-      this.startCrashTutorialHint('furnaceHint');
-      this.game.ui.showToast('Build a furnace at the crafting station first', 'default', 1700);
-      return;
-    }
-    if (!this.placedFurnaces.length) {
-      this.game.ui.showToast('Place the furnace before repairing the ship', 'default', 1500);
-      return;
-    }
     const repair = gameBalance.earlyGame?.crashStart?.shipRepair?.requirements || {};
     const missing = Object.entries(repair).filter(([itemId, amount]) => (
       this.game.systems.inventory.getStoredAmount(itemId) < amount
@@ -8052,6 +8123,8 @@ export class MiningScene {
     Object.entries(repair).forEach(([itemId, amount]) => {
       this.game.systems.inventory.remove(itemId, amount, { skipSave: true });
     });
+    story.starterEngineRecovered = true;
+    if (story.starterEngine) story.starterEngine.collected = true;
     story.thrustersRepaired = true;
     this.game.systems.quests?.record?.('shipRepaired', {}, { save: false, notify: true });
     this.game.state.navigation.gpsUnlocked = true;
@@ -8068,8 +8141,8 @@ export class MiningScene {
     const targetLabel = nextTarget?.getDisplayName?.() || (nextTarget?.tag ? `${nextTarget.tag} ${nextTarget.name}` : nextTarget?.name);
     this.game.ui.showToast(
       targetLabel
-        ? `Thrusters repaired. GPS locked onto ${targetLabel}.`
-        : 'Thrusters repaired. Your base GPS is online.',
+        ? `Engine installed. GPS locked onto ${targetLabel}.`
+        : 'Engine installed. Your base GPS is online.',
       'success',
       3200,
     );
@@ -8195,9 +8268,10 @@ export class MiningScene {
     if (this.getNearbyFlag(this.islandPlayer)) text = `Press ${interactLabel} to pack base flag`;
     const nearbyFurnace = this.getNearbyFurnace(this.islandPlayer);
     if (nearbyFurnace) text = `Press ${interactLabel} to open furnace`;
+    if (this.getNearbyStarterEngine(this.islandPlayer)) text = `Press ${interactLabel} to take replacement engine`;
     if (this.activeIsland.isPlayerNearShip(this.islandPlayer)) {
       text = this.crashStart && !this.getStoryState().thrustersRepaired
-        ? `Press ${interactLabel} to inspect broken thrusters`
+        ? `Press ${interactLabel} to install replacement engine`
         : `Press ${interactLabel} to Board Ship`;
     }
     this.setHudText('landingPrompt', this.hud.landingPrompt, text);
@@ -8223,29 +8297,16 @@ export class MiningScene {
       }
       return 'Open the crafting station and craft a Gravity Machine';
     }
-    if (!story.furnaceBuilt) {
-      const recipe = crash.furnaceRecipe?.requirements || {};
-      if (!story.craftingStationPlaced) return 'Select Craft slot 5 and place the crafting station';
-      const missing = Object.entries(recipe).filter(([itemId, amount]) => inventory.getStoredAmount(itemId) < amount);
-      if (missing.length) {
-        const text = Object.entries(recipe).map(([itemId, amount]) => {
-          const have = inventory.getStoredAmount(itemId);
-          return `${this.game.systems.materials.getDisplayName(itemId)} ${have}/${amount}`;
-        }).join(', ');
-        return `Mine furnace materials - ${text}`;
-      }
-      return 'Open crafting station: make 9 open spaces, Fire Core on Iron Dust';
-    }
-    if (!this.placedFurnaces.length) return 'Select Furnace slot 6, aim at ground, and click Use';
     const repair = crash.shipRepair?.requirements || {};
-    const ironNeed = repair.ironIngot || 0;
-    const copperNeed = repair.copperIngot || 0;
-    const ironHave = inventory.getStoredAmount('ironIngot');
-    const copperHave = inventory.getStoredAmount('copperIngot');
-    if (ironHave < ironNeed || copperHave < copperNeed) {
-      return `Smelt ingots at furnace - Iron ${ironHave}/${ironNeed}, Copper ${copperHave}/${copperNeed}`;
+    const engineNeed = repair.shipEngine || 1;
+    const engineHave = inventory.getStoredAmount('shipEngine');
+    if (!story.starterEngineRecovered && engineHave < engineNeed) {
+      return 'Use Gravity Machine to reach the underside tower and recover the engine';
     }
-    return 'Return to the ship and repair the thrusters';
+    if (engineHave < engineNeed) {
+      return `Recover replacement engine - ${engineHave}/${engineNeed}`;
+    }
+    return 'Return to the ship and install the replacement engine';
   }
 
   updateIslandTerrainMining(delta, preview = null) {
@@ -8282,6 +8343,7 @@ export class MiningScene {
     const broken = island.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta, {
       targetCol: hit.col,
       targetRow: hit.row,
+      canMineMaterial: (material) => this.canMineTerrainMaterial(material),
     });
     const brokeTarget = broken.some((cell) => cell.col === hit.col && cell.row === hit.row);
     const afterRatio = brokeTarget ? 1 : island.terrain.getDamageRatio(hit.col, hit.row, hit.material);
@@ -9157,7 +9219,7 @@ export class MiningScene {
       return { visible: true, tag, status: 'Landing' };
     }
     if (this.activeIsland && this.islandMode === 'boarding') {
-      return { visible: true, tag, status: this.isBoardingLaunchInFlight() ? 'Rocket Launch' : 'Boarding' };
+      return { visible: true, tag, status: this.isBoardingLaunchInFlight() ? 'Ship Launch' : 'Boarding' };
     }
     if (this.landingIsland) {
       return { visible: true, tag, status: 'Landing Range' };
@@ -9260,6 +9322,7 @@ export class MiningScene {
         placedCraftingStations: drawLocalIslandDetails && this.placedCraftingStation ? [this.placedCraftingStation] : [],
         placedResearchStations: drawLocalIslandDetails && this.placedResearchStation ? [this.placedResearchStation] : [],
         placedFurnaces: drawLocalIslandDetails ? this.placedFurnaces : [],
+        starterEngine: drawLocalIslandDetails ? this.getStarterEngineState(island) : null,
         enemies: island === this.activeIsland ? this.enemySystem?.getDrawableEnemies() : [],
         materialPickups: island === this.activeIsland ? this.islandPickups : [],
         terrainDebug: this.game.state.debug?.terrain,
@@ -9823,22 +9886,25 @@ export class MiningScene {
 
   drawLaser(ctx) {
     if (this.islandMode === 'onIsland') return;
-    const visualAimPoint = this.getShipAimEndpoint();
+    const miningActive = this.isMiningInputActive();
+    const visualAimPoint = miningActive ? this.getShipAimEndpoint() : null;
     this.laserRenderer.drawRangeField(ctx, {
       camera: this.cameraView,
       ship: this.ship,
       radius: this.stats.miningRange,
       aimPoint: visualAimPoint,
-      active: this.isMiningInputActive(),
+      active: miningActive,
       time: this.time,
     });
-    this.laserRenderer.drawBeam(ctx, {
-      camera: this.cameraView,
-      ship: this.ship,
-      target: this.laserTarget,
-      aimPoint: visualAimPoint,
-      time: this.time,
-    });
+    if (miningActive) {
+      this.laserRenderer.drawBeam(ctx, {
+        camera: this.cameraView,
+        ship: this.ship,
+        target: this.laserTarget,
+        aimPoint: visualAimPoint,
+        time: this.time,
+      });
+    }
   }
 
   drawIslandMiningBeam(ctx) {
@@ -10612,6 +10678,7 @@ export class MiningScene {
 
   drawMouseAimReticle(ctx) {
     if (this.islandMode === 'onIsland') return;
+    if (this.getControllerShipAimWorld()) return;
     this.laserRenderer.drawAimReticle(ctx, {
       camera: this.cameraView,
       mouseAimWorld: this.getShipAimEndpoint() || this.mouseAimWorld,
@@ -10631,13 +10698,22 @@ export class MiningScene {
   }
 
   drawControllerShipAimIndicator(ctx) {
-    if (!this.isControllerAimIndicatorActive()) return;
-    const aimWorld = this.getControllerShipAimWorld();
-    if (!aimWorld) return;
+    const active = this.isControllerAimIndicatorActive();
+    const aimWorld = active ? this.getControllerShipAimWorld() : null;
     const start = this.cameraView.worldToScreen(this.ship.x, this.ship.y);
-    const endpoint = this.getShipAimEndpoint() || aimWorld;
-    const end = this.cameraView.worldToScreen(endpoint.x, endpoint.y);
-    this.drawControllerAimBall(ctx, start, end, { subtle: true, showDot: false });
+    const end = aimWorld
+      ? this.cameraView.worldToScreen(aimWorld.x, aimWorld.y)
+      : start;
+    const visual = this.getControllerAimVisual('ship', start, end, {
+      active: Boolean(active && aimWorld),
+    });
+    if (!visual) return;
+    this.drawControllerAimBall(ctx, visual.start, visual.end, {
+      subtle: true,
+      showDot: false,
+      magnitudeOverride: visual.magnitude,
+      alphaOverride: visual.alpha,
+    });
   }
 
   getCurrentTerrainToolPreview() {
@@ -10660,40 +10736,132 @@ export class MiningScene {
   }
 
   drawControllerIslandAimIndicator(ctx) {
-    if (!this.isControllerAimIndicatorActive() || !this.islandPlayer) return;
+    if (!this.islandPlayer) return;
+    const active = this.isControllerAimIndicatorActive();
     const direction = this.getControllerIslandAimVector();
-    if (
-      direction?.source === 'move'
-      && !this.isTerrainToolSelected()
-      && !this.isWeaponToolSelected()
-      && !this.isLaserGunToolSelected()
-    ) return;
-    if (this.isTerrainToolSelected()) {
-      const state = this.getCurrentTerrainToolPreview();
-      if (!state?.origin || !state?.end) return;
-      this.drawControllerAimBall(ctx, state.origin, state.end, {
-        subtle: true,
-        showDot: false,
-        magnitudeOverride: direction?.magnitude,
-      });
-      return;
-    }
-    const aimPoint = this.getControllerIslandAimPoint();
-    if (!aimPoint) return;
-    const start = {
+    const defaultStart = {
       x: this.islandPlayer.centerX,
       y: this.islandPlayer.centerY - 7,
     };
-    this.drawControllerAimBall(ctx, start, aimPoint, {
+    if (
+      active
+      && direction?.source === 'move'
+      && !this.isTerrainToolSelected()
+      && !this.isWeaponToolSelected()
+      && !this.isLaserGunToolSelected()
+    ) {
+      const visual = this.getControllerAimVisual('island', defaultStart, defaultStart, { active: false });
+      if (visual) {
+        this.drawControllerAimBall(ctx, visual.start, visual.end, {
+          subtle: true,
+          showDot: false,
+          magnitudeOverride: visual.magnitude,
+          alphaOverride: visual.alpha,
+        });
+      }
+      return;
+    }
+    if (this.isTerrainToolSelected()) {
+      const state = this.getCurrentTerrainToolPreview();
+      const start = state?.origin || defaultStart;
+      const end = state?.end || start;
+      const visual = this.getControllerAimVisual('island-terrain', start, end, {
+        active: Boolean(active && state?.origin && state?.end),
+        magnitudeOverride: direction?.magnitude,
+      });
+      if (!visual) return;
+      this.drawControllerAimBall(ctx, visual.start, visual.end, {
+        subtle: true,
+        showDot: false,
+        magnitudeOverride: visual.magnitude,
+        alphaOverride: visual.alpha,
+      });
+      return;
+    }
+    const aimPoint = active ? this.getControllerIslandAimPoint() : null;
+    const visual = this.getControllerAimVisual('island', defaultStart, aimPoint || defaultStart, {
+      active: Boolean(active && aimPoint),
+      magnitudeOverride: direction?.magnitude,
+    });
+    if (!visual) return;
+    this.drawControllerAimBall(ctx, visual.start, visual.end, {
       subtle: true,
       showDot: false,
-      magnitudeOverride: direction?.magnitude,
+      magnitudeOverride: visual.magnitude,
+      alphaOverride: visual.alpha,
     });
   }
 
-  drawControllerAimBall(ctx, start, end, { subtle = false, showDot = true, magnitudeOverride = null } = {}) {
+  getControllerAimVisual(key, start, targetEnd, {
+    active = false,
+    magnitudeOverride = null,
+  } = {}) {
+    if (!start || !targetEnd) return null;
+    const visuals = this.controllerAimVisuals || (this.controllerAimVisuals = new Map());
+    let state = visuals.get(key);
+    if (!state) {
+      state = {
+        endX: start.x,
+        endY: start.y,
+        velocityX: 0,
+        velocityY: 0,
+        alpha: 0,
+        magnitude: 0,
+        lastTime: this.time,
+      };
+      visuals.set(key, state);
+    }
+    const delta = clamp(this.time - (state.lastTime ?? this.time), 0, 0.05);
+    state.lastTime = this.time;
+
+    const targetX = active ? targetEnd.x : start.x;
+    const targetY = active ? targetEnd.y : start.y;
+    const stiffness = active ? 58 : 46;
+    const damping = active ? 12 : 8.5;
+    state.velocityX += (targetX - state.endX) * stiffness * delta;
+    state.velocityY += (targetY - state.endY) * stiffness * delta;
+    const damp = Math.exp(-damping * delta);
+    state.velocityX *= damp;
+    state.velocityY *= damp;
+    state.endX += state.velocityX * delta;
+    state.endY += state.velocityY * delta;
+
+    const targetAlpha = active ? 1 : 0;
+    const alphaRate = active ? 13 : 4.8;
+    state.alpha += (targetAlpha - state.alpha) * Math.min(1, delta * alphaRate);
+    const targetMagnitude = active
+      ? clamp01(magnitudeOverride ?? Math.hypot(targetEnd.x - start.x, targetEnd.y - start.y) / 180)
+      : 0;
+    state.magnitude += (targetMagnitude - state.magnitude) * Math.min(1, delta * (active ? 11 : 5.6));
+
+    if (!active && state.alpha < 0.015 && Math.hypot(state.endX - start.x, state.endY - start.y) < 1.5) {
+      state.endX = start.x;
+      state.endY = start.y;
+      state.velocityX = 0;
+      state.velocityY = 0;
+      state.alpha = 0;
+      state.magnitude = 0;
+      return null;
+    }
+
+    return {
+      start,
+      end: { x: state.endX, y: state.endY },
+      alpha: state.alpha,
+      magnitude: state.magnitude,
+    };
+  }
+
+  drawControllerAimBall(ctx, start, end, {
+    subtle = false,
+    showDot = true,
+    magnitudeOverride = null,
+    alphaOverride = 1,
+  } = {}) {
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
     const magnitude = magnitudeOverride ?? clamp01(Math.hypot(aim.x, aim.y));
+    const visualAlpha = clamp01(alphaOverride);
+    if (visualAlpha <= 0.01) return;
     const pulse = 1 + Math.sin(this.time * 9) * 0.08;
     const lineAlpha = subtle ? 0.54 : 0.72;
     const ringAlpha = subtle ? 0.62 : 0.58;
@@ -10701,7 +10869,7 @@ export class MiningScene {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalAlpha = lineAlpha;
+    ctx.globalAlpha = lineAlpha * visualAlpha;
     ctx.strokeStyle = subtle ? 'rgba(118, 243, 255, 0.44)' : 'rgba(118, 243, 255, 0.38)';
     ctx.lineWidth = subtle ? 1.65 : 2;
     ctx.setLineDash(subtle ? [5, 9] : [8, 8]);
@@ -10711,7 +10879,7 @@ export class MiningScene {
     ctx.stroke();
     ctx.setLineDash([]);
     if (showDot) {
-      ctx.globalAlpha = 0.92;
+      ctx.globalAlpha = 0.92 * visualAlpha;
       ctx.fillStyle = 'rgba(118, 243, 255, 0.82)';
       ctx.strokeStyle = 'rgba(9, 20, 34, 0.74)';
       ctx.lineWidth = 2.2;
@@ -10723,7 +10891,7 @@ export class MiningScene {
       ctx.stroke();
       ctx.shadowBlur = 0;
     }
-    ctx.globalAlpha = ringAlpha;
+    ctx.globalAlpha = ringAlpha * visualAlpha;
     ctx.strokeStyle = subtle ? 'rgba(157, 242, 255, 0.9)' : 'rgba(255, 255, 255, 0.74)';
     ctx.lineWidth = subtle ? 1.45 : 1.2;
     ctx.beginPath();

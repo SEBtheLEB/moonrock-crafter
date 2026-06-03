@@ -51,6 +51,17 @@ export const materials = [
     zoneAvailability: ['crafted'],
   },
   {
+    id: 'shipEngine',
+    name: 'Replacement Engine',
+    rarity: 'rare',
+    icon: 'EN',
+    color: '#76f3ff',
+    baseValue: 0,
+    weight: 8,
+    description: 'A salvaged starter engine recovered from the underside tower on P01. Install it to make the ship fly again.',
+    zoneAvailability: ['crashPlanet'],
+  },
+  {
     id: 'gravityStabilizer',
     name: 'Gravity Machine',
     rarity: 'common',

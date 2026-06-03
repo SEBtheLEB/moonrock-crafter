@@ -23,9 +23,10 @@ export const TERRAIN_MATERIALS = {
   9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 1.25, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
   10: { id: 'facilityIron', name: 'Facility Iron', color: '#465462', edge: '#9fafbd', hardness: 12.2, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
+  12: { id: 'towerIron', name: 'Tower Iron', color: '#2d3c49', edge: '#8fd7ff', hardness: 18.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 1.2 },
 };
 
-const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
+const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11, 12]);
 
 const TERRAIN_SAVE_VERSION = 25;
 const TERRAIN_WALL_LAYER_VERSION = 4;

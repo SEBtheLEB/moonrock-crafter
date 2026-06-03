@@ -323,6 +323,7 @@ export const gameBalance = {
         fireCore: { edgeNoiseStrength: 1.4, chipChance: 0.18, crackChance: 0.2, edgeShadowStrength: 0.2 },
         facilityIron: { edgeNoiseStrength: 0.72, chipChance: 0.08, crackChance: 0.1, edgeShadowStrength: 0.18, pebbleChance: 0.03 },
         reinforcedIron: { edgeNoiseStrength: 0.46, chipChance: 0.05, crackChance: 0.06, edgeShadowStrength: 0.16, pebbleChance: 0.02 },
+        towerIron: { edgeNoiseStrength: 0.42, chipChance: 0.04, crackChance: 0.06, edgeShadowStrength: 0.16, pebbleChance: 0.02 },
       },
     },
   },
@@ -387,7 +388,7 @@ export const gameBalance = {
         copperShards: { output: 'copperIngot', time: 4.2 },
       },
       shipRepair: {
-        requirements: { ironIngot: 2, copperIngot: 2 },
+        requirements: { shipEngine: 1 },
       },
       startingPlanetMaterials: ['stoneOre', 'ironDust', 'copperShards'],
     },

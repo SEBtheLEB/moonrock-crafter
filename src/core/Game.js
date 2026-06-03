@@ -104,6 +104,9 @@ export class Game {
         researchStationPlaced: false,
         researchStation: null,
         baseLab: null,
+        starterEngineTower: null,
+        starterEngine: null,
+        starterEngineRecovered: false,
         gravityMachineBuilt: false,
         equipmentBlueprints: {},
         moduleBlueprints: {},
@@ -226,6 +229,12 @@ export class Game {
         baseLab: savedState.story?.baseLab
           ? { ...defaultState.story.baseLab, ...savedState.story.baseLab }
           : defaultState.story.baseLab,
+        starterEngineTower: savedState.story?.starterEngineTower
+          ? { ...defaultState.story.starterEngineTower, ...savedState.story.starterEngineTower }
+          : defaultState.story.starterEngineTower,
+        starterEngine: savedState.story?.starterEngine
+          ? { ...defaultState.story.starterEngine, ...savedState.story.starterEngine }
+          : defaultState.story.starterEngine,
       },
       tutorial: { ...defaultState.tutorial, ...savedState.tutorial },
       quests: {

@@ -293,6 +293,7 @@ export class SpaceIsland {
     placedCraftingStations = [],
     placedResearchStations = [],
     placedFurnaces = [],
+    starterEngine = null,
     enemies = [],
     materialPickups = [],
     terrainDebug = null,
@@ -335,6 +336,7 @@ export class SpaceIsland {
     (placedDoors || []).forEach((door) => door.draw(ctx, { time }));
     (placedFlags || []).forEach((flag) => flag.draw(ctx, { time }));
     torches.forEach((torch) => torch.draw?.(ctx, { time }));
+    this.drawStarterEngine(ctx, starterEngine, time);
     (materialPickups || []).forEach((pickup) => pickup.drawLocal?.(ctx));
     (enemies || []).forEach((enemy) => enemy.draw?.(ctx, { time, viewRotation }));
     if (drawShip) this.drawParkedShip(ctx, ship, time, { broken: shipBroken });
@@ -350,6 +352,69 @@ export class SpaceIsland {
     }
     drawCombatEffects?.(ctx);
     drawMovementDebug?.(ctx);
+    ctx.restore();
+  }
+
+  drawStarterEngine(ctx, engine, time = 0) {
+    if (!engine || engine.collected) return;
+    const pulse = 0.75 + Math.sin(time * 4.2) * 0.18;
+    ctx.save();
+    ctx.translate(engine.x, engine.y);
+    ctx.rotate(engine.rotation || 0);
+    ctx.shadowColor = 'rgba(118, 243, 255, 0.72)';
+    ctx.shadowBlur = 14 + pulse * 8;
+    ctx.fillStyle = `rgba(118, 243, 255, ${0.14 + pulse * 0.08})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 34, 36, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#8fd7ff';
+    ctx.fillStyle = '#192431';
+    ctx.beginPath();
+    ctx.rect(-23, -34, 46, 54);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#2d3c49';
+    ctx.fillRect(-16, -27, 32, 12);
+    ctx.fillStyle = '#76f3ff';
+    ctx.globalAlpha = 0.72 + pulse * 0.18;
+    ctx.fillRect(-11, -23, 22, 4);
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#465462';
+    ctx.beginPath();
+    ctx.moveTo(-20, 18);
+    ctx.lineTo(-32, 34);
+    ctx.lineTo(-12, 27);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(20, 18);
+    ctx.lineTo(32, 34);
+    ctx.lineTo(12, 27);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#0d141f';
+    ctx.strokeStyle = '#9fafbd';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-14, 19);
+    ctx.lineTo(14, 19);
+    ctx.lineTo(20, 35);
+    ctx.lineTo(-20, 35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(118, 243, 255, ${0.28 + pulse * 0.2})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 39, 18, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

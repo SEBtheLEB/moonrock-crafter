@@ -135,7 +135,7 @@ export function drawGameArtTexture(ctx, key, x, y, width, height, {
 
 export function getTerrainArtKey(materialId, biome = 'scrap') {
   if (materialId === 10) return 'metalPanel';
-  if (materialId === 11) return 'metalBlock';
+  if (materialId === 11 || materialId === 12) return 'metalBlock';
   if (materialId === 2) return 'ironOreTile';
   if (materialId === 3) return 'copperOreTile';
   if ([4, 7, 8, 9].includes(materialId)) return 'crystalOreTile';

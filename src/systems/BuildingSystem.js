@@ -3,6 +3,9 @@ import { TERRAIN_MATERIALS } from './TerrainGrid.js?v=158';
 const DEFAULT_BUILD_RANGE = 178;
 const STARTER_BASE_WALL_MATERIAL = 10;
 const STARTER_BASE_REINFORCED_MATERIAL = 11;
+const STARTER_ENGINE_TOWER_MATERIAL = 12;
+const STARTER_ENGINE_TOWER_BACK_WALL = 10;
+const STARTER_ENGINE_TOWER_BUILD_VERSION = 1;
 const SMOOTH_BUILD_MATERIAL_IDS = new Set(['facilityIron', 'reinforcedIron']);
 
 export const BUILDABLE_TERRAIN_ITEMS = {
@@ -217,6 +220,89 @@ export class BuildingSystem {
     return {
       lab,
       landingSurfaceLocal: { x: surfaceX + 10 * size, y: surfaceY },
+    };
+  }
+
+  stampStarterEngineTowerOnIsland(island, { angle = Math.PI / 2 } = {}) {
+    const terrain = island?.terrain;
+    if (!terrain) return null;
+    const size = terrain.cellSize || 25;
+    const surface = terrain.getMoonstoneSurfacePointAtAngle?.(angle, 0)
+      || island.getSurfaceLocalAtAngle?.(angle, 0);
+    if (!surface) return null;
+
+    const normal = { x: Math.cos(angle), y: Math.sin(angle) };
+    const tangent = { x: -normal.y, y: normal.x };
+    const surfaceTile = terrain.cellFromWorld(surface.x, surface.y);
+    const axisRooms = [];
+    if (normal.x > 0.01) axisRooms.push((terrain.cols - 2 - surfaceTile.col) / normal.x);
+    else if (normal.x < -0.01) axisRooms.push((surfaceTile.col - 1) / -normal.x);
+    if (normal.y > 0.01) axisRooms.push((terrain.rows - 2 - surfaceTile.row) / normal.y);
+    else if (normal.y < -0.01) axisRooms.push((surfaceTile.row - 1) / -normal.y);
+    const outwardRoom = Math.max(7, Math.floor(Math.min(...axisRooms.filter(Number.isFinite), 14)));
+    const towerHeight = Math.max(5, Math.min(12, outwardRoom - 2));
+    const changed = { value: false };
+    const footprintCells = new Set();
+    const toCell = (alongCells, outwardCells) => terrain.cellFromWorld(
+      surface.x + tangent.x * alongCells * size + normal.x * outwardCells * size,
+      surface.y + tangent.y * alongCells * size + normal.y * outwardCells * size,
+    );
+    const keyFor = (cell) => `${cell.col},${cell.row}`;
+    const mark = (alongCells, outwardCells) => {
+      const cell = toCell(alongCells, outwardCells);
+      if (terrain.isInside(cell.col, cell.row)) footprintCells.add(keyFor(cell));
+    };
+
+    for (let outward = 0; outward <= towerHeight + 1; outward += 1) {
+      if (outward === 0) {
+        for (let along = -4; along <= 4; along += 1) mark(along, outward);
+        continue;
+      }
+      mark(-2, outward);
+      mark(2, outward);
+      if (outward % 2 === 0) {
+        mark(-1, outward);
+        mark(1, outward);
+      }
+      if (outward % 3 === 0) {
+        for (let along = -2; along <= 2; along += 1) mark(along, outward);
+      }
+      if (outward === towerHeight || outward === towerHeight + 1) {
+        for (let along = -3; along <= 3; along += 1) mark(along, outward);
+      }
+      if (outward === 3 || outward === 6 || outward === 9) {
+        mark(-4, outward);
+        mark(4, outward);
+      }
+    }
+
+    for (let outward = 1; outward <= towerHeight + 2; outward += 1) {
+      for (let along = -5; along <= 5; along += 1) {
+        const cell = toCell(along, outward);
+        if (!terrain.isInside(cell.col, cell.row) || footprintCells.has(keyFor(cell))) continue;
+        if (terrain.isNaturalSolidCell?.(cell.col, cell.row)) {
+          this.setTerrainCellDirect(terrain, cell.col, cell.row, 0, changed);
+        }
+      }
+    }
+
+    for (const key of footprintCells) {
+      const [col, row] = key.split(',').map(Number);
+      this.setTerrainCellDirect(terrain, col, row, STARTER_ENGINE_TOWER_MATERIAL, changed);
+      this.setWallCellDirect(terrain, col, row, STARTER_ENGINE_TOWER_BACK_WALL, changed);
+    }
+
+    if (changed.value) this.commitTerrainStamp(terrain);
+    return {
+      buildVersion: STARTER_ENGINE_TOWER_BUILD_VERSION,
+      changed: changed.value,
+      engine: {
+        x: surface.x + normal.x * (towerHeight + 1.95) * size,
+        y: surface.y + normal.y * (towerHeight + 1.95) * size,
+        rotation: angle - Math.PI / 2,
+        angle,
+        towerHeight,
+      },
     };
   }
 

@@ -323,6 +323,7 @@ export class IslandScene {
     const broken = this.terrain.mineCircle(hit.x, hit.y, TERRAIN_MINING_BRUSH_RADIUS, power, delta, {
       targetCol: hit.col,
       targetRow: hit.row,
+      canMineMaterial: (material) => this.canMineTerrainMaterial(material),
     });
     const brokeTarget = broken.some((cell) => cell.col === hit.col && cell.row === hit.row);
     const afterRatio = brokeTarget ? 1 : this.terrain.getDamageRatio(hit.col, hit.row, hit.material);

@@ -2,22 +2,22 @@ export const dialogue = {
   sparksTutorial: {
     crashIntro: [
       'Oh good, you are awake! Tiny update: we hit a planet on the way back to the station.',
-      'The ship is mostly fine. Except the thrusters. And the dignity. We need iron and copper to patch them.',
+      'The ship is mostly fine. Except the engine. And the dignity. I spotted a replacement engine on a metal tower under P01.',
       'Use A/D to walk, Space to jump, and G to restabilize gravity when the ground gets rude.',
-      'Select the Miner, aim at surface iron deposits, and hold left click or Use. Moonstone, iron, copper, and a buried Fire Core should be enough to get us moving.',
+      'Craft the Gravity Machine first. Then rotate around the planet, reach the underside tower, and bring that engine home.',
     ],
     furnaceHint: [
-      'Raw ore will not fix a thruster by itself. We need a furnace.',
+      'A furnace will still help us craft better gear after the engine is handled.',
       'Place the crafting station from your hotbar, gather stone and copper, then dig toward the planet core for a Fire Core to put in the furnace belly.',
     ],
     smeltingHint: [
       'Place the furnace on solid ground, interact with it, then queue iron and copper at the top. The Fire Core keeps the bottom hot.',
     ],
     repairHint: [
-      'Beautiful emergency metal! Bring the ingots back to the ship and interact with the hull. Please do not say "good as new" where it can hear you.',
+      'The replacement engine is on the metal tower under P01. Use the Gravity Machine to reach it, grab it, then bring it back to the ship.',
     ],
     repaired: [
-      'Thrusters are responding! We can fly again.',
+      'Engine is responding! We can fly again.',
       'I marked the station on the map. Board the ship and follow the cursor home.',
     ],
     stationIntro: [

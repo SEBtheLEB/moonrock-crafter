@@ -111,6 +111,9 @@ export class TerrainBlockEditSystem {
     let tilesProcessed = 0;
     const halfSize = terrain.cellSize * 0.5;
     const hasTarget = Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow);
+    const canMineMaterial = typeof options.canMineMaterial === 'function'
+      ? options.canMineMaterial
+      : null;
     const startCol = Math.max(0, Math.min(terrain.cols - 1, Math.floor((worldX - radius - halfSize) / terrain.cellSize)));
     const endCol = Math.max(0, Math.min(terrain.cols - 1, Math.ceil((worldX + radius + halfSize) / terrain.cellSize)));
     const startRow = Math.max(0, Math.min(terrain.rows - 1, Math.floor((worldY - radius - halfSize) / terrain.cellSize)));
@@ -120,6 +123,7 @@ export class TerrainBlockEditSystem {
         tilesProcessed += 1;
         const material = terrain.getCell(col, row);
         if (material <= 0) continue;
+        if (canMineMaterial && !canMineMaterial(material, col, row)) continue;
         const left = col * terrain.cellSize;
         const top = row * terrain.cellSize;
         const centerX = left + halfSize;
