@@ -926,7 +926,8 @@ export class TerrainGrid {
   }
 
   paintSurfaceIronDeposit(angle, profile, random) {
-    const surface = this.getSurfacePointAtAngle(angle, 0);
+    const surface = this.getMoonstoneSurfacePointAtAngle(angle, 0);
+    if (!surface) return false;
     const outward = { x: Math.cos(angle), y: Math.sin(angle) };
     const tangent = { x: -outward.y, y: outward.x };
     const widthCells = profile.widthCells[0] + random() * (profile.widthCells[1] - profile.widthCells[0]);
@@ -948,7 +949,8 @@ export class TerrainGrid {
     for (let row = startRow; row <= endRow; row += 1) {
       for (let col = startCol; col <= endCol; col += 1) {
         const current = this.getCell(col, row);
-        if (current !== 0 && current !== 1 && current !== 2) continue;
+        if (current !== 0 && current !== 1) continue;
+        if (this.hasIronSpawnBlockerNear(col, row)) continue;
         const x = col * this.cellSize + this.cellSize * 0.5;
         const y = row * this.cellSize + this.cellSize * 0.5;
         const dx = x - surface.x;
@@ -969,14 +971,14 @@ export class TerrainGrid {
     }
 
     const isAnchored = (candidate) => {
-      if (candidate.current > 0) return true;
+      if (candidate.current === 1) return true;
       const neighbors = [
         [candidate.col + 1, candidate.row],
         [candidate.col - 1, candidate.row],
         [candidate.col, candidate.row + 1],
         [candidate.col, candidate.row - 1],
       ];
-      return neighbors.some(([col, row]) => this.isSolidCell(col, row));
+      return neighbors.some(([col, row]) => this.getCell(col, row) === 1);
     };
     const queue = candidates.filter(isAnchored);
     const attached = new Set(queue.map((candidate) => `${candidate.col},${candidate.row}`));
@@ -1011,6 +1013,36 @@ export class TerrainGrid {
       if (this.wallCells?.length) this.wallCells[index] = 2;
     }
     return changed;
+  }
+
+  getMoonstoneSurfacePointAtAngle(angle, offset = 0) {
+    const maxRadius = Math.min(this.width, this.height) * 0.52;
+    const step = Math.max(4, this.cellSize * 0.45);
+    for (let radius = maxRadius; radius >= 0; radius -= step) {
+      const x = this.planetCenterX + Math.cos(angle) * radius;
+      const y = this.planetCenterY + Math.sin(angle) * radius;
+      const { col, row } = this.cellFromWorld(x, y);
+      const material = this.getCell(col, row);
+      if (material <= 0) continue;
+      if (material !== 1) return null;
+      const adjustedRadius = radius + offset;
+      return {
+        x: this.planetCenterX + Math.cos(angle) * adjustedRadius,
+        y: this.planetCenterY + Math.sin(angle) * adjustedRadius,
+        radius: adjustedRadius,
+      };
+    }
+    return null;
+  }
+
+  hasIronSpawnBlockerNear(col, row) {
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        const material = this.getCell(col + ox, row + oy);
+        if (material > 0 && material !== 1) return true;
+      }
+    }
+    return false;
   }
 
   countSolidNeighbors(col, row) {
