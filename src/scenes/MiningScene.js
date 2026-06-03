@@ -11114,10 +11114,28 @@ export class MiningScene {
     const delta = clamp(this.time - (state.lastTime ?? this.time), 0, 0.05);
     state.lastTime = this.time;
 
-    const targetX = active ? targetEnd.x : start.x;
-    const targetY = active ? targetEnd.y : start.y;
-    const stiffness = active ? 58 : 46;
-    const damping = active ? 12 : 8.5;
+    const targetMagnitude = active
+      ? clamp01(magnitudeOverride ?? Math.hypot(targetEnd.x - start.x, targetEnd.y - start.y) / 180)
+      : 0;
+    if (active) {
+      state.endX = targetEnd.x;
+      state.endY = targetEnd.y;
+      state.velocityX = 0;
+      state.velocityY = 0;
+      state.alpha = 1;
+      state.magnitude = targetMagnitude;
+      return {
+        start,
+        end: { x: state.endX, y: state.endY },
+        alpha: state.alpha,
+        magnitude: state.magnitude,
+      };
+    }
+
+    const targetX = start.x;
+    const targetY = start.y;
+    const stiffness = 46;
+    const damping = 8.5;
     state.velocityX += (targetX - state.endX) * stiffness * delta;
     state.velocityY += (targetY - state.endY) * stiffness * delta;
     const damp = Math.exp(-damping * delta);
@@ -11126,13 +11144,10 @@ export class MiningScene {
     state.endX += state.velocityX * delta;
     state.endY += state.velocityY * delta;
 
-    const targetAlpha = active ? 1 : 0;
-    const alphaRate = active ? 13 : 4.8;
+    const targetAlpha = 0;
+    const alphaRate = 4.8;
     state.alpha += (targetAlpha - state.alpha) * Math.min(1, delta * alphaRate);
-    const targetMagnitude = active
-      ? clamp01(magnitudeOverride ?? Math.hypot(targetEnd.x - start.x, targetEnd.y - start.y) / 180)
-      : 0;
-    state.magnitude += (targetMagnitude - state.magnitude) * Math.min(1, delta * (active ? 11 : 5.6));
+    state.magnitude += (targetMagnitude - state.magnitude) * Math.min(1, delta * 5.6);
 
     if (!active && state.alpha < 0.015 && Math.hypot(state.endX - start.x, state.endY - start.y) < 1.5) {
       state.endX = start.x;
