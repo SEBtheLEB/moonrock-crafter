@@ -132,6 +132,8 @@ To generate icon image files with the current free/no-key Pollinations endpoint:
 npm run generate:icons -- --item stoneOre
 ```
 
+This generator uses the free Pollinations prompt endpoint by default, so leave `POLLINATIONS_MODEL` unset unless you are using a Pollinations-supported model name. OpenAI image model IDs such as `gpt-image-2` are ignored on this endpoint.
+
 For a broader pass:
 
 ```bash

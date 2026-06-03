@@ -85,4 +85,33 @@ export class TerrainWallSystem {
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
   }
+
+  repairNaturalLayerForPlanet() {
+    const terrain = this.terrain;
+    if (!terrain.wallConfig.enabled || !terrain.wallCells?.length) return false;
+    const startDepth = Math.max(0, (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize);
+    let changed = false;
+    for (let row = 0; row < terrain.rows; row += 1) {
+      for (let col = 0; col < terrain.cols; col += 1) {
+        const index = terrain.index(col, row);
+        if (terrain.wallCells[index] > 0) continue;
+        const x = col * terrain.cellSize + terrain.cellSize * 0.5;
+        const y = row * terrain.cellSize + terrain.cellSize * 0.5;
+        const depth = typeof terrain.getStablePlanetDepthAt === 'function'
+          ? terrain.getStablePlanetDepthAt(x, y)
+          : terrain.getTerrainDepthAt(x, y);
+        if (depth < startDepth) continue;
+        const material = terrain.getCell(col, row);
+        terrain.wallCells[index] = this.getTypeForTile(col, row, material || 1);
+        changed = true;
+      }
+    }
+    if (!changed) return false;
+    terrain.contourCache?.clear();
+    terrain.markAirExposureDirty({ defer: false });
+    terrain.markLightingOverlayDirty({ defer: false, full: true });
+    terrain.renderDirty = true;
+    terrain.fullRenderDirty = true;
+    return true;
+  }
 }

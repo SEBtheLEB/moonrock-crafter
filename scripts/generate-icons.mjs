@@ -11,9 +11,33 @@ const outDir = path.join(root, 'assets', 'img', 'generated', 'icons');
 const ENDPOINT = process.env.POLLINATIONS_IMAGE_API || 'https://image.pollinations.ai/prompt';
 const WIDTH = Number(process.env.ICON_SIZE || 256);
 const HEIGHT = Number(process.env.ICON_SIZE || 256);
-const MODEL = process.env.POLLINATIONS_MODEL || '';
+const RAW_MODEL = (process.env.POLLINATIONS_MODEL || '').trim();
+const MODEL = normalizePollinationsModel(RAW_MODEL, ENDPOINT);
 const CONCURRENCY = Math.max(1, Number(process.env.ICON_CONCURRENCY || 2));
 const REQUEST_TIMEOUT_MS = Math.max(5000, Number(process.env.ICON_REQUEST_TIMEOUT_MS || 45000));
+
+function isPollinationsEndpoint(endpoint) {
+  try {
+    return new URL(endpoint).hostname.endsWith('pollinations.ai');
+  } catch {
+    return String(endpoint || '').includes('pollinations.ai');
+  }
+}
+
+function isOpenAiImageModelSlug(model) {
+  return /^(gpt-image-|dall-e-|chatgpt-image-)/i.test(model);
+}
+
+function normalizePollinationsModel(model, endpoint) {
+  if (!model) return '';
+  if (isPollinationsEndpoint(endpoint) && isOpenAiImageModelSlug(model)) {
+    console.warn(
+      `Ignoring POLLINATIONS_MODEL="${model}" because the free Pollinations endpoint does not support OpenAI image model IDs.`,
+    );
+    return '';
+  }
+  return model;
+}
 
 const promptOverrides = {
   minerTool: 'compact handheld blue laser mining tool with small glowing lens and orange grip',

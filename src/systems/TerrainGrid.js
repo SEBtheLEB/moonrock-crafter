@@ -28,6 +28,7 @@ export const TERRAIN_MATERIALS = {
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11]);
 
 const TERRAIN_SAVE_VERSION = 25;
+const TERRAIN_WALL_LAYER_VERSION = 2;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
@@ -649,7 +650,7 @@ function smoothContour(points, options = VISUAL_CONTOUR_OPTIONS, gridStep = 1) {
 }
 
 export class TerrainGrid {
-  constructor({ cols, rows, cellSize = 18, cells = null, wallCells = null, seed = 1, biome = 'scrap', landingX = 150, landingY = 360 } = {}) {
+  constructor({ cols, rows, cellSize = 18, cells = null, wallCells = null, wallLayerVersion = 0, seed = 1, biome = 'scrap', landingX = 150, landingY = 360 } = {}) {
     this.cols = cols;
     this.rows = rows;
     this.cellSize = cellSize;
@@ -693,6 +694,7 @@ export class TerrainGrid {
     this.lightingFieldCtx = null;
     this.blockSystem = new TerrainBlockEditSystem(this);
     this.wallSystem = new TerrainWallSystem(this);
+    this.wallLayerVersion = Number(wallLayerVersion) || 0;
     this.shadowSystem = new TerrainShadowSystem(this);
     this.airExposureMap = null;
     this.airExposureDirty = true;
@@ -708,7 +710,12 @@ export class TerrainGrid {
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
-    if (cells && wallCells?.length !== cellCount && TERRAIN_WALLS.enabled) this.generateWallLayerForPlanet();
+    if (cells && TERRAIN_WALLS.enabled) {
+      if (wallCells?.length !== cellCount) this.generateWallLayerForPlanet();
+      else if (this.wallLayerVersion < TERRAIN_WALL_LAYER_VERSION && this.repairNaturalWallLayerForPlanet()) {
+        this.wallLayerVersion = TERRAIN_WALL_LAYER_VERSION;
+      }
+    }
     TERRAIN_TEXTURE_INSTANCES.add(this);
   }
 
@@ -720,6 +727,7 @@ export class TerrainGrid {
         cellSize: savedTerrain.cellSize || 18,
         cells: savedTerrain.cells,
         wallCells: savedTerrain.wallCells,
+        wallLayerVersion: savedTerrain.wallLayerVersion || 0,
         seed: savedTerrain.seed || hashString(island.id),
         biome: savedTerrain.biome || island.biome,
         landingX: savedTerrain.landingX || world.landingX || 150,
@@ -754,6 +762,7 @@ export class TerrainGrid {
       version: TERRAIN_SAVE_VERSION,
       seed: this.seed,
       biome: this.biome,
+      wallLayerVersion: TERRAIN_WALL_LAYER_VERSION,
       landingX: this.landingX,
       landingY: this.landingY,
       cells: Array.from(this.cells),
@@ -1662,7 +1671,13 @@ export class TerrainGrid {
   }
 
   generateWallLayerForPlanet() {
-    return this.wallSystem.generateLayerForPlanet();
+    const result = this.wallSystem.generateLayerForPlanet();
+    this.wallLayerVersion = TERRAIN_WALL_LAYER_VERSION;
+    return result;
+  }
+
+  repairNaturalWallLayerForPlanet() {
+    return this.wallSystem.repairNaturalLayerForPlanet();
   }
 
   isCollisionSolidSample(col, row) {

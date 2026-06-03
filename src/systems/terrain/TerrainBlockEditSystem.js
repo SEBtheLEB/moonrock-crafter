@@ -22,11 +22,6 @@ export class TerrainBlockEditSystem {
     const nextValue = Math.max(0, Number(value) || 0);
     if (previousValue === nextValue) return;
     terrain.cells[index] = nextValue;
-    let wallChanged = false;
-    if (autoWall && nextValue > 0 && terrain.wallConfig.enabled && !terrain.wallCells[index]) {
-      terrain.wallCells[index] = terrain.getWallTypeForTile(col, row, nextValue);
-      wallChanged = true;
-    }
     terrain.damage[index] = 0;
     terrain.damagedCells.delete(index);
     this.invalidateEditedTerrainGeometry({
@@ -34,8 +29,7 @@ export class TerrainBlockEditSystem {
       previousMaterial: previousValue,
       nextMaterial: nextValue,
     });
-    if (wallChanged) terrain.markAirExposureDirty({ defer: true });
-    if (terrain.getMaterialLight(previousValue) || terrain.getMaterialLight(nextValue) || wallChanged) {
+    if (terrain.getMaterialLight(previousValue) || terrain.getMaterialLight(nextValue)) {
       terrain.markLightingOverlayDirty({
         defer: true,
         bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },

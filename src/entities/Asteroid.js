@@ -201,6 +201,10 @@ export class Asteroid {
     return this.body.collidesWorldCircle(entity.x, entity.y, entity.radius || 0, this);
   }
 
+  getCollisionWith(entity) {
+    return this.body.getWorldCircleCollision(entity.x, entity.y, entity.radius || 0, this);
+  }
+
   draw(ctx, camera, { highlightHit = null, time = 0 } = {}) {
     const screen = camera.worldToScreen(this.x, this.y);
     ctx.save();
@@ -232,6 +236,7 @@ export class Asteroid {
     }
 
     this.body.draw(ctx);
+    this.body.drawDamageMarks?.(ctx, time);
     if (highlightHit) this.body.drawCellHighlight(ctx, highlightHit, time);
 
     if (this.flash > 0) {

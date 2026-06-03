@@ -121,6 +121,7 @@ export class VoxelAsteroidBody {
     this.originY = this.size / 2;
     this.cells = new Uint8Array(this.cols * this.rows);
     this.damage = new Float32Array(this.cols * this.rows);
+    this.damagedCells = new Set();
     this.slotDefs = this.createSlotDefs(data);
     this.renderCanvas = null;
     this.renderCtx = null;
@@ -321,26 +322,72 @@ export class VoxelAsteroidBody {
   }
 
   collidesWorldCircle(worldX, worldY, circleRadius, asteroid) {
+    return Boolean(this.getWorldCircleCollision(worldX, worldY, circleRadius, asteroid));
+  }
+
+  getWorldCircleCollision(worldX, worldY, circleRadius, asteroid) {
     const local = this.localFromWorld(worldX, worldY, asteroid);
     const padding = circleRadius + this.cellSize;
-    if (Math.hypot(local.x, local.y) > this.radius + padding) return false;
+    if (Math.hypot(local.x, local.y) > this.radius + padding) return null;
     const startCol = clamp(Math.floor((local.x + this.originX - padding) / this.cellSize), 0, this.cols - 1);
     const endCol = clamp(Math.ceil((local.x + this.originX + padding) / this.cellSize), 0, this.cols - 1);
     const startRow = clamp(Math.floor((local.y + this.originY - padding) / this.cellSize), 0, this.rows - 1);
     const endRow = clamp(Math.ceil((local.y + this.originY + padding) / this.cellSize), 0, this.rows - 1);
-    const cellCollisionRadius = this.cellSize * 0.54;
+    let best = null;
+    let bestPenetration = -Infinity;
 
     for (let row = startRow; row <= endRow; row += 1) {
       for (let col = startCol; col <= endCol; col += 1) {
         if (!this.isSolidCell(col, row)) continue;
-        const center = this.localCenterOfCell(col, row);
-        const dx = center.x - local.x;
-        const dy = center.y - local.y;
-        const minDistance = circleRadius + cellCollisionRadius;
-        if (dx * dx + dy * dy <= minDistance * minDistance) return true;
+        const left = col * this.cellSize - this.originX;
+        const top = row * this.cellSize - this.originY;
+        const right = left + this.cellSize;
+        const bottom = top + this.cellSize;
+        const closestX = clamp(local.x, left, right);
+        const closestY = clamp(local.y, top, bottom);
+        let dx = local.x - closestX;
+        let dy = local.y - closestY;
+        let distanceSq = dx * dx + dy * dy;
+        let hitLocalX = closestX;
+        let hitLocalY = closestY;
+
+        if (distanceSq <= 0.0001) {
+          const center = this.localCenterOfCell(col, row);
+          dx = local.x - center.x;
+          dy = local.y - center.y;
+          distanceSq = dx * dx + dy * dy;
+          if (distanceSq <= 0.0001) {
+            dx = 1;
+            dy = 0;
+            distanceSq = 1;
+          }
+          const distance = Math.sqrt(distanceSq);
+          hitLocalX = local.x - (dx / distance) * circleRadius;
+          hitLocalY = local.y - (dy / distance) * circleRadius;
+        }
+
+        const distance = Math.sqrt(distanceSq);
+        if (distance > circleRadius) continue;
+        const penetration = circleRadius - distance;
+        if (penetration <= bestPenetration) continue;
+        const nx = dx / (distance || 1);
+        const ny = dy / (distance || 1);
+        const world = this.worldFromLocal(hitLocalX, hitLocalY, asteroid);
+        const cos = Math.cos(asteroid.rotation);
+        const sin = Math.sin(asteroid.rotation);
+        bestPenetration = penetration;
+        best = {
+          x: world.x,
+          y: world.y,
+          normalX: nx * cos - ny * sin,
+          normalY: nx * sin + ny * cos,
+          penetration,
+          col,
+          row,
+        };
       }
     }
-    return false;
+    return best;
   }
 
   raycast(startX, startY, endX, endY, asteroid) {
@@ -510,8 +557,10 @@ export class VoxelAsteroidBody {
         const slotDef = this.slotDefs[slot] || this.slotDefs[1];
         const index = this.index(col, row);
         this.damage[index] += power * delta;
+        if (this.damage[index] > slotDef.hardness * 0.06) this.damagedCells.add(index);
         if (this.damage[index] < slotDef.hardness) continue;
         this.damage[index] = 0;
+        this.damagedCells.delete(index);
         this.cells[index] = 0;
         this.remainingSolidCount -= 1;
         this.renderDirty = true;
@@ -548,8 +597,8 @@ export class VoxelAsteroidBody {
       color: mixHex(def.color || '#777d86', '#0d1320', 0.08),
       edge: def.edge || def.color || '#d7e4ff',
       darkEdge: 'rgba(4, 9, 16, 0.78)',
-      size: Math.max(32, this.cellSize * 1.18),
-      lineWidth: Math.max(1.7, this.cellSize * 0.072),
+      size: Math.max(38, this.cellSize * 1.34),
+      lineWidth: Math.max(2, this.cellSize * 0.086),
       points,
       surfaceSegments: [
         { a: points[0], b: points[1] },
@@ -560,20 +609,20 @@ export class VoxelAsteroidBody {
   }
 
   loadFragment({ data, seed, dropScale = 1, cellSize, cols, rows, cells }) {
+    const squareCols = Math.max(cols, rows);
     this.data = data;
     this.seed = seed;
     this.dropScale = dropScale;
     this.cellSize = cellSize;
     this.padding = this.cellSize * 2;
-    this.cols = cols;
-    this.rows = rows;
-    this.size = Math.max(cols, rows) * this.cellSize;
+    this.cols = squareCols;
+    this.rows = squareCols;
+    this.size = squareCols * this.cellSize;
     this.originX = this.size / 2;
     this.originY = this.size / 2;
-    this.cells = new Uint8Array(this.size === cols * this.cellSize && rows === cols ? cells : this.copyFragmentCellsToSquare(cells, cols, rows));
-    this.cols = Math.round(this.size / this.cellSize);
-    this.rows = this.cols;
+    this.cells = new Uint8Array(cols === rows ? cells : this.copyFragmentCellsToSquare(cells, cols, rows));
     this.damage = new Float32Array(this.cells.length);
+    this.damagedCells = new Set();
     this.slotDefs = this.createSlotDefs(data);
     this.initialSolidCount = this.countSolidCells();
     this.remainingSolidCount = this.initialSolidCount;
@@ -624,6 +673,7 @@ export class VoxelAsteroidBody {
       for (const cellIndex of component.indices) {
         this.cells[cellIndex] = 0;
         this.damage[cellIndex] = 0;
+        this.damagedCells.delete(cellIndex);
       }
     }
 
@@ -771,6 +821,84 @@ export class VoxelAsteroidBody {
   draw(ctx) {
     if (!this.renderCanvas || this.renderDirty) this.redraw();
     ctx.drawImage(this.renderCanvas, -this.originX, -this.originY);
+  }
+
+  drawDamageMarks(ctx, time = 0) {
+    if (!this.damagedCells?.size) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const index of Array.from(this.damagedCells)) {
+      const row = Math.floor(index / this.cols);
+      const col = index - row * this.cols;
+      const damage = this.damage[index] || 0;
+      if (damage <= 0 || !this.isSolidCell(col, row)) {
+        this.damagedCells.delete(index);
+        continue;
+      }
+      const slot = this.getCell(col, row);
+      const def = this.slotDefs[slot] || this.slotDefs[1];
+      const ratio = clamp01(damage / Math.max(0.001, def.hardness || 1));
+      if (ratio < 0.06) continue;
+      this.drawCellDamageMark(ctx, col, row, slot, ratio, time);
+    }
+    ctx.restore();
+  }
+
+  drawCellDamageMark(ctx, col, row, slot, ratio, time = 0) {
+    const def = this.slotDefs[slot] || this.slotDefs[1];
+    const left = col * this.cellSize - this.originX;
+    const top = row * this.cellSize - this.originY;
+    const size = this.cellSize;
+    const seed = ((col * 19349663 + row * 83492791 + Math.floor(this.seed * 100000)) >>> 0);
+    const shakePower = 0.42 + ratio * 1.9;
+    const shakeX = Math.sin(time * 74 + seed * 0.017) * shakePower;
+    const shakeY = Math.cos(time * 81 + seed * 0.011) * shakePower;
+    const edge = def.edge || def.color || '#ffd36b';
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+    ctx.shadowColor = edge;
+    ctx.shadowBlur = 4 + ratio * 8;
+    ctx.beginPath();
+    ctx.rect(left - size * 0.04, top - size * 0.04, size * 1.08, size * 1.08);
+    ctx.clip();
+
+    ctx.globalAlpha = 0.18 + ratio * 0.24;
+    ctx.fillStyle = mixHex(def.color || '#777d86', '#ffffff', 0.16 + ratio * 0.12);
+    ctx.beginPath();
+    ctx.roundRect(left + size * 0.05, top + size * 0.05, size * 0.9, size * 0.9, Math.max(2, size * 0.12));
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.32 + ratio * 0.5;
+    ctx.strokeStyle = 'rgba(12, 15, 20, 0.84)';
+    ctx.lineWidth = Math.max(1.4, size * (0.05 + ratio * 0.035));
+    const centerX = left + size * 0.5;
+    const centerY = top + size * 0.5;
+    const crackCount = Math.min(6, 1 + Math.floor(ratio * 6));
+    for (let crack = 0; crack < crackCount; crack += 1) {
+      const a = seed * 0.0017 + crack * 2.05 + Math.sin(time * 4 + crack) * 0.025;
+      const start = size * (0.04 + Math.abs(signedNoise(seed + crack * 3.3)) * 0.08);
+      const length = size * (0.18 + ratio * (0.22 + Math.abs(signedNoise(seed + crack * 11.1)) * 0.24));
+      ctx.beginPath();
+      ctx.moveTo(centerX + Math.cos(a) * start, centerY + Math.sin(a) * start);
+      ctx.quadraticCurveTo(
+        centerX + Math.cos(a + 0.45) * length * 0.52,
+        centerY + Math.sin(a + 0.45) * length * 0.52,
+        centerX + Math.cos(a) * length,
+        centerY + Math.sin(a) * length,
+      );
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.2 + ratio * 0.36;
+    ctx.strokeStyle = withAlpha(edge, 0.78);
+    ctx.lineWidth = Math.max(1.1, size * 0.045);
+    ctx.beginPath();
+    ctx.roundRect(left + size * 0.08, top + size * 0.08, size * 0.84, size * 0.84, Math.max(2, size * 0.1));
+    ctx.stroke();
+    ctx.restore();
   }
 
   drawCellHighlight(ctx, hit, time = 0) {
