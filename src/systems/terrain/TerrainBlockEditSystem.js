@@ -38,7 +38,7 @@ export class TerrainBlockEditSystem {
     if (terrain.getMaterialLight(previousValue) || terrain.getMaterialLight(nextValue)) {
       terrain.markLightingOverlayDirty({
         defer: true,
-        bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
+        full: true,
       });
     }
     if ((previousValue > 0) !== (nextValue > 0)) terrain.invalidateSurfaceRadiusLookupNear(col, row);
@@ -188,7 +188,7 @@ export class TerrainBlockEditSystem {
         nextMaterial: 0,
         editedCells,
       });
-      if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, bounds: editBounds });
+      if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, full: true });
       terrain.markFastTerrainEdit(editBounds, qualityPadding);
       terrain.renderDirty = true;
       if (!terrain.renderCanvas || terrain.fullRenderDirty) terrain.fullRenderDirty = true;
