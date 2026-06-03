@@ -112,6 +112,14 @@ const TERRAIN_ROUGHNESS = {
   ...(TERRAIN_TUNING.roughness || {}),
 };
 
+const SHOW_TERRAIN_REBUILD_DEBUG = true;
+const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 3;
+const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
+
+if (typeof globalThis !== 'undefined' && typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') {
+  globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
+}
+
 const TERRAIN_LIGHTING = {
   enabled: true,
   darknessStartDepth: 3,
@@ -708,6 +716,11 @@ export class TerrainGrid {
     this.fastTerrainQualityBounds = null;
     this.fastTerrainQualityPadding = 0;
     this.fastTerrainQualityPending = false;
+    this.terrainRebuildDebugStack = [];
+    this.terrainRebuildDebugId = 0;
+    this.lastMiningEditAt = 0;
+    this.lastMiningEditBounds = null;
+    this.lastMiningBrokenCount = 0;
     this.removeGameArtReadyListener = onGameArtReady(() => {
       this.textureCache?.clear();
       this.renderDirty = true;
@@ -1477,6 +1490,167 @@ export class TerrainGrid {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
   }
 
+  isTerrainRebuildDebugEnabled() {
+    if (typeof globalThis?.SHOW_TERRAIN_REBUILD_DEBUG === 'boolean') {
+      return globalThis.SHOW_TERRAIN_REBUILD_DEBUG;
+    }
+    return SHOW_TERRAIN_REBUILD_DEBUG;
+  }
+
+  beginTerrainRebuildDebug(functionName, details = {}) {
+    if (!this.isTerrainRebuildDebugEnabled()) return null;
+    this.terrainRebuildDebugId = (this.terrainRebuildDebugId || 0) + 1;
+    const entry = {
+      id: this.terrainRebuildDebugId,
+      functionName,
+      startedAt: this.getClockNow(),
+      tilesProcessed: 0,
+      chunksRebuilt: 0,
+      roughEdgesRegenerated: 0,
+      fullPlanetRebuild: false,
+      ...details,
+    };
+    entry.timerLabel = `terrain:${functionName}#${entry.id}`;
+    this.terrainRebuildDebugStack.push(entry);
+    console.time?.(entry.timerLabel);
+    return entry;
+  }
+
+  getActiveTerrainRebuildDebug() {
+    return this.terrainRebuildDebugStack[this.terrainRebuildDebugStack.length - 1] || null;
+  }
+
+  addTerrainRebuildDebugStats(entry, stats = {}) {
+    if (!entry || !stats) return;
+    ['tilesProcessed', 'roughEdgesRegenerated', 'roughEdgesDrawn'].forEach((key) => {
+      if (Number.isFinite(stats[key])) entry[key] = (entry[key] || 0) + stats[key];
+    });
+    if (Number.isFinite(stats.chunksRebuilt)) {
+      entry.chunksRebuilt = Math.max(entry.chunksRebuilt || 0, stats.chunksRebuilt);
+    }
+    if (stats.fullPlanetRebuild) entry.fullPlanetRebuild = true;
+    if (stats.bounds) entry.bounds = stats.bounds;
+    if (stats.fromMining) entry.fromMining = true;
+    if (Number.isFinite(stats.brokenTiles)) entry.brokenTiles = stats.brokenTiles;
+  }
+
+  finishTerrainRebuildDebug(entry, stats = {}) {
+    if (!entry) return;
+    this.addTerrainRebuildDebugStats(entry, stats);
+    const index = this.terrainRebuildDebugStack.lastIndexOf(entry);
+    if (index >= 0) this.terrainRebuildDebugStack.splice(index, 1);
+    console.timeEnd?.(entry.timerLabel);
+    const timeMs = Math.max(0, this.getClockNow() - entry.startedAt);
+    const fromMining = Boolean(entry.fromMining || this.isRecentMiningEdit());
+    const payload = {
+      functionName: entry.functionName,
+      timeMs: Number(timeMs.toFixed(3)),
+      tilesProcessed: entry.tilesProcessed || 0,
+      chunksRebuilt: entry.chunksRebuilt || 0,
+      roughEdgesRegenerated: entry.roughEdgesRegenerated || 0,
+      roughEdgesDrawn: entry.roughEdgesDrawn || 0,
+      fullPlanetRebuild: Boolean(entry.fullPlanetRebuild),
+      fromMining,
+      brokenTiles: Number.isFinite(entry.brokenTiles) ? entry.brokenTiles : this.lastMiningBrokenCount || 0,
+      bounds: entry.bounds || null,
+    };
+    console.log('[terrain rebuild debug]', payload);
+    if (fromMining && payload.brokenTiles <= 1 && payload.chunksRebuilt > TERRAIN_REBUILD_CHUNK_WARNING_LIMIT) {
+      console.warn('WARNING: mining caused too many chunk rebuilds', payload);
+    }
+    if (fromMining && payload.fullPlanetRebuild) {
+      console.error('ERROR: mining triggered full planet visual rebuild', payload);
+    }
+  }
+
+  recordTerrainRoughEdgeRegenerated(count = 1) {
+    const entry = this.getActiveTerrainRebuildDebug();
+    if (entry) entry.roughEdgesRegenerated = (entry.roughEdgesRegenerated || 0) + count;
+  }
+
+  recordMiningEditDebug(bounds, brokenCount = 0) {
+    this.lastMiningEditAt = this.getClockNow();
+    this.lastMiningEditBounds = bounds ? { ...bounds } : null;
+    this.lastMiningBrokenCount = brokenCount;
+  }
+
+  isRecentMiningEdit(now = this.getClockNow()) {
+    return this.lastMiningEditAt > 0
+      && now - this.lastMiningEditAt <= TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS;
+  }
+
+  countCellsInBounds(bounds = null) {
+    const scan = bounds || {
+      minCol: 0,
+      maxCol: this.cols - 1,
+      minRow: 0,
+      maxRow: this.rows - 1,
+    };
+    return Math.max(0, scan.maxCol - scan.minCol + 1) * Math.max(0, scan.maxRow - scan.minRow + 1);
+  }
+
+  getChunkRangeForBounds(bounds = null) {
+    const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
+    const scan = bounds || {
+      minCol: 0,
+      maxCol: this.cols - 1,
+      minRow: 0,
+      maxRow: this.rows - 1,
+    };
+    return {
+      minChunkCol: Math.floor(clamp(scan.minCol, 0, this.cols - 1) / chunkSize),
+      maxChunkCol: Math.floor(clamp(scan.maxCol, 0, this.cols - 1) / chunkSize),
+      minChunkRow: Math.floor(clamp(scan.minRow, 0, this.rows - 1) / chunkSize),
+      maxChunkRow: Math.floor(clamp(scan.maxRow, 0, this.rows - 1) / chunkSize),
+    };
+  }
+
+  countChunksForBounds(bounds = null) {
+    const range = this.getChunkRangeForBounds(bounds);
+    return Math.max(0, range.maxChunkCol - range.minChunkCol + 1)
+      * Math.max(0, range.maxChunkRow - range.minChunkRow + 1);
+  }
+
+  markDirtyChunksForBounds(bounds = null) {
+    if (!bounds) return 0;
+    const range = this.getChunkRangeForBounds(bounds);
+    let count = 0;
+    for (let chunkRow = range.minChunkRow; chunkRow <= range.maxChunkRow; chunkRow += 1) {
+      for (let chunkCol = range.minChunkCol; chunkCol <= range.maxChunkCol; chunkCol += 1) {
+        const key = `${chunkCol},${chunkRow}`;
+        if (!this.dirtyChunks.has(key)) count += 1;
+        this.dirtyChunks.add(key);
+      }
+    }
+    return count;
+  }
+
+  invalidateRoughEdgesAroundCell(col, row, { radius = 1 } = {}) {
+    if (!this.roughEdgeCache?.size) return 0;
+    let deleted = 0;
+    const materialIds = Object.keys(TERRAIN_MATERIALS);
+    for (let y = row - radius; y <= row + radius; y += 1) {
+      for (let x = col - radius; x <= col + radius; x += 1) {
+        if (!this.isInside(x, y)) continue;
+        for (const directionName of EDGE_DIRECTION_NAMES) {
+          for (const materialId of materialIds) {
+            if (this.roughEdgeCache.delete(`${x}:${y}:${directionName}:${materialId}`)) deleted += 1;
+          }
+        }
+      }
+    }
+    return deleted;
+  }
+
+  invalidateRoughEdgesForEditedCells(cells = []) {
+    let deleted = 0;
+    for (const cell of cells) {
+      if (!Number.isInteger(cell?.col) || !Number.isInteger(cell?.row)) continue;
+      deleted += this.invalidateRoughEdgesAroundCell(cell.col, cell.row, { radius: 1 });
+    }
+    return deleted;
+  }
+
   markAirExposureDirty({ defer = false } = {}) {
     if (!defer || !this.airExposureMap || this.airExposureMap.length !== this.cells.length) {
       this.airExposureDirty = true;
@@ -1539,6 +1713,10 @@ export class TerrainGrid {
 
   flushStaleContourRenderCaches() {
     if (!this.contourCacheStale && !this.roughContourCacheStale) return;
+    const debug = this.beginTerrainRebuildDebug('outline/contour cache flush', {
+      fullPlanetRebuild: true,
+      fromMining: this.isRecentMiningEdit(),
+    });
     if (this.contourCacheStale) {
       this.contourCache?.clear();
       this.contourCacheStale = false;
@@ -1548,6 +1726,12 @@ export class TerrainGrid {
       this.roughContourCache?.clear();
       this.roughContourCacheStale = false;
     }
+    this.finishTerrainRebuildDebug(debug, {
+      tilesProcessed: this.countCellsInBounds(null),
+      chunksRebuilt: this.countChunksForBounds(null),
+      fullPlanetRebuild: true,
+      fromMining: this.isRecentMiningEdit(),
+    });
   }
 
   invalidateTerrainGeometry({ keepSurfacePath = false } = {}) {
@@ -1625,6 +1809,7 @@ export class TerrainGrid {
   markDirtyBounds(bounds, padding = 0) {
     if (!bounds) return;
     const expanded = this.expandCellBounds(bounds, padding);
+    this.markDirtyChunksForBounds(expanded);
     if (!this.dirtyBounds) {
       this.dirtyBounds = expanded;
       return;
@@ -1663,16 +1848,13 @@ export class TerrainGrid {
     const resolvedPadding = Number.isFinite(padding)
       ? Math.max(1, Math.ceil(padding))
       : this.getDirtyPaddingCellsForMaterialChange(this.getCell(col, row), this.getCell(col, row));
-    const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
-    const chunkCol = Math.floor(col / chunkSize);
-    const chunkRow = Math.floor(row / chunkSize);
-    this.dirtyChunks.add(`${chunkCol},${chunkRow}`);
     const bounds = {
       minCol: clamp(col - resolvedPadding, 0, this.cols - 1),
       maxCol: clamp(col + resolvedPadding, 0, this.cols - 1),
       minRow: clamp(row - resolvedPadding, 0, this.rows - 1),
       maxRow: clamp(row + resolvedPadding, 0, this.rows - 1),
     };
+    this.markDirtyChunksForBounds(bounds);
     if (!this.dirtyBounds) {
       this.dirtyBounds = bounds;
       return;
@@ -2621,12 +2803,32 @@ export class TerrainGrid {
   redrawTerrainCache({ now = this.getClockNow(), fastRedraw = this.isFastTerrainRedrawActive(now) } = {}) {
     const canvas = this.getRenderCanvas();
     const ctx = this.renderCtx;
-    if (this.fullRenderDirty || !this.dirtyBounds) {
-      this.flushStaleContourRenderCaches();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      this.drawTerrainLayers(ctx);
-    } else {
-      this.redrawTerrainRegion(ctx, this.dirtyBounds, { fastRedraw });
+    const rebuildBounds = this.dirtyBounds ? { ...this.dirtyBounds } : null;
+    const fullPlanetRebuild = Boolean(this.fullRenderDirty || !rebuildBounds);
+    const chunksRebuilt = fullPlanetRebuild
+      ? this.countChunksForBounds(null)
+      : (this.dirtyChunks.size || this.countChunksForBounds(rebuildBounds));
+    const debug = this.beginTerrainRebuildDebug('terrain visual rebuild', {
+      bounds: rebuildBounds,
+      chunksRebuilt,
+      fullPlanetRebuild,
+      fromMining: this.isRecentMiningEdit(now),
+    });
+    try {
+      if (fullPlanetRebuild) {
+        this.flushStaleContourRenderCaches();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.drawTerrainLayers(ctx);
+      } else {
+        this.redrawTerrainRegion(ctx, rebuildBounds, { fastRedraw });
+      }
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: fullPlanetRebuild ? this.countCellsInBounds(null) : this.countCellsInBounds(rebuildBounds),
+        chunksRebuilt,
+        fullPlanetRebuild,
+        fromMining: this.isRecentMiningEdit(now),
+      });
     }
     this.renderDirty = false;
     this.fullRenderDirty = false;
@@ -2647,16 +2849,35 @@ export class TerrainGrid {
     };
     const rect = this.getDrawRect(bounds, clearPadding);
     if (rect.width <= 0 || rect.height <= 0) return;
-    ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(rect.x, rect.y, rect.width, rect.height);
-    ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw });
-    ctx.restore();
+    const debug = this.beginTerrainRebuildDebug('chunk rebuild', {
+      bounds: paintBounds,
+      chunksRebuilt: this.countChunksForBounds(paintBounds),
+      fullPlanetRebuild: false,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    try {
+      ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.width, rect.height);
+      ctx.clip();
+      this.drawTerrainLayers(ctx, paintBounds, { fastRedraw });
+      ctx.restore();
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: this.countCellsInBounds(paintBounds),
+        chunksRebuilt: this.countChunksForBounds(paintBounds),
+        fullPlanetRebuild: false,
+        fromMining: this.isRecentMiningEdit(),
+      });
+    }
   }
 
   drawTerrainLayers(ctx, bounds = null, { fastRedraw = false, drawOutline = true } = {}) {
+    if (bounds && (fastRedraw || this.isRecentMiningEdit())) {
+      this.drawFastTerrainLayers(ctx, bounds, { drawOutline });
+      return;
+    }
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds, { fastRedraw });
@@ -2668,6 +2889,107 @@ export class TerrainGrid {
   drawTerrainOutlineLayer(ctx, bounds = null, { fastRedraw = false } = {}) {
     if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
     else this.drawEdgeContours(ctx, bounds);
+  }
+
+  drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
+    this.drawFastBackgroundWalls(ctx, bounds);
+    this.drawFastOrganicMass(ctx, bounds);
+    this.drawFastRockTexture(ctx, bounds);
+    this.drawFastOreVeins(ctx, bounds);
+    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: true });
+    this.drawConstructedMaterials(ctx, bounds);
+  }
+
+  drawFastBackgroundWalls(ctx, bounds) {
+    if (!TERRAIN_WALLS.enabled || !this.wallCells?.length || !bounds) return;
+    const size = this.cellSize;
+    ctx.save();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        const material = this.getWallCell(col, row);
+        if (material <= 0) continue;
+        const style = this.getWallStyleForMaterial(material);
+        ctx.fillStyle = withAlpha(style.base, style.alpha);
+        ctx.fillRect(col * size, row * size, size, size);
+        if (this.getWallCell(col, row - 1) !== material) {
+          ctx.fillStyle = withAlpha(style.edge, clamp01((TERRAIN_WALLS.edgeAlpha ?? 0.18) * 0.85));
+          ctx.fillRect(col * size, row * size, size, Math.max(1, size * 0.06));
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  drawFastOrganicMass(ctx, bounds) {
+    if (!bounds) return;
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
+    gradient.addColorStop(0, palette.top);
+    gradient.addColorStop(0.48, palette.body);
+    gradient.addColorStop(1, palette.deep);
+    const size = this.cellSize;
+    ctx.save();
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        if (!this.isNaturalSolidCell(col, row)) continue;
+        ctx.rect(col * size, row * size, size, size);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFastRockTexture(ctx, bounds) {
+    if (!bounds) return;
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    const tile = this.getTextureTile(
+      `stone:${this.seed}:${this.biome}`,
+      (tileCtx, width, height) => this.drawStoneTextureTile(tileCtx, width, height, palette),
+    );
+    const pattern = ctx.createPattern(tile, 'repeat');
+    if (!pattern) return;
+    const size = this.cellSize;
+    ctx.save();
+    ctx.fillStyle = pattern;
+    ctx.beginPath();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        if (!this.isNaturalSolidCell(col, row)) continue;
+        ctx.rect(col * size, row * size, size, size);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFastOreVeins(ctx, bounds) {
+    if (!bounds) return;
+    const size = this.cellSize;
+    ctx.save();
+    for (const [materialKey, data] of Object.entries(TERRAIN_MATERIALS)) {
+      const material = Number(materialKey);
+      if (material <= 1 || this.isConstructedMaterial(material)) continue;
+      if (!data?.color || !this.hasMaterialInBounds(material, bounds, 0)) continue;
+      const tile = this.getTextureTile(
+        `ore:${this.seed}:${material}:${data.color}:${data.edge}`,
+        (tileCtx, width, height) => this.drawOreTextureTile(tileCtx, width, height, data, material),
+      );
+      const pattern = ctx.createPattern(tile, 'repeat');
+      if (!pattern) continue;
+      ctx.globalAlpha = material >= 4 ? 0.95 : 0.86;
+      ctx.fillStyle = pattern;
+      ctx.beginPath();
+      for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+        for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+          if (this.getCell(col, row) !== material) continue;
+          ctx.rect(col * size, row * size, size, size);
+        }
+      }
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh } = {}) {
@@ -3653,15 +3975,30 @@ export class TerrainGrid {
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
     const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
     const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
-    for (let row = minRow; row <= maxRow; row += 1) {
-      for (let col = minCol; col <= maxCol; col += 1) {
-        const marchingIndex = this.getMarchingIndex(col, row, sample);
-        const polygons = FILL_POLYGONS[marchingIndex];
-        if (!polygons?.length) continue;
-        const x = col * step;
-        const y = row * step;
-        for (const polygon of polygons) this.tracePolygon(ctx, x, y, step, polygon);
+    const debug = this.beginTerrainRebuildDebug('outline/contour generation', {
+      bounds,
+      chunksRebuilt: this.countChunksForBounds(bounds),
+      fullPlanetRebuild: false,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    try {
+      for (let row = minRow; row <= maxRow; row += 1) {
+        for (let col = minCol; col <= maxCol; col += 1) {
+          const marchingIndex = this.getMarchingIndex(col, row, sample);
+          const polygons = FILL_POLYGONS[marchingIndex];
+          if (!polygons?.length) continue;
+          const x = col * step;
+          const y = row * step;
+          for (const polygon of polygons) this.tracePolygon(ctx, x, y, step, polygon);
+        }
       }
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: Math.max(0, maxCol - minCol + 1) * Math.max(0, maxRow - minRow + 1),
+        chunksRebuilt: this.countChunksForBounds(bounds),
+        fullPlanetRebuild: false,
+        fromMining: this.isRecentMiningEdit(),
+      });
     }
   }
 
@@ -3731,25 +4068,38 @@ export class TerrainGrid {
     const maxCol = Math.max(1, Math.ceil(this.width / step));
     const maxRow = Math.max(1, Math.ceil(this.height / step));
     const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
-
-    for (let row = 0; row < maxRow; row += 1) {
-      for (let col = 0; col < maxCol; col += 1) {
-        const index = this.getMarchingIndex(col, row, sample);
-        const edgeSegments = EDGE_SEGMENTS[index];
-        if (!edgeSegments?.length) continue;
-        const x = col * step;
-        const y = row * step;
-        for (const segment of edgeSegments) {
-          const a = POINTS[segment[0]];
-          const b = POINTS[segment[1]];
-          segments.push({
-            a: { x: x + a[0] * step, y: y + a[1] * step },
-            b: { x: x + b[0] * step, y: y + b[1] * step },
-          });
+    const debug = this.beginTerrainRebuildDebug('outline/contour generation', {
+      chunksRebuilt: this.countChunksForBounds(null),
+      fullPlanetRebuild: true,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    try {
+      for (let row = 0; row < maxRow; row += 1) {
+        for (let col = 0; col < maxCol; col += 1) {
+          const index = this.getMarchingIndex(col, row, sample);
+          const edgeSegments = EDGE_SEGMENTS[index];
+          if (!edgeSegments?.length) continue;
+          const x = col * step;
+          const y = row * step;
+          for (const segment of edgeSegments) {
+            const a = POINTS[segment[0]];
+            const b = POINTS[segment[1]];
+            segments.push({
+              a: { x: x + a[0] * step, y: y + a[1] * step },
+              b: { x: x + b[0] * step, y: y + b[1] * step },
+            });
+          }
         }
       }
+      return this.linkContourSegments(segments, options, step);
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: maxCol * maxRow,
+        chunksRebuilt: this.countChunksForBounds(null),
+        fullPlanetRebuild: true,
+        fromMining: this.isRecentMiningEdit(),
+      });
     }
-    return this.linkContourSegments(segments, options, step);
   }
 
   linkContourSegments(segments, options = VISUAL_CONTOUR_OPTIONS, gridStep = 1) {
@@ -4270,15 +4620,24 @@ export class TerrainGrid {
 
   forEachExposedTerrainCell(bounds, callback) {
     const scan = this.getRoughnessBounds(bounds);
+    const stats = {
+      tilesProcessed: 0,
+      exposedCells: 0,
+      roughEdgesDrawn: 0,
+    };
     for (let row = scan.minRow; row <= scan.maxRow; row += 1) {
       for (let col = scan.minCol; col <= scan.maxCol; col += 1) {
+        stats.tilesProcessed += 1;
         const material = this.getCell(col, row);
         if (material <= 0 || this.isConstructedMaterial(material)) continue;
         const edges = this.getExposedEdges(col, row);
         if (!edges.length) continue;
+        stats.exposedCells += 1;
+        stats.roughEdgesDrawn += edges.length;
         callback({ col, row, material, edges });
       }
     }
+    return stats;
   }
 
   getEdgeBasePoint(col, row, directionName, t = 0) {
@@ -4301,6 +4660,7 @@ export class TerrainGrid {
   getRoughEdgeData(col, row, directionName, materialId) {
     const key = `${col}:${row}:${directionName}:${materialId}`;
     if (this.roughEdgeCache.has(key)) return this.roughEdgeCache.get(key);
+    this.recordTerrainRoughEdgeRegenerated(1);
     const direction = EDGE_DIRECTIONS[directionName];
     const style = this.getMaterialRoughnessStyle(materialId);
     const directionIndex = EDGE_DIRECTION_NAMES.indexOf(directionName) + 1;
@@ -4413,26 +4773,39 @@ export class TerrainGrid {
     const maxRow = clamp(Math.ceil(((bounds.maxRow + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
     const sample = (col, row) => this.sampleContourNode(predicate, col, row, step, options);
     const segments = [];
-
-    for (let row = minRow; row <= maxRow; row += 1) {
-      for (let col = minCol; col <= maxCol; col += 1) {
-        const index = this.getMarchingIndex(col, row, sample);
-        const edgeSegments = EDGE_SEGMENTS[index];
-        if (!edgeSegments?.length) continue;
-        const x = col * step;
-        const y = row * step;
-        for (const segment of edgeSegments) {
-          const a = POINTS[segment[0]];
-          const b = POINTS[segment[1]];
-          segments.push({
-            a: { x: x + a[0] * step, y: y + a[1] * step },
-            b: { x: x + b[0] * step, y: y + b[1] * step },
-          });
+    const debug = this.beginTerrainRebuildDebug('outline/contour generation', {
+      bounds,
+      chunksRebuilt: this.countChunksForBounds(bounds),
+      fullPlanetRebuild: false,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    try {
+      for (let row = minRow; row <= maxRow; row += 1) {
+        for (let col = minCol; col <= maxCol; col += 1) {
+          const index = this.getMarchingIndex(col, row, sample);
+          const edgeSegments = EDGE_SEGMENTS[index];
+          if (!edgeSegments?.length) continue;
+          const x = col * step;
+          const y = row * step;
+          for (const segment of edgeSegments) {
+            const a = POINTS[segment[0]];
+            const b = POINTS[segment[1]];
+            segments.push({
+              a: { x: x + a[0] * step, y: y + a[1] * step },
+              b: { x: x + b[0] * step, y: y + b[1] * step },
+            });
+          }
         }
       }
+      return this.linkContourSegments(segments, options, step);
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: Math.max(0, maxCol - minCol + 1) * Math.max(0, maxRow - minRow + 1),
+        chunksRebuilt: this.countChunksForBounds(bounds),
+        fullPlanetRebuild: false,
+        fromMining: this.isRecentMiningEdit(),
+      });
     }
-
-    return this.linkContourSegments(segments, options, step);
   }
 
   createRoughContourLoopsFromSource(sourceLoops) {
@@ -4538,36 +4911,47 @@ export class TerrainGrid {
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
+    const debug = this.beginTerrainRebuildDebug('rough edge generation', {
+      bounds,
+      chunksRebuilt: this.countChunksForBounds(bounds),
+      fullPlanetRebuild: !bounds,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    let stats = null;
     const outlineOnly = this.isRoughnessOutlineOnly();
-    if (fastRedraw && !outlineOnly && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
-      this.drawEdgeContours(ctx, bounds);
-      return;
-    }
-    if (outlineOnly) {
+    try {
+      if (fastRedraw && !outlineOnly && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
+      }
+      if (outlineOnly) {
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
+      }
       if (bounds) {
-        const segments = this.getLocalRoughContourSegments(bounds);
-        this.drawLocalRoughContourLines(ctx, segments);
-      } else {
-        this.drawRoughContourLines(ctx, bounds);
+        if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughEdgeChipCuts(ctx, bounds);
+        if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughEdgeShadows(ctx, bounds);
+        if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+          this.drawRoughSurfaceDetails(ctx, bounds);
+        }
+        if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughPebbleLips(ctx, bounds);
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
       }
-      return;
+      if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughContourShadows(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.surfaceDetails !== false) this.drawRoughSurfaceDetails(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughContourPebbleLips(ctx, bounds);
+      this.drawRoughContourLines(ctx, bounds);
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: stats?.tilesProcessed || this.countCellsInBounds(bounds),
+        roughEdgesDrawn: stats?.roughEdgesDrawn || 0,
+        chunksRebuilt: this.countChunksForBounds(bounds),
+        fullPlanetRebuild: !bounds,
+        fromMining: this.isRecentMiningEdit(),
+      });
     }
-    if (bounds) {
-      const segments = this.getLocalRoughContourSegments(bounds);
-      if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
-        this.drawLocalRoughContourShadows(ctx, segments);
-      }
-      if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
-        this.drawRoughSurfaceDetails(ctx, bounds);
-      }
-      this.drawLocalRoughContourLines(ctx, segments);
-      return;
-    }
-    if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
-    if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughContourShadows(ctx, bounds);
-    if (TERRAIN_ROUGHNESS.surfaceDetails !== false) this.drawRoughSurfaceDetails(ctx, bounds);
-    if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughContourPebbleLips(ctx, bounds);
-    this.drawRoughContourLines(ctx, bounds);
   }
 
   getLocalRoughContourSegments(bounds) {
@@ -4880,7 +5264,7 @@ export class TerrainGrid {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
+    const stats = this.forEachExposedTerrainCell(bounds, ({ col, row, material, edges }) => {
       const materialData = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
       edges.forEach((directionName) => {
         const data = this.getRoughEdgeData(col, row, directionName, material);
@@ -4897,6 +5281,7 @@ export class TerrainGrid {
       });
     });
     ctx.restore();
+    return stats;
   }
 
   drawRoughPebbleLips(ctx, bounds = null) {

@@ -84,22 +84,37 @@ export class TerrainShadowSystem {
         Math.ceil((terrain.getMaxMaterialLightRadius() + terrain.cellSize * 4) / Math.max(1, terrain.cellSize)),
       )
       : null;
-    if (partialBounds) {
-      const rect = terrain.getLightingDrawRect(partialBounds);
-      overlayCtx.clearRect(rect.x, rect.y, rect.width, rect.height);
-      if (terrain.lightingRenderEnabled || terrain.depthDebugEnabled) {
-        overlayCtx.save();
-        overlayCtx.beginPath();
-        overlayCtx.rect(rect.x, rect.y, rect.width, rect.height);
-        overlayCtx.clip();
-        terrain.drawDepthLightingOverlay(overlayCtx, partialBounds, { fastRedraw: true });
-        overlayCtx.restore();
+    const debug = terrain.beginTerrainRebuildDebug?.('lighting rebuild', {
+      bounds: partialBounds,
+      chunksRebuilt: terrain.countChunksForBounds?.(partialBounds) || 0,
+      fullPlanetRebuild: !partialBounds,
+      fromMining: terrain.isRecentMiningEdit?.() || false,
+    });
+    try {
+      if (partialBounds) {
+        const rect = terrain.getLightingDrawRect(partialBounds);
+        overlayCtx.clearRect(rect.x, rect.y, rect.width, rect.height);
+        if (terrain.lightingRenderEnabled || terrain.depthDebugEnabled) {
+          overlayCtx.save();
+          overlayCtx.beginPath();
+          overlayCtx.rect(rect.x, rect.y, rect.width, rect.height);
+          overlayCtx.clip();
+          terrain.drawDepthLightingOverlay(overlayCtx, partialBounds, { fastRedraw: true });
+          overlayCtx.restore();
+        }
+      } else {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        if (terrain.lightingRenderEnabled || terrain.depthDebugEnabled) {
+          terrain.drawDepthLightingOverlay(overlayCtx, null, { fastRedraw: false });
+        }
       }
-    } else {
-      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      if (terrain.lightingRenderEnabled || terrain.depthDebugEnabled) {
-        terrain.drawDepthLightingOverlay(overlayCtx, null, { fastRedraw: false });
-      }
+    } finally {
+      terrain.finishTerrainRebuildDebug?.(debug, {
+        tilesProcessed: terrain.countCellsInBounds?.(partialBounds) || 0,
+        chunksRebuilt: terrain.countChunksForBounds?.(partialBounds) || 0,
+        fullPlanetRebuild: !partialBounds,
+        fromMining: terrain.isRecentMiningEdit?.() || false,
+      });
     }
     this.dirty = false;
     this.ready = true;

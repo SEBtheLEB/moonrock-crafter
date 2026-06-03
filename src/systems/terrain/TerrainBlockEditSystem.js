@@ -21,6 +21,11 @@ export class TerrainBlockEditSystem {
     const previousValue = terrain.cells[index];
     const nextValue = Math.max(0, Number(value) || 0);
     if (previousValue === nextValue) return;
+    const debug = terrain.beginTerrainRebuildDebug?.('setCell update', {
+      bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
+      chunksRebuilt: terrain.countChunksForBounds?.({ minCol: col, maxCol: col, minRow: row, maxRow: row }) || 0,
+      fullPlanetRebuild: false,
+    });
     terrain.cells[index] = nextValue;
     terrain.damage[index] = 0;
     terrain.damagedCells.delete(index);
@@ -28,6 +33,7 @@ export class TerrainBlockEditSystem {
       keepSurfacePath: true,
       previousMaterial: previousValue,
       nextMaterial: nextValue,
+      editedCells: [{ col, row }],
     });
     if (terrain.getMaterialLight(previousValue) || terrain.getMaterialLight(nextValue)) {
       terrain.markLightingOverlayDirty({
@@ -40,12 +46,18 @@ export class TerrainBlockEditSystem {
     if (terrain.renderCanvas && !terrain.fullRenderDirty) {
       terrain.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(previousValue, nextValue));
     } else terrain.fullRenderDirty = true;
+    terrain.finishTerrainRebuildDebug?.(debug, {
+      tilesProcessed: 1,
+      chunksRebuilt: terrain.dirtyChunks?.size || 0,
+      fullPlanetRebuild: Boolean(terrain.fullRenderDirty && !terrain.dirtyBounds),
+    });
   }
 
   invalidateEditedTerrainGeometry({
     keepSurfacePath = true,
     previousMaterial = 0,
     nextMaterial = 0,
+    editedCells = [],
   } = {}) {
     const terrain = this.terrain;
     const touchedNaturalSurface = (
@@ -53,9 +65,9 @@ export class TerrainBlockEditSystem {
       || (nextMaterial > 0 && !terrain.isConstructedMaterial(nextMaterial))
     );
     if (keepSurfacePath) {
-      // Bounded redraws sample live cells, so keep full-map contour caches intact
-      // until a real full redraw needs them.
-      terrain.markContourRenderCachesStale({ rough: touchedNaturalSurface });
+      // Bounded redraws sample live cells, so keep full-map rough contour caches intact.
+      terrain.markContourRenderCachesStale({ rough: false });
+      if (touchedNaturalSurface) terrain.invalidateRoughEdgesForEditedCells?.(editedCells);
       return;
     }
     terrain.clearContourRenderCaches();
@@ -82,13 +94,21 @@ export class TerrainBlockEditSystem {
 
   getFastEditDirtyPaddingCells() {
     const terrain = this.terrain;
-    return Math.max(4, Math.ceil((terrain.cellSize * 5.5) / Math.max(1, terrain.cellSize)));
+    return Math.max(2, Math.ceil(this.getLocalRedrawPaddingPixels() / Math.max(1, terrain.cellSize)));
   }
 
   mineCircle(worldX, worldY, radius, power, delta, options = {}) {
     const terrain = this.terrain;
+    const debug = terrain.beginTerrainRebuildDebug?.('mineCircle update', {
+      bounds: Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow)
+        ? { minCol: options.targetCol, maxCol: options.targetCol, minRow: options.targetRow, maxRow: options.targetRow }
+        : null,
+      fullPlanetRebuild: false,
+      fromMining: true,
+    });
     const broken = [];
     let brokeEmissiveMaterial = false;
+    let tilesProcessed = 0;
     const halfSize = terrain.cellSize * 0.5;
     const hasTarget = Number.isInteger(options.targetCol) && Number.isInteger(options.targetRow);
     const startCol = Math.max(0, Math.min(terrain.cols - 1, Math.floor((worldX - radius - halfSize) / terrain.cellSize)));
@@ -97,6 +117,7 @@ export class TerrainBlockEditSystem {
     const endRow = Math.max(0, Math.min(terrain.rows - 1, Math.ceil((worldY + radius + halfSize) / terrain.cellSize)));
     for (let row = startRow; row <= endRow; row += 1) {
       for (let col = startCol; col <= endCol; col += 1) {
+        tilesProcessed += 1;
         const material = terrain.getCell(col, row);
         if (material <= 0) continue;
         const left = col * terrain.cellSize;
@@ -145,8 +166,10 @@ export class TerrainBlockEditSystem {
       let editBounds = null;
       let qualityPadding = 0;
       let previousMaterial = 0;
+      const editedCells = [];
       for (const cell of broken) {
         previousMaterial = previousMaterial || cell.material;
+        editedCells.push({ col: cell.col, row: cell.row });
         terrain.invalidateSurfaceRadiusLookupNear(cell.col, cell.row);
         editBounds = terrain.mergeBounds(editBounds, {
           minCol: cell.col,
@@ -163,12 +186,27 @@ export class TerrainBlockEditSystem {
         keepSurfacePath: true,
         previousMaterial,
         nextMaterial: 0,
+        editedCells,
       });
       if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, bounds: editBounds });
       terrain.markFastTerrainEdit(editBounds, qualityPadding);
       terrain.renderDirty = true;
       if (!terrain.renderCanvas || terrain.fullRenderDirty) terrain.fullRenderDirty = true;
+      terrain.recordMiningEditDebug?.(editBounds, broken.length);
     }
+    terrain.finishTerrainRebuildDebug?.(debug, {
+      tilesProcessed,
+      chunksRebuilt: terrain.dirtyChunks?.size || 0,
+      fullPlanetRebuild: Boolean(terrain.fullRenderDirty && !terrain.dirtyBounds),
+      fromMining: true,
+      brokenTiles: broken.length,
+      bounds: broken.length ? broken.reduce((bounds, cell) => terrain.mergeBounds(bounds, {
+        minCol: cell.col,
+        maxCol: cell.col,
+        minRow: cell.row,
+        maxRow: cell.row,
+      }), null) : null,
+    });
     return broken;
   }
 }

@@ -82,6 +82,11 @@ export class TerrainWallSystem {
   generateLayerForPlanet() {
     const terrain = this.terrain;
     if (!terrain.wallConfig.enabled) return;
+    const debug = terrain.beginTerrainRebuildDebug?.('wall rebuild', {
+      fullPlanetRebuild: true,
+      chunksRebuilt: terrain.countChunksForBounds?.(null) || 0,
+      fromMining: terrain.isRecentMiningEdit?.() || false,
+    });
     terrain.wallCells.fill(0);
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
@@ -95,11 +100,22 @@ export class TerrainWallSystem {
     terrain.markLightingOverlayDirty({ defer: false, full: true });
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
+    terrain.finishTerrainRebuildDebug?.(debug, {
+      tilesProcessed: terrain.countCellsInBounds?.(null) || 0,
+      chunksRebuilt: terrain.countChunksForBounds?.(null) || 0,
+      fullPlanetRebuild: true,
+      fromMining: terrain.isRecentMiningEdit?.() || false,
+    });
   }
 
   repairNaturalLayerForPlanet() {
     const terrain = this.terrain;
     if (!terrain.wallConfig.enabled || !terrain.wallCells?.length) return false;
+    const debug = terrain.beginTerrainRebuildDebug?.('wall rebuild', {
+      fullPlanetRebuild: true,
+      chunksRebuilt: terrain.countChunksForBounds?.(null) || 0,
+      fromMining: terrain.isRecentMiningEdit?.() || false,
+    });
     let changed = false;
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
@@ -111,12 +127,26 @@ export class TerrainWallSystem {
         changed = true;
       }
     }
-    if (!changed) return false;
+    if (!changed) {
+      terrain.finishTerrainRebuildDebug?.(debug, {
+        tilesProcessed: terrain.countCellsInBounds?.(null) || 0,
+        chunksRebuilt: 0,
+        fullPlanetRebuild: false,
+        fromMining: terrain.isRecentMiningEdit?.() || false,
+      });
+      return false;
+    }
     terrain.contourCache?.clear();
     terrain.markAirExposureDirty({ defer: false });
     terrain.markLightingOverlayDirty({ defer: false, full: true });
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
+    terrain.finishTerrainRebuildDebug?.(debug, {
+      tilesProcessed: terrain.countCellsInBounds?.(null) || 0,
+      chunksRebuilt: terrain.countChunksForBounds?.(null) || 0,
+      fullPlanetRebuild: true,
+      fromMining: terrain.isRecentMiningEdit?.() || false,
+    });
     return true;
   }
 }
