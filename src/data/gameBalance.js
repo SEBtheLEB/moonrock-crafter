@@ -281,7 +281,7 @@ export const gameBalance = {
       },
     },
     roughness: {
-      enabled: true,
+      enabled: false,
       edgeNoiseStrength: 2.8,
       edgeNoiseScale: 0.72,
       edgeSegmentCount: 5,
