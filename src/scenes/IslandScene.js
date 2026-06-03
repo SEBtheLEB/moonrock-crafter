@@ -460,22 +460,46 @@ export class IslandScene {
 
     let index = 0;
     for (const [materialId, entry] of grouped.entries()) {
-      const material = this.game.systems.materials.getMaterial(materialId);
-      const spawn = this.terrain.getClosestTerrainSurfacePoint?.(entry.x, entry.y, 14) || entry;
-      this.terrainPickups.push(this.acquireTerrainPickup({
-        materialId,
-        amount: entry.amount,
-        x: spawn.x + Math.cos(index * 2.3 + this.time) * 4,
-        y: spawn.y + Math.sin(index * 1.7 + this.time) * 4,
-        seed: Math.random(),
-        material,
-        chip: entry.chip,
-      }));
+      this.collectTerrainDropDirect(materialId, entry, index);
       index += 1;
     }
 
     const weight = this.game.systems.inventory.getRunCargoWeight();
     this.miningStats.cargo = Math.ceil(weight);
+  }
+
+  collectTerrainDropDirect(materialId, entry, index = 0) {
+    const amount = Math.max(1, Math.floor(entry.amount || 0));
+    if (!amount) return false;
+    const x = entry.x + Math.cos(index * 2.3 + this.time) * 4;
+    const y = entry.y + Math.sin(index * 1.7 + this.time) * 4;
+    const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
+      capacity: this.miningStats.cargoCapacity,
+    });
+    if (!result.ok) {
+      if (this.cargoFullToastReady) {
+        this.cargoFullToastReady = false;
+        this.game.ui.showToast('Cargo Full', 'danger');
+        this.game.audio.playCargoFull();
+        this.addFloatingText('Cargo Full', '#ff756f', x, y);
+        window.setTimeout(() => {
+          this.cargoFullToastReady = true;
+        }, 1200);
+      }
+      return false;
+    }
+    const material = this.game.systems.materials.getMaterial(materialId);
+    this.game.systems.objectives.record('materialCollected', { materialId, amount });
+    this.addFloatingText(
+      `+${amount} ${this.game.systems.materials.getDisplayName(materialId)}`,
+      material?.color || '#fff2cf',
+      x,
+      y,
+    );
+    this.game.audio.playIslandPickup?.();
+    const weight = this.game.systems.inventory.getRunCargoWeight();
+    this.miningStats.cargo = Math.ceil(weight);
+    return true;
   }
 
   acquireTerrainPickup(options) {

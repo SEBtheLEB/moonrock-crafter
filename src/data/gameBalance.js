@@ -235,7 +235,7 @@ export const gameBalance = {
     oreDensity: 1,
     miningBrushRadius: 28,
     walls: {
-      enabled: false,
+      enabled: true,
       startDepth: 0.55,
       materialInfluenceRadius: 4,
       textureAlpha: 0.96,

@@ -7682,19 +7682,62 @@ export class MiningScene {
     }
     let index = 0;
     for (const [materialId, entry] of grouped.entries()) {
-      const material = this.game.systems.materials.getMaterial(materialId);
-      const spawn = this.getIslandPickupSpawnPoint(entry, index);
-      this.islandPickups.push(this.acquireIslandPickup({
-        materialId,
-        amount: entry.amount,
-        x: spawn.x + Math.cos(index * 2.3 + this.time) * 4,
-        y: spawn.y + Math.sin(index * 1.7 + this.time) * 4,
-        seed: Math.random(),
-        material,
-        chip: entry.chip,
-      }));
+      this.collectIslandTerrainDropDirect(materialId, entry, index);
       index += 1;
     }
+  }
+
+  collectIslandTerrainDropDirect(materialId, entry, index = 0) {
+    const amount = Math.max(1, Math.floor(entry.amount || 0));
+    if (!amount || !this.activeIsland) return false;
+    if (this.crashStart && this.activeIsland.id === this.getStoryState().starterPlanetId) {
+      this.collectCrashStarterMaterial(materialId, amount, entry);
+      return true;
+    }
+
+    const result = this.game.systems.inventory.addToRunCargo(materialId, amount, {
+      capacity: this.stats.cargoCapacity,
+    });
+    const world = this.activeIsland.localToWorldRotated(
+      entry.x + Math.cos(index * 2.3 + this.time) * 4,
+      entry.y + Math.sin(index * 1.7 + this.time) * 4,
+      this.getIslandViewRotation(),
+    );
+    if (!result.ok) {
+      if (this.cargoFullToastReady) {
+        this.cargoFullToastReady = false;
+        this.game.ui.showToast('Cargo Full', 'danger');
+        this.game.audio.playCargoFull();
+        this.addFloatingText(world.x, world.y, 'Cargo Full', { color: '#ff756f', rarity: 'rare' });
+        window.setTimeout(() => {
+          this.cargoFullToastReady = true;
+        }, 1200);
+      }
+      return false;
+    }
+
+    this.runCargo = result.cargo;
+    this.runCargoWeight = result.currentWeight;
+    this.stats.cargo = Math.ceil(this.runCargoWeight);
+    this.runCargoCount += amount;
+    this.game.systems.objectives.record('materialCollected', { materialId, amount });
+    const material = this.game.systems.materials.getMaterial(materialId);
+    this.addPickupFloatingText(
+      world.x,
+      world.y,
+      materialId,
+      amount,
+      { color: material?.color || '#fff2cf', rarity: material?.rarity || 'common' },
+    );
+    this.game.audio.playIslandPickup?.();
+    if (material && material.rarity !== 'common') {
+      this.game.systems.achievements.record('rareFind', { materialId, rarity: material.rarity });
+    }
+    if (material?.rarity === 'rare' || material?.rarity === 'epic') {
+      this.game.audio.playRareFind();
+      this.rareFindBurst(world.x, world.y, material.color);
+    }
+    return true;
   }
 
   getIslandPickupSpawnPoint(entry, index = 0) {
