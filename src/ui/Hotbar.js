@@ -33,7 +33,8 @@ export class Hotbar {
     button.addEventListener('pointerdown', (event) => {
       const scene = this.game.sceneManager?.current;
       if (scene?.hasHeldInventoryItem?.()) {
-        event.preventDefault();
+        if (scene.handleHotbarSlotClick?.(index, event)) this.update(true);
+        else event.preventDefault();
         return;
       }
       const slot = this.game.input.getHotbarSlotAt?.(index) || EMPTY_HOTBAR_SLOT;

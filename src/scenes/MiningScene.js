@@ -4805,12 +4805,12 @@ export class MiningScene {
   }
 
   getHeldItemStartScreenPoint(itemId, pointerEvent = null) {
+    if (Number.isFinite(pointerEvent?.clientX) && Number.isFinite(pointerEvent?.clientY)) {
+      return { x: pointerEvent.clientX, y: pointerEvent.clientY };
+    }
     if (this.game.systems.building?.isBuildableItem?.(itemId)) {
       const playerScreen = this.getIslandPlayerScreenCenter();
       if (playerScreen) return playerScreen;
-    }
-    if (Number.isFinite(pointerEvent?.clientX) && Number.isFinite(pointerEvent?.clientY)) {
-      return { x: pointerEvent.clientX, y: pointerEvent.clientY };
     }
     const pointer = this.game.input.mousePointer;
     if (pointer?.inside && Number.isFinite(pointer.x) && Number.isFinite(pointer.y)) {
