@@ -291,7 +291,7 @@ export const gameBalance = {
     roughness: {
       enabled: true,
       outlineOnly: true,
-      fastRedrawSimple: true,
+      fastRedrawSimple: false,
       chipCuts: false,
       edgeShadows: false,
       surfaceDetails: false,

@@ -4531,11 +4531,11 @@ export class TerrainGrid {
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
-    if (fastRedraw && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
+    const outlineOnly = this.isRoughnessOutlineOnly();
+    if (fastRedraw && !outlineOnly && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
       this.drawEdgeContours(ctx, bounds);
       return;
     }
-    const outlineOnly = this.isRoughnessOutlineOnly();
     if (bounds) {
       const segments = this.getLocalRoughContourSegments(bounds);
       if (!outlineOnly && TERRAIN_ROUGHNESS.edgeShadows !== false) {
