@@ -151,7 +151,13 @@ const ISLAND_LANDING_MAX_TIME = 10.5;
 const ISLAND_LANDING_READY_DISTANCE = 8;
 const ISLAND_LANDING_READY_ROTATION = 0.035;
 const ISLAND_LANDING_READY_SHIP_ANGLE = 0.06;
-const ISLAND_BOARDING_DURATION = 1.15;
+const ISLAND_BOARDING_CHARGE_DELAY = 0.42;
+const ISLAND_BOARDING_CHARGE_DURATION = 0.88;
+const ISLAND_BOARDING_LAUNCH_DURATION = 2.15;
+const ISLAND_BOARDING_OUTER_RING_OFFSET = 650;
+const ISLAND_BOARDING_DURATION = ISLAND_BOARDING_CHARGE_DELAY
+  + ISLAND_BOARDING_CHARGE_DURATION
+  + ISLAND_BOARDING_LAUNCH_DURATION;
 const ISLAND_GRAVITY_CATCH_FIELD_RATIO = 0.96;
 const ISLAND_GRAVITY_RELEASE_OFFSET = 110;
 
@@ -312,6 +318,8 @@ export class MiningScene {
     this.spaceSpawnWarmupTimer = 0;
     this.loadedIslandFocusId = '';
     this.departedIslandDecorId = '';
+    this.atmosphereHorizonAngle = 0;
+    this.atmosphereHorizonIslandId = '';
     this.spaceObjectsSuspended = false;
     this.terrainPrewarmQueue = [];
     this.deferredCacheReleaseQueued = false;
@@ -392,6 +400,8 @@ export class MiningScene {
     this.islandLandingTimer = 0;
     this.islandBoardingTimer = 0;
     this.islandBoardingDuration = ISLAND_BOARDING_DURATION;
+    this.islandBoardingElapsed = 0;
+    this.islandBoardingLaunch = null;
     this.islandBoardingStartRotation = 0;
     this.islandBoardingTargetRotation = 0;
     this.islandFloatingText = [];
@@ -507,6 +517,8 @@ export class MiningScene {
 
     this.activeIsland = island;
     this.departedIslandDecorId = '';
+    this.atmosphereHorizonAngle = 0;
+    this.atmosphereHorizonIslandId = '';
     this.landingIsland = island;
     this.gravityIsland = island;
     this.gravityFieldStrength = 1;
@@ -1549,6 +1561,7 @@ export class MiningScene {
       return this.islandLandingAnchor.world;
     }
     if (this.activeIsland && this.islandMode === 'boarding') {
+      if (this.isBoardingLaunchInFlight()) return { x: this.ship.x, y: this.ship.y };
       return this.islandLandingAnchor?.world || { x: this.ship.x, y: this.ship.y };
     }
     if (this.activeIsland && this.islandPlayer && (this.islandMode === 'onIsland' || this.islandMode === 'boarding')) {
@@ -1576,7 +1589,7 @@ export class MiningScene {
       input: this.game.input,
       fuelRatio: this.getShipFuelRatio(),
       viewScale: this.getActiveViewScale(),
-      boosting: this.isShipBoosting(),
+      boosting: this.isShipBoosting() || this.isBoardingLaunchInFlight(),
     });
   }
 
@@ -2666,6 +2679,9 @@ export class MiningScene {
       : strongestSurfaceDistance;
     if (this.atmosphereIsland && this.atmosphereIsland !== previousAtmosphereIsland) {
       this.atmosphereViewRotation = this.atmosphereIsland === this.activeIsland ? this.getIslandViewRotation() : 0;
+      this.lockAtmosphereHorizonForIsland(this.atmosphereIsland);
+    } else if (this.atmosphereIsland && this.atmosphereHorizonIslandId !== this.atmosphereIsland.id) {
+      this.lockAtmosphereHorizonForIsland(this.atmosphereIsland);
     }
     if (this.atmosphereIsland && this.atmosphereStrength > 0.02 && this.arrivalNoticeIslandId !== this.atmosphereIsland.id) {
       this.arrivalNoticeIslandId = this.atmosphereIsland.id;
@@ -2688,6 +2704,7 @@ export class MiningScene {
     if (!this.atmosphereIsland || this.atmosphereStrength <= 0.01) {
       this.arrivalNoticeIslandId = '';
       this.atmosphereViewRotation = 0;
+      this.lockAtmosphereHorizonForIsland(null);
       this.departedIslandDecorId = '';
     }
     this.gravityIsland = this.atmosphereIsland;
@@ -3016,6 +3033,7 @@ export class MiningScene {
     }
     this.updateViewScale(delta);
     this.updateCamera(delta);
+    if (this.isBoardingLaunchInFlight()) this.updateShipSmoke(delta);
     this.updateParticles(delta);
     this.updateIslandFloatingText(delta);
     this.updateHud();
@@ -7718,44 +7736,73 @@ export class MiningScene {
     }
   }
 
-  updateIslandBoarding(delta) {
-    if (!this.activeIsland) {
-      this.islandMode = 'flight';
-      this.resumeSpaceObjectsAfterIsland();
-      return;
-    }
-    const duration = Math.max(0.001, this.islandBoardingDuration || ISLAND_BOARDING_DURATION);
-    this.islandBoardingTimer -= delta;
-    const progress = smoothStep(clamp01(1 - Math.max(0, this.islandBoardingTimer) / duration));
-    this.islandViewRotation = normalizeAngle(
-      this.islandBoardingStartRotation
-        + angleDifference(this.islandBoardingStartRotation, this.islandBoardingTargetRotation) * progress,
+  getBoardingLaunchTimings() {
+    const delay = ISLAND_BOARDING_CHARGE_DELAY;
+    const charge = ISLAND_BOARDING_CHARGE_DURATION;
+    const launch = ISLAND_BOARDING_LAUNCH_DURATION;
+    return {
+      delay,
+      charge,
+      launch,
+      total: delay + charge + launch,
+    };
+  }
+
+  isBoardingLaunchInFlight() {
+    if (this.islandMode !== 'boarding' || !this.islandBoardingLaunch) return false;
+    const timings = this.getBoardingLaunchTimings();
+    return (this.islandBoardingElapsed || 0) >= timings.delay + timings.charge;
+  }
+
+  getBoardingOuterRingTarget(island, viewRotation = this.getIslandViewRotation()) {
+    const firstRing = island?.landingZoneRadius
+      || gameBalance.mining?.planetInnerAtmosphereDepth
+      || 2500;
+    const atmosphereDepth = island?.atmosphereDepth
+      || gameBalance.mining?.planetAtmosphereDepth
+      || 5000;
+    const targetSurfaceDistance = Math.max(
+      firstRing + 280,
+      Math.min(
+        firstRing + ISLAND_BOARDING_OUTER_RING_OFFSET,
+        Math.max(firstRing + 280, atmosphereDepth - 520),
+      ),
     );
-    const shipLocal = this.activeIsland.getShipParkLocal();
-    const shipWorld = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, this.getIslandViewRotation());
-    this.ship.x = shipWorld.x;
-    this.ship.y = shipWorld.y;
+    const local = island.getSurfaceLocalAtAngle(island.landingAngle, targetSurfaceDistance);
+    const world = island === this.activeIsland
+      ? this.localToActiveIslandWorld(local.x, local.y, viewRotation)
+      : island.localToWorldRotated(local.x, local.y, viewRotation);
+    const shipAngle = normalizeAngle(island.landingAngle + viewRotation);
+    return {
+      local,
+      world,
+      surfaceDistance: targetSurfaceDistance,
+      normalX: Math.cos(shipAngle),
+      normalY: Math.sin(shipAngle),
+      shipAngle,
+      horizonAngle: normalizeAngle(shipAngle + Math.PI * 0.5),
+    };
+  }
+
+  pinShipToBoardingStart(launch) {
+    if (!this.activeIsland || !launch) return;
+    const local = launch.shipLocal || this.activeIsland.getShipParkLocal();
+    const world = this.localToActiveIslandWorld(local.x, local.y, launch.viewRotation);
+    launch.start = { x: world.x, y: world.y };
+    if (this.islandLandingAnchor?.island === this.activeIsland) {
+      this.islandLandingAnchor.world = { x: world.x, y: world.y };
+    }
+    this.ship.x = world.x;
+    this.ship.y = world.y;
     this.ship.vx = 0;
     this.ship.vy = 0;
-    this.ship.angle = normalizeAngle(this.activeIsland.landingAngle + this.getIslandViewRotation());
-    this.hud?.landingPrompt?.classList.remove('is-hidden');
-    this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding ship...', true);
-    if (this.islandBoardingTimer > 0) return;
+    this.ship.angle = launch.shipAngle;
+  }
 
-    const departingIsland = this.activeIsland;
-    this.islandViewRotation = this.islandBoardingTargetRotation;
-    const exit = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, this.getIslandViewRotation());
-    this.ship.x = exit.x;
-    this.ship.y = exit.y;
-    this.ship.angle = normalizeAngle(this.activeIsland.landingAngle + this.getIslandViewRotation());
-    this.bakeLandingAnchorIntoIsland();
-    if (departingIsland) {
-      this.game.systems.islands.saveShipAnchor?.(departingIsland.id, {
-        landingAngle: departingIsland.landingAngle,
-        landingSurfaceLocal: departingIsland.landingSurfaceLocal,
-      }, { skipSave: true });
-    }
-    this.islandMode = 'flight';
+  beginIslandBoardingLaunch(departingIsland, preservedViewRotation, shipLocal, shipWorld) {
+    const launchTarget = this.getBoardingOuterRingTarget(departingIsland, preservedViewRotation);
+    const timings = this.getBoardingLaunchTimings();
+    this.islandMode = 'boarding';
     this.islandPlayer = null;
     this.gravityMachineManualActive = false;
     this.gravityMachineHotbarSuppressed = false;
@@ -7769,20 +7816,166 @@ export class MiningScene {
     this.enemySystem?.clear();
     this.islandPickups.forEach((pickup) => this.releaseIslandPickup(pickup));
     this.islandPickups.length = 0;
+    this.islandBoardingDuration = timings.total;
+    this.islandBoardingTimer = timings.total;
+    this.islandBoardingElapsed = 0;
+    this.islandBoardingStartRotation = preservedViewRotation;
+    this.islandBoardingTargetRotation = preservedViewRotation;
+    this.islandViewRotation = preservedViewRotation;
+    this.islandRotationTarget = preservedViewRotation;
+    this.islandRotationSettling = false;
+    this.islandBoardingLaunch = {
+      island: departingIsland,
+      shipLocal: { x: shipLocal.x, y: shipLocal.y },
+      start: { x: shipWorld.x, y: shipWorld.y },
+      target: launchTarget.world,
+      viewRotation: preservedViewRotation,
+      surfaceDistance: launchTarget.surfaceDistance,
+      normalX: launchTarget.normalX,
+      normalY: launchTarget.normalY,
+      shipAngle: launchTarget.shipAngle,
+      horizonAngle: launchTarget.horizonAngle,
+      chargeStarted: false,
+      launchStarted: false,
+      chargePulseTimer: 0,
+    };
+    this.atmosphereIsland = departingIsland;
+    this.atmosphereStrength = 1;
+    this.atmosphereSurfaceDistance = 0;
+    this.atmosphereViewRotation = preservedViewRotation;
+    this.gravityIsland = departingIsland;
+    this.gravityFieldStrength = 1;
+    this.shipSmoke?.clear();
+    this.stopIslandTerrainLaser();
+    this.hud?.landingPrompt?.classList.remove('is-hidden');
+    this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding rocket...', true);
+    this.game.audio.playGpsPing?.();
+    this.game.ui.showToast('Rocket boarding sequence started.', 'success', 1200);
+  }
+
+  updateIslandBoarding(delta) {
+    if (!this.activeIsland) {
+      this.islandMode = 'flight';
+      this.resumeSpaceObjectsAfterIsland();
+      return;
+    }
+    const launch = this.islandBoardingLaunch;
+    if (!launch) {
+      const viewRotation = this.getIslandViewRotation();
+      const shipLocal = this.activeIsland.getShipParkLocal();
+      const shipWorld = this.localToActiveIslandWorld(shipLocal.x, shipLocal.y, viewRotation);
+      this.beginIslandBoardingLaunch(this.activeIsland, viewRotation, shipLocal, shipWorld);
+      return;
+    }
+
+    const timings = this.getBoardingLaunchTimings();
+    const elapsed = Math.min(timings.total, (this.islandBoardingElapsed || 0) + Math.min(delta, 0.05));
+    this.islandBoardingElapsed = elapsed;
+    this.islandBoardingTimer = Math.max(0, timings.total - elapsed);
+    this.islandViewRotation = launch.viewRotation;
+    this.islandRotationTarget = launch.viewRotation;
+
+    const chargeStart = timings.delay;
+    const liftStart = timings.delay + timings.charge;
+    this.hud?.landingPrompt?.classList.remove('is-hidden');
+
+    if (elapsed < chargeStart) {
+      this.pinShipToBoardingStart(launch);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Boarding rocket...', true);
+      return;
+    }
+
+    if (elapsed < liftStart) {
+      this.pinShipToBoardingStart(launch);
+      if (!launch.chargeStarted) {
+        launch.chargeStarted = true;
+        launch.chargePulseTimer = 0;
+        this.game.audio.playSceneTransition?.();
+      }
+      launch.chargePulseTimer -= delta;
+      if (launch.chargePulseTimer <= 0) {
+        launch.chargePulseTimer = 0.18;
+        this.spawnBurst(this.ship.x, this.ship.y, '#76f3ff', 5, 72);
+      }
+      this.camera.shake = Math.max(this.camera.shake, 0.035);
+      this.setHudText('landingPrompt', this.hud.landingPrompt, 'Rocket charging...', true);
+      return;
+    }
+
+    if (!launch.launchStarted) {
+      launch.launchStarted = true;
+      launch.start = { x: this.ship.x, y: this.ship.y };
+      this.game.audio.playBoardShip?.();
+      this.spawnBurst(this.ship.x, this.ship.y, '#76f3ff', 24, 170);
+    }
+    const liftProgress = smoothStep(clamp01((elapsed - liftStart) / Math.max(0.001, timings.launch)));
+    const previousX = this.ship.x;
+    const previousY = this.ship.y;
+    this.ship.x = launch.start.x + (launch.target.x - launch.start.x) * liftProgress;
+    this.ship.y = launch.start.y + (launch.target.y - launch.start.y) * liftProgress;
+    this.ship.vx = (this.ship.x - previousX) / Math.max(0.016, delta);
+    this.ship.vy = (this.ship.y - previousY) / Math.max(0.016, delta);
+    this.ship.angle = normalizeAngle(launch.shipAngle + Math.sin(liftProgress * Math.PI) * 0.025);
+    this.atmosphereSurfaceDistance = launch.surfaceDistance * liftProgress;
+    this.atmosphereStrength = clamp01(this.activeIsland.getAtmosphereStrength?.(this.ship) ?? 1);
+    this.gravityFieldStrength = this.atmosphereStrength;
+    this.camera.shake = Math.max(this.camera.shake, 0.045 + liftProgress * 0.025);
+    this.setHudText('landingPrompt', this.hud.landingPrompt, 'Launching to outer ring...', true);
+
+    if (elapsed < timings.total) return;
+    this.finishIslandBoardingLaunch();
+  }
+
+  finishIslandBoardingLaunch() {
+    const launch = this.islandBoardingLaunch;
+    const departingIsland = launch?.island || this.activeIsland;
+    if (launch?.target) {
+      this.ship.x = launch.target.x;
+      this.ship.y = launch.target.y;
+      this.ship.angle = launch.shipAngle;
+      const exitSpeed = gameBalance.mining?.rocketLaunchExitSpeed || 260;
+      this.ship.vx = launch.normalX * exitSpeed;
+      this.ship.vy = launch.normalY * exitSpeed;
+    }
+    this.bakeLandingAnchorIntoIsland();
+    if (departingIsland) {
+      this.game.systems.islands.saveShipAnchor?.(departingIsland.id, {
+        landingAngle: departingIsland.landingAngle,
+        landingSurfaceLocal: departingIsland.landingSurfaceLocal,
+      }, { skipSave: true });
+      this.lockAtmosphereHorizonForIsland(departingIsland, { angle: launch?.horizonAngle });
+    }
+    this.islandMode = 'flight';
+    this.islandPlayer = null;
+    this.gravityMachineManualActive = false;
+    this.gravityMachineHotbarSuppressed = false;
+    this.gravityMachineWasActive = false;
+    this.setGravityMachineInputFlag(false);
+    this.islandFreefall = false;
+    this.islandGravityRecovery = false;
+    this.islandGravityRecoveryBlend = 0;
+    this.landingIsland = null;
+    this.landingTargetPreview = null;
     this.activeIsland = null;
     this.atmosphereIsland = departingIsland;
     this.recentAtmosphereIslandId = departingIsland?.id || '';
     this.recentAtmosphereCacheKeepUntil = this.time + 20;
     this.autoParkGraceIslandId = departingIsland?.id || '';
-    this.autoParkGraceUntil = this.time + 4.5;
+    this.autoParkGraceUntil = this.time + 5.5;
     this.atmosphereStrength = clamp01(departingIsland?.getAtmosphereStrength?.(this.ship) ?? 1);
     this.atmosphereSurfaceDistance = departingIsland
-      ? Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0)
+      ? Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? launch?.surfaceDistance ?? 0)
       : Infinity;
+    this.atmosphereViewRotation = launch?.viewRotation || 0;
+    this.departedIslandDecorId = departingIsland?.id || '';
     this.gravityIsland = departingIsland;
     this.gravityFieldStrength = this.atmosphereStrength;
+    this.arrivalNoticeIslandId = departingIsland?.id || '';
+    this.approachNoticeIslandId = departingIsland?.id || '';
     this.islandLandingTarget = null;
     this.islandLandingAnchor = null;
+    this.islandBoardingLaunch = null;
+    this.islandBoardingElapsed = 0;
     this.islandViewRotation = 0;
     this.islandRotationTarget = 0;
     this.islandRotationSettling = false;
@@ -7792,10 +7985,9 @@ export class MiningScene {
       tag: departingIsland?.tag || departingIsland?.planetTag || '',
     }, { save: false, notify: true });
     this.game.saveGame();
-    this.stopIslandTerrainLaser();
     this.hud?.landingPrompt?.classList.add('is-hidden');
-    this.game.audio.playBoardShip?.();
-    this.game.ui.showToast('Back in the ship.', 'success', 1200);
+    const control = this.getBoostControlLabel();
+    this.game.ui.showToast(`Outer ring controls online. Hold ${control} for supersonic burn.`, 'success', 1700);
   }
 
   boardIntegratedShip() {
@@ -7826,44 +8018,7 @@ export class MiningScene {
       landingAngle: departingIsland.landingAngle,
       landingSurfaceLocal: departingIsland.landingSurfaceLocal,
     }, { skipSave: true });
-    this.islandMode = 'flight';
-    this.islandPlayer = null;
-    this.gravityMachineManualActive = false;
-    this.gravityMachineHotbarSuppressed = false;
-    this.gravityMachineWasActive = false;
-    this.setGravityMachineInputFlag(false);
-    this.islandFreefall = false;
-    this.islandGravityRecovery = false;
-    this.islandGravityRecoveryBlend = 0;
-    this.landingIsland = null;
-    this.landingTargetPreview = null;
-    this.enemySystem?.clear();
-    this.islandPickups.forEach((pickup) => this.releaseIslandPickup(pickup));
-    this.islandPickups.length = 0;
-    this.activeIsland = null;
-    this.atmosphereIsland = departingIsland;
-    this.recentAtmosphereIslandId = departingIsland?.id || '';
-    this.recentAtmosphereCacheKeepUntil = this.time + 20;
-    this.autoParkGraceIslandId = departingIsland?.id || '';
-    this.autoParkGraceUntil = this.time + 4.5;
-    this.atmosphereStrength = Math.max(0.98, clamp01(departingIsland.getAtmosphereStrength?.(this.ship) ?? 1));
-    this.atmosphereSurfaceDistance = Math.max(0, departingIsland.getSurfaceClearanceToPoint?.(this.ship.x, this.ship.y) ?? 0);
-    this.atmosphereViewRotation = preservedViewRotation;
-    this.departedIslandDecorId = departingIsland.id;
-    this.gravityIsland = departingIsland;
-    this.gravityFieldStrength = this.atmosphereStrength;
-    this.arrivalNoticeIslandId = departingIsland.id;
-    this.approachNoticeIslandId = departingIsland.id;
-    this.islandLandingTarget = null;
-    this.islandLandingAnchor = null;
-    this.islandRotationSettling = false;
-    this.resumeSpaceObjectsAfterIsland();
-    this.stopIslandTerrainLaser();
-    this.hud?.landingPrompt?.classList.add('is-hidden');
-    this.shipSmoke?.clear();
-    this.game.saveGame();
-    this.game.audio.playBoardShip?.();
-    this.game.ui.showToast('Ship controls online.', 'success', 1100);
+    this.beginIslandBoardingLaunch(departingIsland, preservedViewRotation, shipLocal, target);
   }
 
   handleShipInteract() {
@@ -8984,7 +9139,8 @@ export class MiningScene {
   }
 
   updateModeHud(force = false) {
-    const onFoot = this.islandMode === 'onIsland' || this.islandMode === 'boarding';
+    const onFoot = this.islandMode === 'onIsland'
+      || (this.islandMode === 'boarding' && !this.isBoardingLaunchInFlight());
     this.setHudClass('mapStackOnFoot', this.hud.mapStack, 'is-on-foot', onFoot, force);
     this.setHudClass('mapStackShip', this.hud.mapStack, 'is-ship', !onFoot, force);
     this.setHudClass('hotbarShipHidden', this.hotbar?.element, 'is-hidden', !onFoot, force);
@@ -9001,13 +9157,17 @@ export class MiningScene {
       return { visible: true, tag, status: 'Landing' };
     }
     if (this.activeIsland && this.islandMode === 'boarding') {
-      return { visible: true, tag, status: 'Boarding' };
+      return { visible: true, tag, status: this.isBoardingLaunchInFlight() ? 'Rocket Launch' : 'Boarding' };
     }
     if (this.landingIsland) {
       return { visible: true, tag, status: 'Landing Range' };
     }
     if (this.atmosphereIsland) {
-      return { visible: true, tag, status: 'Atmosphere' };
+      return {
+        visible: true,
+        tag,
+        status: this.isAtmosphereEscapeBoostAvailable() ? 'Outer Ring' : 'Atmosphere',
+      };
     }
     return { visible: false, tag: '', status: '' };
   }
@@ -9063,6 +9223,7 @@ export class MiningScene {
     this.drawDistanceRings(ctx);
     if (gameBalance.stationEnabled !== false) this.drawStation(ctx);
     const camera = this.cameraView;
+    const boardingLaunchInFlight = this.isBoardingLaunchInFlight();
     for (const island of this.rockIslands) {
       if (!this.shouldRenderIsland(island)) continue;
       const distanceSq = island.distanceSqToPoint(this.camera.x, this.camera.y);
@@ -9083,8 +9244,9 @@ export class MiningScene {
         gravityActive: island === this.gravityIsland || island === this.activeIsland,
         gravityStrength: island === this.gravityIsland || island === this.activeIsland ? Math.max(0.35, this.gravityFieldStrength) : 0,
         time: this.time,
-        player: island === this.activeIsland && this.islandMode !== 'landing' ? this.islandPlayer : null,
-        drawShip: island === this.activeIsland && (this.islandMode === 'onIsland' || this.islandMode === 'boarding'),
+        player: island === this.activeIsland && this.islandMode !== 'landing' && !boardingLaunchInFlight ? this.islandPlayer : null,
+        drawShip: island === this.activeIsland
+          && (this.islandMode === 'onIsland' || (this.islandMode === 'boarding' && !boardingLaunchInFlight)),
         ship: this.ship,
         shipBroken: island === this.activeIsland && !this.getStoryState().thrustersRepaired,
         viewRotation: renderViewRotation,
@@ -9123,9 +9285,11 @@ export class MiningScene {
     this.drawShipSmoke(ctx);
     ctx.save();
     this.applyWorldScale(ctx, width, height);
-    if (this.islandMode !== 'onIsland' && this.islandMode !== 'boarding') {
-      this.ship.draw(ctx, camera, this.game.input, { boost: this.isShipBoosting() });
-      this.drawShipDestinationIndicator(ctx);
+    const drawWorldShip = this.islandMode !== 'onIsland'
+      && (this.islandMode !== 'boarding' || boardingLaunchInFlight);
+    if (drawWorldShip) {
+      this.ship.draw(ctx, camera, this.game.input, { boost: this.isShipBoosting() || boardingLaunchInFlight });
+      if (this.islandMode !== 'boarding') this.drawShipDestinationIndicator(ctx);
     }
     if (this.isShipAttackInstalled() && this.islandMode === 'flight') {
       this.combatDrone.draw(ctx, camera);
@@ -9143,7 +9307,7 @@ export class MiningScene {
 
     const promptAlpha = clamp01(0.74 + Math.sin(this.time * 4.5) * 0.12);
     const control = this.getBoostControlLabel();
-    const message = `Hold ${control} to Void Burn`;
+    const message = `Hold ${control} for Supersonic Burn`;
     const x = width * 0.5;
     const y = height - Math.max(138, (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hotbar-slot-size')) || 48) + 96);
     ctx.save();
@@ -9402,7 +9566,7 @@ export class MiningScene {
     const altitudeProgress = clamp01(surfaceDistance / Math.max(1, atmosphereDepth));
     const altitudeCloseness = 1 - altitudeProgress;
     const alpha = Math.min(0.42, 0.045 + strength * 0.32);
-    const horizonY = height * (1.08 - altitudeCloseness * 0.43 + Math.sin(this.time * 0.025 + phaseSeed) * 0.012);
+    const horizonY = height * (1.08 - altitudeCloseness * 0.43);
     const topColor = lerpColor(palette.nightTop, palette.dayTop, day);
     const midColor = lerpColor(palette.nightMid, palette.dayMid, day);
     const horizonColor = lerpColor(palette.horizon, palette.sunset, dusk * 0.72);
@@ -9450,17 +9614,14 @@ export class MiningScene {
     ctx.strokeStyle = `${palette.haze}${Math.round((0.18 + strength * 0.36) * 255).toString(16).padStart(2, '0')}`;
     ctx.lineWidth = 1.2 + strength * 1.8;
     ctx.beginPath();
-    ctx.moveTo(-diagonal * 0.58, horizonLocalY + Math.sin(this.time * 0.06) * 5);
-    ctx.quadraticCurveTo(0, horizonLocalY - 28 * strength, diagonal * 0.58, horizonLocalY + Math.cos(this.time * 0.05) * 4);
+    ctx.moveTo(-diagonal * 0.58, horizonLocalY);
+    ctx.quadraticCurveTo(0, horizonLocalY - 28 * strength, diagonal * 0.58, horizonLocalY);
     ctx.stroke();
     ctx.restore();
   }
 
-  getAtmosphereHorizonAngle(island, planetScreen = null) {
+  computeAtmosphereHorizonAngle(island, planetScreen = null) {
     if (!island) return 0;
-    if (island === this.activeIsland && this.islandMode !== 'flight') {
-      return this.getIslandViewRotation();
-    }
     const reference = this.ship || this.camera || { x: island.x, y: island.y - 1 };
     const planet = planetScreen || this.cameraView.worldToScreen(island.x, island.y);
     const referenceScreen = this.cameraView.worldToScreen(reference.x, reference.y);
@@ -9475,6 +9636,33 @@ export class MiningScene {
       return normalizeAngle(Math.atan2(local.y - center.y, local.x - center.x) + Math.PI * 0.5);
     }
     return 0;
+  }
+
+  lockAtmosphereHorizonForIsland(island, { angle = null } = {}) {
+    if (!island) {
+      this.atmosphereHorizonAngle = 0;
+      this.atmosphereHorizonIslandId = '';
+      return;
+    }
+    this.atmosphereHorizonIslandId = island.id || '';
+    this.atmosphereHorizonAngle = normalizeAngle(
+      Number.isFinite(angle) ? angle : this.computeAtmosphereHorizonAngle(island),
+    );
+  }
+
+  getAtmosphereHorizonAngle(island, planetScreen = null) {
+    if (!island) return 0;
+    if (island === this.activeIsland && this.islandMode !== 'flight') {
+      return this.getIslandViewRotation();
+    }
+    if (
+      this.islandMode === 'flight'
+      && island === this.atmosphereIsland
+      && this.atmosphereHorizonIslandId === (island.id || '')
+    ) {
+      return this.atmosphereHorizonAngle;
+    }
+    return this.computeAtmosphereHorizonAngle(island, planetScreen);
   }
 
   getAtmospherePalette(biome = 'scrap') {
