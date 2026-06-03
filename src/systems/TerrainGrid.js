@@ -681,6 +681,8 @@ export class TerrainGrid {
     this.contourCache = new Map();
     this.roughEdgeCache = new Map();
     this.roughContourCache = new Map();
+    this.contourCacheStale = false;
+    this.roughContourCacheStale = false;
     this.collisionContours = null;
     this.surfacePathCache = null;
     this.surfaceRadiusLookupCache = new Map();
@@ -1521,10 +1523,35 @@ export class TerrainGrid {
     return this.blockSystem.setCell(col, row, value, { autoWall });
   }
 
-  invalidateTerrainGeometry({ keepSurfacePath = false } = {}) {
+  clearContourRenderCaches({ rough = true } = {}) {
     this.contourCache?.clear();
+    this.contourCacheStale = false;
+    if (!rough) return;
     this.roughEdgeCache?.clear();
     this.roughContourCache?.clear();
+    this.roughContourCacheStale = false;
+  }
+
+  markContourRenderCachesStale({ rough = true } = {}) {
+    this.contourCacheStale = true;
+    if (rough) this.roughContourCacheStale = true;
+  }
+
+  flushStaleContourRenderCaches() {
+    if (!this.contourCacheStale && !this.roughContourCacheStale) return;
+    if (this.contourCacheStale) {
+      this.contourCache?.clear();
+      this.contourCacheStale = false;
+    }
+    if (this.roughContourCacheStale) {
+      this.roughEdgeCache?.clear();
+      this.roughContourCache?.clear();
+      this.roughContourCacheStale = false;
+    }
+  }
+
+  invalidateTerrainGeometry({ keepSurfacePath = false } = {}) {
+    this.clearContourRenderCaches();
     this.collisionContours = null;
     if (!keepSurfacePath) {
       this.surfaceRadiusLookupCache?.clear();
@@ -2595,6 +2622,7 @@ export class TerrainGrid {
     const canvas = this.getRenderCanvas();
     const ctx = this.renderCtx;
     if (this.fullRenderDirty || !this.dirtyBounds) {
+      this.flushStaleContourRenderCaches();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       this.drawTerrainLayers(ctx);
     } else {
@@ -3296,9 +3324,7 @@ export class TerrainGrid {
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
-    this.contourCache?.clear();
-    this.roughEdgeCache?.clear();
-    this.roughContourCache?.clear();
+    this.clearContourRenderCaches();
     this.collisionContours = null;
     this.surfaceRadiusLookupCache?.clear();
   }

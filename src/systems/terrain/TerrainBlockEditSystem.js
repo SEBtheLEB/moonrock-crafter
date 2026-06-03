@@ -48,23 +48,21 @@ export class TerrainBlockEditSystem {
     nextMaterial = 0,
   } = {}) {
     const terrain = this.terrain;
-    terrain.contourCache?.clear();
     const touchedNaturalSurface = (
       (previousMaterial > 0 && !terrain.isConstructedMaterial(previousMaterial))
       || (nextMaterial > 0 && !terrain.isConstructedMaterial(nextMaterial))
     );
-    if (touchedNaturalSurface) {
-      terrain.roughEdgeCache?.clear();
-      terrain.roughContourCache?.clear();
+    if (keepSurfacePath) {
+      // Bounded redraws sample live cells, so keep full-map contour caches intact
+      // until a real full redraw needs them.
+      terrain.markContourRenderCachesStale({ rough: touchedNaturalSurface });
+      return;
     }
-    // Runtime collision uses local sampled contours. Keep the full debug contour cache stable
-    // during single-tile edits so mining/building does not force a planet-wide collision rebuild.
-    if (!keepSurfacePath) {
-      terrain.surfaceRadiusLookupCache?.clear();
-      terrain.markAirExposureDirty({ defer: true });
-      terrain.surfacePathCache = null;
-      terrain.collisionContours = null;
-    }
+    terrain.clearContourRenderCaches();
+    terrain.surfaceRadiusLookupCache?.clear();
+    terrain.markAirExposureDirty({ defer: true });
+    terrain.surfacePathCache = null;
+    terrain.collisionContours = null;
   }
 
   getLocalRedrawPaddingPixels() {
