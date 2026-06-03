@@ -163,12 +163,14 @@ export class SpaceIsland {
     this.landingSurfaceLocal = null;
   }
 
-  setLandingTargetLocal(local) {
+  setLandingTargetLocal(local, { landingAngle = null } = {}) {
     if (!local) {
       this.landingSurfaceLocal = null;
       return;
     }
-    this.landingAngle = this.getAngleForLocal(local.x, local.y);
+    this.landingAngle = Number.isFinite(landingAngle)
+      ? landingAngle
+      : this.getAngleForLocal(local.x, local.y);
     this.landingSurfaceLocal = {
       x: local.x,
       y: local.y,
@@ -461,28 +463,7 @@ export class SpaceIsland {
     const landing = this.getShipParkLocal();
     const base = this.getLandingBaseLocal();
     const bob = Math.sin(time * 2.2) * 1.5;
-    ctx.save();
-    ctx.translate(base.x, base.y + 4);
-    ctx.rotate(this.landingAngle + Math.PI / 2);
-    ctx.fillStyle = 'rgba(2, 7, 13, 0.32)';
-    ctx.beginPath();
-    ctx.ellipse(0, 12, 112, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#263846';
-    ctx.strokeStyle = 'rgba(3, 9, 15, 0.82)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(-105, -10, 210, 18, 5);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(118, 243, 255, 0.38)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([14, 10]);
-    ctx.beginPath();
-    ctx.moveTo(-86, -1);
-    ctx.lineTo(86, -1);
-    ctx.stroke();
-    ctx.restore();
+    this.drawShipHoverHologram(ctx, base, landing, time);
     if (ship?.drawAt) {
       ship.drawAt(
         ctx,
@@ -497,7 +478,7 @@ export class SpaceIsland {
     }
     ctx.save();
     ctx.translate(landing.x, landing.y + bob);
-    ctx.rotate(this.landingAngle + Math.PI / 2 - 0.04);
+    ctx.rotate(this.landingAngle - 0.04);
     ctx.fillStyle = '#f4e6c3';
     ctx.strokeStyle = 'rgba(8, 17, 26, 0.62)';
     ctx.lineWidth = 2;
@@ -523,6 +504,66 @@ export class SpaceIsland {
     }
     ctx.restore();
     if (broken) this.drawBrokenShipSparks(ctx, landing.x, landing.y + bob, time);
+  }
+
+  drawShipHoverHologram(ctx, base, landing, time) {
+    const pulse = 0.5 + Math.sin(time * 4.6) * 0.5;
+    const normal = {
+      x: Math.cos(this.landingAngle),
+      y: Math.sin(this.landingAngle),
+    };
+    const tangent = {
+      x: -normal.y,
+      y: normal.x,
+    };
+    const topCenter = {
+      x: landing.x - normal.x * 34,
+      y: landing.y - normal.y * 34,
+    };
+    const bottomCenter = {
+      x: base.x - normal.x * 10,
+      y: base.y - normal.y * 10,
+    };
+    const gradient = ctx.createLinearGradient(topCenter.x, topCenter.y, bottomCenter.x, bottomCenter.y);
+    gradient.addColorStop(0, 'rgba(118, 243, 255, 0.05)');
+    gradient.addColorStop(0.38, 'rgba(86, 183, 255, 0.2)');
+    gradient.addColorStop(1, 'rgba(45, 126, 255, 0.08)');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(topCenter.x - tangent.x * 46, topCenter.y - tangent.y * 46);
+    ctx.lineTo(bottomCenter.x - tangent.x * 92, bottomCenter.y - tangent.y * 92);
+    ctx.lineTo(bottomCenter.x + tangent.x * 92, bottomCenter.y + tangent.y * 92);
+    ctx.lineTo(topCenter.x + tangent.x * 46, topCenter.y + tangent.y * 46);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.translate(bottomCenter.x, bottomCenter.y);
+    ctx.rotate(this.landingAngle + Math.PI / 2);
+    ctx.globalAlpha = 0.5 + pulse * 0.18;
+    ctx.strokeStyle = '#76f3ff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 12]);
+    ctx.lineDashOffset = -time * 36;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 82, 18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.28 + pulse * 0.2;
+    ctx.lineWidth = 2.25;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 42 + pulse * 5, 9 + pulse * 1.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#7bd8ff';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 106, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   drawBrokenShipSparks(ctx, x, y, time) {

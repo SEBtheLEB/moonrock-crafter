@@ -3727,13 +3727,13 @@ export class TerrainGrid {
 
     this.progressivePrewarm = null;
     this.flushStaleContourRenderCaches();
-    this.drawTerrainOutlineLayer(ctx, null, { fastRedraw: false });
-    this.drawConstructedMaterials(ctx, null);
     this.renderDirty = false;
     this.fullRenderDirty = false;
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
-    if (this.lightingRenderEnabled || this.depthDebugEnabled) this.redrawLightingOverlayCache();
+    if (this.lightingRenderEnabled || this.depthDebugEnabled) {
+      this.markLightingOverlayDirty({ defer: true, delayMs: 90, full: true });
+    }
     return canvas.width > 0 && canvas.height > 0;
   }
 
@@ -3745,7 +3745,7 @@ export class TerrainGrid {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.width, rect.height);
     ctx.clip();
-    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw: false, drawOutline: false });
+    this.drawTerrainLayers(ctx, paintBounds, { fastRedraw: false, drawOutline: true });
     ctx.restore();
   }
 

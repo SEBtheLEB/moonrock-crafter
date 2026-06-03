@@ -71,7 +71,7 @@ const TORCH_SUPPORT_SIDES = [
 const STARTER_FURNACE_WIDTH = 138;
 const STARTER_FURNACE_CLEARANCE = 112;
 const STARTER_FURNACE_DEPTH = 58;
-const STARTER_BASE_BUILD_VERSION = 2;
+const STARTER_BASE_BUILD_VERSION = 3;
 const CRAFTING_STATION_WIDTH = 150;
 const CRAFTING_STATION_CLEARANCE = 106;
 const CRAFTING_STATION_DEPTH = 54;
@@ -630,18 +630,13 @@ export class MiningScene {
         width: 390,
         height: 176,
       });
-      const shipPad = island.terrain.createPlacementPad(surface.x + 370, surface.y, {
-        viewRotation: 0,
-        width: 250,
-        clearance: 150,
-        depth: 70,
-        material: 1,
-      });
-      island.setLandingTargetLocal({ x: shipPad.x, y: shipPad.y });
+      const hoverDock = baseStamp?.landingSurfaceLocal || { x: surface.x + 250, y: surface.y };
+      island.setLandingTargetLocal(hoverDock, { landingAngle: -Math.PI / 2 });
       story.baseLab = {
         ...lab.serialize(),
         islandId: island.id,
-        landingSurfaceLocal: { x: shipPad.x, y: shipPad.y },
+        landingSurfaceLocal: { x: hoverDock.x, y: hoverDock.y },
+        shipHoverDockLocal: { x: hoverDock.x, y: hoverDock.y },
       };
       const craftPoint = lab.getCraftingStationPoint();
       const researchPoint = lab.getResearchStationPoint();
@@ -675,8 +670,11 @@ export class MiningScene {
       this.game.systems.islands.saveTerrain(island.id, island.terrain);
       this.game.systems.navigation?.refreshLocations?.();
       this.game.saveGame();
-    } else if (story.baseLab?.landingSurfaceLocal) {
-      island.setLandingTargetLocal(story.baseLab.landingSurfaceLocal);
+    } else if (story.baseLab?.landingSurfaceLocal || story.baseLab?.shipHoverDockLocal) {
+      island.setLandingTargetLocal(
+        story.baseLab.shipHoverDockLocal || story.baseLab.landingSurfaceLocal,
+        { landingAngle: -Math.PI / 2 },
+      );
     }
 
     this.baseLab = story.baseLab?.islandId === island.id ? BaseLab.deserialize(story.baseLab) : null;
@@ -2629,6 +2627,8 @@ export class MiningScene {
     }
     if (!approachingIsland && !this.atmosphereIsland) this.approachNoticeIslandId = '';
     if (previousAtmosphereIsland && !this.atmosphereIsland) {
+      this.recentAtmosphereIslandId = previousAtmosphereIsland.id;
+      this.recentAtmosphereCacheKeepUntil = this.time + 20;
       this.spaceSpawnWarmupTimer = Math.max(
         this.spaceSpawnWarmupTimer,
         gameBalance.mining.spaceSpawnWarmupDuration || 1.4,
@@ -2930,7 +2930,8 @@ export class MiningScene {
   }
 
   scheduleInactiveIslandRenderCacheRelease(keepIsland = null, { timeout = 1700 } = {}) {
-    this.deferredCacheReleaseKeepIsland = keepIsland || null;
+    if (keepIsland) this.deferredCacheReleaseKeepIsland = keepIsland;
+    else this.deferredCacheReleaseKeepIsland ||= null;
     if (this.deferredCacheReleaseQueued) return;
     this.deferredCacheReleaseQueued = true;
     this.scheduleIdleTransitionTask(() => {
@@ -7265,6 +7266,8 @@ export class MiningScene {
     this.islandPickups.length = 0;
     this.activeIsland = null;
     this.atmosphereIsland = departingIsland;
+    this.recentAtmosphereIslandId = departingIsland?.id || '';
+    this.recentAtmosphereCacheKeepUntil = this.time + 20;
     this.autoParkGraceIslandId = departingIsland?.id || '';
     this.autoParkGraceUntil = this.time + 4.5;
     this.atmosphereStrength = clamp01(departingIsland?.getAtmosphereStrength?.(this.ship) ?? 1);
@@ -7334,6 +7337,8 @@ export class MiningScene {
     this.islandPickups.length = 0;
     this.activeIsland = null;
     this.atmosphereIsland = departingIsland;
+    this.recentAtmosphereIslandId = departingIsland?.id || '';
+    this.recentAtmosphereCacheKeepUntil = this.time + 20;
     this.autoParkGraceIslandId = departingIsland?.id || '';
     this.autoParkGraceUntil = this.time + 4.5;
     this.atmosphereStrength = Math.max(0.98, clamp01(departingIsland.getAtmosphereStrength?.(this.ship) ?? 1));
@@ -7445,8 +7450,22 @@ export class MiningScene {
   }
 
   releaseInactiveIslandRenderCaches(keepIsland = null) {
+    const keepIds = new Set([
+      keepIsland?.id,
+      this.activeIsland?.id,
+      this.atmosphereIsland?.id,
+      this.gravityIsland?.id,
+      this.landingIsland?.id,
+      this.loadedIslandFocusId || '',
+    ].filter(Boolean));
+    if (
+      this.recentAtmosphereIslandId
+      && this.time < (this.recentAtmosphereCacheKeepUntil || 0)
+    ) {
+      keepIds.add(this.recentAtmosphereIslandId);
+    }
     this.rockIslands.forEach((island) => {
-      if (island !== keepIsland && island !== this.activeIsland) island.terrain?.releaseRenderCache?.();
+      if (!keepIds.has(island.id)) island.terrain?.releaseRenderCache?.();
     });
   }
 
