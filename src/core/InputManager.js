@@ -802,7 +802,10 @@ export class InputManager {
       actions.add('dropHeldAll');
     }
     if (buttonHeld(GAMEPAD_BUTTONS.rightTrigger)) actions.add('primaryUse');
-    if (buttonHeld(GAMEPAD_BUTTONS.leftTrigger)) actions.add('buildWallModifier');
+    if (buttonHeld(GAMEPAD_BUTTONS.leftTrigger)) {
+      actions.add('jump');
+      actions.add('buildWallModifier');
+    }
     if (buttonHeld(GAMEPAD_BUTTONS.stabilize)) {
       actions.add('stabilize');
       actions.add('dropHeldOne');
