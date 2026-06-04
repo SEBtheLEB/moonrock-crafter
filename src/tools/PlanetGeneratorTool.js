@@ -4,8 +4,8 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const controls = [
   { key: 'seed', label: 'Terrain Seed', type: 'number', min: 1, max: 999999999, step: 1, section: 'Planet' },
-  { key: 'width', label: 'Width', type: 'range', min: 1800, max: 7200, step: 100, section: 'Planet' },
-  { key: 'height', label: 'Height', type: 'range', min: 1800, max: 7200, step: 100, section: 'Planet' },
+  { key: 'width', label: 'Width', type: 'range', min: 1800, max: 15000, step: 100, section: 'Planet' },
+  { key: 'height', label: 'Height', type: 'range', min: 1800, max: 15000, step: 100, section: 'Planet' },
   { key: 'biome', label: 'Biome', type: 'select', options: ['scrap', 'forest', 'crystal', 'ember'], section: 'Planet' },
   { key: 'type', label: 'Type', type: 'select', options: ['crashPlanet', 'denseAtmospherePlanet', 'largeMineral', 'crystalCluster', 'cave'], section: 'Planet' },
   { key: 'landingXRatio', label: 'Landing X', type: 'range', min: 0.08, max: 0.92, step: 0.01, section: 'Planet' },
@@ -24,8 +24,8 @@ const controls = [
 
 const state = {
   seed: 1010101,
-  width: 3400,
-  height: 3400,
+  width: 10200,
+  height: 10200,
   biome: 'scrap',
   type: 'crashPlanet',
   landingXRatio: 0.22,
@@ -37,7 +37,7 @@ const state = {
   outerAtmosphere: 5000,
   ringIndex: 0,
   ringSize: 36000,
-  worldDistance: 9000,
+  worldDistance: 12650,
   surfaceGapMin: 5000,
   surfaceGapMax: 7000,
 };

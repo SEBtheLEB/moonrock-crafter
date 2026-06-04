@@ -471,8 +471,8 @@ export class Game {
       discovered: true,
       baseCamp: Boolean(payload.generator?.starterBase ?? payload.island.baseCamp ?? true),
       size: {
-        width: Number(payload.island.size?.width) || Number(payload.terrain.cols * payload.terrain.cellSize) || previous.size?.width || 3400,
-        height: Number(payload.island.size?.height) || Number(payload.terrain.rows * payload.terrain.cellSize) || previous.size?.height || 3400,
+        width: Number(payload.island.size?.width) || Number(payload.terrain.cols * payload.terrain.cellSize) || previous.size?.width || 10200,
+        height: Number(payload.island.size?.height) || Number(payload.terrain.rows * payload.terrain.cellSize) || previous.size?.height || 10200,
       },
     };
     layout[index] = island;
