@@ -6092,10 +6092,37 @@ export class TerrainGrid {
     return;
   }
 
+  drawEdgeContours(ctx, bounds = null) {
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    const predicate = (x, y) => this.isNaturalSolidCell(x, y);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.strokeMarchingEdges(
+      ctx,
+      'rgba(5, 11, 19, 0.5)',
+      Math.max(4, this.cellSize * 0.28),
+      bounds,
+      predicate,
+      'natural-solid',
+    );
+    this.strokeMarchingEdges(
+      ctx,
+      withAlpha(palette.edge, 0.42),
+      Math.max(1.4, this.cellSize * 0.11),
+      bounds,
+      predicate,
+      'natural-solid',
+    );
+    ctx.restore();
+  }
+
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
-    const loops = bounds
-      ? this.buildContourLoopsInBounds(predicate, bounds, options)
-      : this.getContourLoops(predicate, cacheKey, options);
+    if (bounds) {
+      this.strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options);
+      return;
+    }
+    const loops = this.getContourLoops(predicate, cacheKey, options);
     ctx.strokeStyle = style;
     ctx.lineWidth = width;
     ctx.beginPath();
