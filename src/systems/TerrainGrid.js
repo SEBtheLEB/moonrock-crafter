@@ -1974,9 +1974,28 @@ export class TerrainGrid {
       ctx.rect(rect.x, rect.y, rect.width, rect.height);
     }
     ctx.clip();
-    this.drawBackgroundWalls(ctx, bounds);
+    this.drawFastBackgroundWalls(ctx, bounds);
     this.drawConstructedMaterials(ctx, bounds);
     ctx.restore();
+    this.clearLightingOverlayCells(cutoutCells.length ? cutoutCells : null, bounds);
+    return true;
+  }
+
+  clearLightingOverlayCells(cells = null, bounds = null) {
+    const overlayCtx = this.shadowSystem?.overlayCtx;
+    const overlayCanvas = this.shadowSystem?.overlayCanvas;
+    if (!overlayCtx || !overlayCanvas?.width || !overlayCanvas?.height) return false;
+    if (Array.isArray(cells) && cells.length) {
+      for (const cell of cells) {
+        if (!Number.isInteger(cell?.col) || !Number.isInteger(cell?.row) || !this.isInside(cell.col, cell.row)) continue;
+        const cellRect = this.getDrawRect({ minCol: cell.col, maxCol: cell.col, minRow: cell.row, maxRow: cell.row }, 0);
+        overlayCtx.clearRect(cellRect.x, cellRect.y, cellRect.width, cellRect.height);
+      }
+      return true;
+    }
+    const rect = this.getDrawRect(bounds, 0);
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    overlayCtx.clearRect(rect.x, rect.y, rect.width, rect.height);
     return true;
   }
 

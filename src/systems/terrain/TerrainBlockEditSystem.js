@@ -190,7 +190,6 @@ export class TerrainBlockEditSystem {
       }
       if (terrain.renderCanvas && terrain.renderCtx && !terrain.fullRenderDirty) {
         terrain.applyImmediateMiningCutout?.(editBounds, editedCells);
-        terrain.queueTerrainVisualRebuild?.(editBounds, terrain.getMiningDirtyRadiusCells?.() || 3);
       } else {
         terrain.markDirtyBounds?.(editBounds, terrain.getMiningDirtyRadiusCells?.() || 3);
         terrain.renderDirty = true;
