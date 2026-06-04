@@ -84,10 +84,6 @@ export function drawPlayerSpriteAnimation(ctx, {
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
-  ctx.beginPath();
-  ctx.ellipse(width * 0.5, height + height * 0.075, width * 0.48, height * 0.07, 0, 0, Math.PI * 2);
-  ctx.fill();
   if (shouldFlip) {
     ctx.translate(width, 0);
     ctx.scale(-1, 1);

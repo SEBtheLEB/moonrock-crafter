@@ -1,4 +1,4 @@
-import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=181';
+import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=182';
 
 const PLAYER_WIDTH = 34;
 const PLAYER_HEIGHT = 58;

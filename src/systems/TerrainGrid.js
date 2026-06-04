@@ -1974,7 +1974,7 @@ export class TerrainGrid {
       ctx.rect(rect.x, rect.y, rect.width, rect.height);
     }
     ctx.clip();
-    this.drawFastBackgroundWalls(ctx, bounds);
+    this.drawBackgroundWalls(ctx, bounds);
     this.drawConstructedMaterials(ctx, bounds);
     ctx.restore();
     this.clearLightingOverlayCells(cutoutCells.length ? cutoutCells : null, bounds);

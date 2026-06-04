@@ -1,5 +1,5 @@
 import { gameBalance } from '../data/gameBalance.js?v=158';
-import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=181';
+import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=182';
 
 const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
 const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);
