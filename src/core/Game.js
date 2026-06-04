@@ -51,6 +51,9 @@ export class Game {
     this.controllerUiNavLastKey = '';
     this.controllerUiWaitForRelease = false;
     this.isResettingWorld = false;
+    this.planetGeneratorTestMode = false;
+    this.planetGeneratorTestPreset = null;
+    this.planetGeneratorReturnButton = null;
 
     this.state = this.createInitialState();
     this.systems = this.createSystems();
@@ -437,12 +440,80 @@ export class Game {
     return systems;
   }
 
+  readPlanetGeneratorTestPreset() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('pltGenTest')) return null;
+    try {
+      const text = localStorage.getItem('moonrock:dev:testPlanetPreset');
+      if (!text) return null;
+      const payload = JSON.parse(text);
+      if (!payload?.terrain?.cells?.length || !payload?.island) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  installPlanetGeneratorTestPreset(payload) {
+    if (!payload?.terrain || !payload?.island) return false;
+    const starterId = this.state.story?.starterPlanetId || 'crashPlanet';
+    const layout = [...(this.systems.islands.getAllIslands() || [])];
+    const index = Math.max(0, layout.findIndex((island) => island.id === starterId || island.tag === 'P01' || island.planetTag === 'P01'));
+    const previous = layout[index] || {};
+    const island = {
+      ...previous,
+      ...payload.island,
+      id: starterId,
+      tag: 'P01',
+      planetTag: 'P01',
+      name: payload.island.name || previous.name || 'Menderfall',
+      discovered: true,
+      baseCamp: Boolean(payload.generator?.starterBase ?? payload.island.baseCamp ?? true),
+      size: {
+        width: Number(payload.island.size?.width) || Number(payload.terrain.cols * payload.terrain.cellSize) || previous.size?.width || 3400,
+        height: Number(payload.island.size?.height) || Number(payload.terrain.rows * payload.terrain.cellSize) || previous.size?.height || 3400,
+      },
+    };
+    layout[index] = island;
+    this.state.islands ||= { visited: {}, terrain: {} };
+    this.state.islands.layout = layout;
+    this.state.islands.terrain ||= {};
+    this.state.islands.terrain[starterId] = payload.terrain;
+    this.state.islands.flags ||= {};
+    this.state.islands.torches ||= {};
+    this.state.islands.platforms ||= {};
+    this.state.islands.doors ||= {};
+    this.state.islands.shipAnchors ||= {};
+    delete this.state.islands.flags[starterId];
+    delete this.state.islands.torches[starterId];
+    delete this.state.islands.platforms[starterId];
+    delete this.state.islands.doors[starterId];
+    delete this.state.islands.shipAnchors[starterId];
+    this.state.story ||= {};
+    this.state.story.starterPlanetId = starterId;
+    this.state.story.baseLab = null;
+    this.state.story.craftingStationPlaced = false;
+    this.state.story.craftingStation = null;
+    this.state.story.researchStationPlaced = false;
+    this.state.story.researchStation = null;
+    this.state.story.starterEngineTower = null;
+    this.state.story.starterEngine = null;
+    this.state.story.starterEngineRecovered = false;
+    this.state.base = { established: false, islandId: null, flagId: null, local: null };
+    this.systems.islands.islands = layout;
+    this.systems.navigation.refreshLocations?.();
+    return true;
+  }
+
   start() {
     const saved = this.save.load();
     if (saved) {
       this.state = this.mergeState(this.createInitialState(), saved);
-      this.systems = this.createSystems();
     }
+    this.planetGeneratorTestPreset = this.readPlanetGeneratorTestPreset();
+    this.planetGeneratorTestMode = Boolean(this.planetGeneratorTestPreset);
+    this.systems = this.createSystems();
+    if (this.planetGeneratorTestMode) this.installPlanetGeneratorTestPreset(this.planetGeneratorTestPreset);
     this.audio.setMuted(Boolean(this.state.settings?.audioMuted));
     this.applyTouchControlsSetting();
     this.systems.upgrades.applyUpgrades();
@@ -452,6 +523,7 @@ export class Game {
     this.registerScenes();
     this.ui.setupGlobalControls(this);
     this.debugPanel.mount(this.ui.globalLayer);
+    this.mountPlanetGeneratorReturnButton();
     this.updatePlatformProfile();
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -463,6 +535,29 @@ export class Game {
     this.running = true;
     this.sceneManager.switchTo('boot');
     requestAnimationFrame(this.loop);
+  }
+
+  mountPlanetGeneratorReturnButton() {
+    if (!this.planetGeneratorTestMode || this.planetGeneratorReturnButton) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'plt-test-return-button';
+    button.innerHTML = '<span>P</span><strong>Return to PLT Gen</strong>';
+    button.addEventListener('click', () => this.returnToPlanetGenerator());
+    this.planetGeneratorReturnButton = button;
+    this.ui.globalLayer.append(button);
+  }
+
+  returnToPlanetGenerator() {
+    const url = new URL('/planet-generator.html', window.location.href);
+    url.searchParams.set('restore', '1');
+    const popup = window.open(
+      url.href,
+      'moonrock-planet-generator',
+      'popup=yes,width=1320,height=920,menubar=no,toolbar=no,location=no,status=no',
+    );
+    if (popup) popup.focus();
+    else this.ui.showToast('Popup blocked. Allow popups for this site.', 'danger', 1600);
   }
 
   registerScenes() {
@@ -695,6 +790,7 @@ export class Game {
       ...(this.state.settings || {}),
       audioMuted: !this.audio.enabled,
     };
+    if (this.planetGeneratorTestMode) return;
     this.save.save(this.state);
   }
 
@@ -703,6 +799,10 @@ export class Game {
       ...(this.state.settings || {}),
       audioMuted: !this.audio.enabled,
     };
+    if (this.planetGeneratorTestMode) {
+      this.ui.showToast('PLT Gen test mode is not saved.', 'default');
+      return;
+    }
     this.save.manualSave(this.state);
     this.ui.showToast('Game saved', 'success');
   }

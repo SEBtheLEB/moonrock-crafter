@@ -102,18 +102,30 @@ button:hover {
   color: #fff2cf;
 }
 
+.plt-preview-viewport {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
 [data-preview] {
   width: 100%;
-  height: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  display: block;
   min-height: 0;
   border: 1px solid rgba(118, 243, 255, 0.16);
   border-radius: 8px;
   background: #040914;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 .plt-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 8px;
 }
 
@@ -233,7 +245,7 @@ button:hover {
     min-height: 100vh;
   }
 
-  [data-preview] {
+  .plt-preview-viewport {
     height: min(78vw, 640px);
   }
 

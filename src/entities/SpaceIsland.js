@@ -29,8 +29,8 @@ export class SpaceIsland {
     this.width = terrain?.width || data.size?.width || 1500;
     this.height = terrain?.height || data.size?.height || 760;
     this.radius = Math.min(this.width, this.height) * 0.39;
-    this.landingZoneRadius = gameBalance.mining?.planetInnerAtmosphereDepth || 2500;
-    this.atmosphereDepth = gameBalance.mining?.planetAtmosphereDepth || 5000;
+    this.landingZoneRadius = data.landingZoneRadius ?? gameBalance.mining?.planetInnerAtmosphereDepth ?? 2500;
+    this.atmosphereDepth = data.atmosphereDepth ?? gameBalance.mining?.planetAtmosphereDepth ?? 5000;
     this.landingAngle = data.landingAngle ?? -Math.PI / 2;
     this.landingSurfaceLocal = data.landingSurfaceLocal || null;
     this.atmosphereRadius = this.radius + this.atmosphereDepth;

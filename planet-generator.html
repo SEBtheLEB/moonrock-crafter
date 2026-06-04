@@ -19,10 +19,14 @@
           </div>
           <div class="plt-header-actions">
             <button type="button" data-randomize>Random Seed</button>
+            <button type="button" data-reset-view>Reset View</button>
+            <button type="button" data-play-test>Play</button>
             <button type="button" data-save-po1>Save P01 JSON</button>
           </div>
         </header>
-        <canvas data-preview width="920" height="920" aria-label="Generated planet preview"></canvas>
+        <div class="plt-preview-viewport" data-preview-viewport>
+          <canvas data-preview width="920" height="920" aria-label="Generated planet preview"></canvas>
+        </div>
         <div class="plt-stats" data-stats></div>
       </section>
       <aside class="plt-controls" data-controls></aside>

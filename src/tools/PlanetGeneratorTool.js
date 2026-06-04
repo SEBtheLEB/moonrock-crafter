@@ -42,11 +42,25 @@ const state = {
   surfaceGapMax: 7000,
 };
 
+const TEST_PRESET_KEY = 'moonrock:dev:testPlanetPreset';
+const GENERATOR_STATE_KEY = 'moonrock:dev:testPlanetGeneratorState';
+const GAMEPAD_TRIGGER_THRESHOLD = 0.34;
+
+const previewView = {
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  pointerInside: false,
+  lastFrame: 0,
+};
+
 let TerrainGrid = null;
 let BuildingSystem = null;
 let gameBalance = null;
 let current = null;
 let renderQueued = false;
+let viewDrawQueued = false;
+let previewResizeObserver = null;
 
 function getRoot() {
   return document.querySelector('[data-plt-gen]');
@@ -144,18 +158,49 @@ function generatePlanet() {
   return current;
 }
 
+function resizePreviewCanvas(canvas) {
+  const viewport = document.querySelector('[data-preview-viewport]');
+  if (!canvas || !viewport) return { width: canvas?.width || 920, height: canvas?.height || 920 };
+  const rect = viewport.getBoundingClientRect();
+  const displaySize = Math.max(240, Math.floor(Math.min(rect.width || 920, rect.height || rect.width || 920)));
+  const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
+  const pixelSize = Math.max(240, Math.floor(displaySize * dpr));
+  canvas.style.width = `${displaySize}px`;
+  canvas.style.height = `${displaySize}px`;
+  if (canvas.width !== pixelSize || canvas.height !== pixelSize) {
+    canvas.width = pixelSize;
+    canvas.height = pixelSize;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { width: displaySize, height: displaySize };
+}
+
+function clampPreviewPan({ width, height, surfaceRadius, outerRadius, scale }) {
+  const visibleRadius = Math.max(surfaceRadius, outerRadius) * scale * previewView.zoom;
+  const maxPan = Math.max(0, visibleRadius - Math.min(width, height) * 0.42) + Math.min(width, height) * 0.34;
+  previewView.panX = clamp(previewView.panX, -maxPan, maxPan);
+  previewView.panY = clamp(previewView.panY, -maxPan, maxPan);
+  if (previewView.zoom <= 1.01) {
+    previewView.panX *= 0.78;
+    previewView.panY *= 0.78;
+    if (Math.abs(previewView.panX) < 0.5) previewView.panX = 0;
+    if (Math.abs(previewView.panY) < 0.5) previewView.panY = 0;
+  }
+}
+
 function drawPreview() {
   const canvas = document.querySelector('[data-preview]');
   if (!canvas || !current) return;
   const ctx = canvas.getContext('2d');
   const { island, terrain } = current;
-  const width = canvas.width;
-  const height = canvas.height;
+  const { width, height } = resizePreviewCanvas(canvas);
   const centerX = width * 0.5;
   const centerY = height * 0.5;
   const surfaceRadius = terrain.planetRadius;
   const outerRadius = surfaceRadius + Number(state.outerAtmosphere);
   const scale = Math.min(width, height) * 0.44 / Math.max(1, outerRadius);
+  clampPreviewPan({ width, height, surfaceRadius, outerRadius, scale });
 
   ctx.clearRect(0, 0, width, height);
   const bg = ctx.createRadialGradient(centerX, centerY, 20, centerX, centerY, width * 0.68);
@@ -166,10 +211,10 @@ function drawPreview() {
   ctx.fillRect(0, 0, width, height);
 
   ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.scale(scale, scale);
-  drawRing(ctx, surfaceRadius + Number(state.outerAtmosphere), '#4d82c9', [90, 70], 10 / scale);
-  drawRing(ctx, surfaceRadius + Number(state.innerAtmosphere), '#ffd36b', [38, 34], 7 / scale);
+  ctx.translate(centerX + previewView.panX, centerY + previewView.panY);
+  ctx.scale(scale * previewView.zoom, scale * previewView.zoom);
+  drawRing(ctx, surfaceRadius + Number(state.outerAtmosphere), '#4d82c9', [90, 70], 10 / (scale * previewView.zoom));
+  drawRing(ctx, surfaceRadius + Number(state.innerAtmosphere), '#ffd36b', [38, 34], 7 / (scale * previewView.zoom));
   ctx.drawImage(terrain.renderCanvas || buildTerrainImage(terrain), -terrain.width * 0.5, -terrain.height * 0.5);
   ctx.restore();
 
@@ -216,6 +261,7 @@ function updateStats() {
     <div><strong>${outerCenterRadius}</strong><span>outer ring from center</span></div>
     <div><strong>${state.surfaceGapMin}-${state.surfaceGapMax}</strong><span>target surface gap</span></div>
     <div><strong>${outerOverlapAtMin}</strong><span>outer overlap at min gap</span></div>
+    <div><strong>${previewView.zoom.toFixed(1)}x</strong><span>viewport zoom</span></div>
   `;
 }
 
@@ -230,6 +276,84 @@ function scheduleRender() {
   if (renderQueued) return;
   renderQueued = true;
   window.requestAnimationFrame(render);
+}
+
+function scheduleViewDraw() {
+  if (renderQueued || viewDrawQueued) return;
+  viewDrawQueued = true;
+  window.requestAnimationFrame(() => {
+    viewDrawQueued = false;
+    drawPreview();
+    updateStats();
+  });
+}
+
+function resetPreviewView() {
+  previewView.zoom = 1;
+  previewView.panX = 0;
+  previewView.panY = 0;
+  scheduleViewDraw();
+}
+
+function readFirstGamepad() {
+  if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return null;
+  const pads = navigator.getGamepads();
+  if (!pads) return null;
+  for (let index = 0; index < pads.length; index += 1) {
+    if (pads[index]?.connected) return pads[index];
+  }
+  return null;
+}
+
+function readStick(gamepad, xIndex, yIndex) {
+  const rawX = Number(gamepad?.axes?.[xIndex]) || 0;
+  const rawY = Number(gamepad?.axes?.[yIndex]) || 0;
+  const magnitude = Math.hypot(rawX, rawY);
+  if (magnitude < 0.18) return { x: 0, y: 0, magnitude: 0 };
+  const scaled = clamp((magnitude - 0.18) / 0.82, 0, 1);
+  return {
+    x: (rawX / magnitude) * scaled,
+    y: (rawY / magnitude) * scaled,
+    magnitude: scaled,
+  };
+}
+
+function readButtonValue(gamepad, index) {
+  const button = gamepad?.buttons?.[index];
+  if (!button) return 0;
+  return button.pressed ? 1 : clamp(Number(button.value) || 0, 0, 1);
+}
+
+function updatePreviewGamepad(now = performance.now()) {
+  const delta = Math.min((now - (previewView.lastFrame || now)) / 1000 || 0, 0.05);
+  previewView.lastFrame = now;
+  if (!previewView.pointerInside || !current) return;
+  const gamepad = readFirstGamepad();
+  if (!gamepad) return;
+  const leftStick = readStick(gamepad, 0, 1);
+  const leftTrigger = readButtonValue(gamepad, 6);
+  const rightTrigger = readButtonValue(gamepad, 7);
+  const zoomDirection = (rightTrigger > GAMEPAD_TRIGGER_THRESHOLD ? rightTrigger : 0)
+    - (leftTrigger > GAMEPAD_TRIGGER_THRESHOLD ? leftTrigger : 0);
+  const previousZoom = previewView.zoom;
+  if (Math.abs(zoomDirection) > 0.01) {
+    previewView.zoom = clamp(previewView.zoom * Math.exp(zoomDirection * 2.2 * delta), 1, 8);
+  }
+  if (leftStick.magnitude > 0.01) {
+    const panSpeed = (420 + previewView.zoom * 165) * delta;
+    previewView.panX -= leftStick.x * panSpeed;
+    previewView.panY -= leftStick.y * panSpeed;
+  }
+  if (previewView.zoom <= 1.001 && previousZoom <= 1.001 && leftStick.magnitude <= 0.01) return;
+  scheduleViewDraw();
+}
+
+function startPreviewInputLoop() {
+  const tick = (now) => {
+    updatePreviewGamepad(now);
+    window.requestAnimationFrame(tick);
+  };
+  window.requestAnimationFrame(tick);
 }
 
 function buildControls() {
@@ -319,10 +443,50 @@ function createExportJson() {
   };
 }
 
+function persistGeneratorState() {
+  try {
+    localStorage.setItem(GENERATOR_STATE_KEY, JSON.stringify({
+      state: { ...state },
+      view: {
+        zoom: previewView.zoom,
+        panX: previewView.panX,
+        panY: previewView.panY,
+      },
+    }));
+  } catch {
+    // Storage can be unavailable in some browser privacy modes; exports still work.
+  }
+}
+
+function restoreGeneratorState() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('restore')) return;
+  try {
+    const text = localStorage.getItem(GENERATOR_STATE_KEY);
+    if (!text) return;
+    const stored = JSON.parse(text);
+    Object.entries(stored.state || {}).forEach(([key, value]) => {
+      if (Object.prototype.hasOwnProperty.call(state, key)) state[key] = value;
+    });
+    if (stored.view) {
+      previewView.zoom = clamp(Number(stored.view.zoom) || 1, 1, 8);
+      previewView.panX = Number(stored.view.panX) || 0;
+      previewView.panY = Number(stored.view.panY) || 0;
+    }
+  } catch {
+    resetPreviewView();
+  }
+}
+
 function savePo1Json() {
   const payload = createExportJson();
   const text = JSON.stringify(payload, null, 2);
-  localStorage.setItem('moonrock:dev:po1PlanetPreset', text);
+  try {
+    localStorage.setItem('moonrock:dev:po1PlanetPreset', text);
+  } catch {
+    // The download still gives the user the preset when browser storage is unavailable.
+  }
+  persistGeneratorState();
   const blob = new Blob([text], { type: 'application/json' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -331,6 +495,27 @@ function savePo1Json() {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function playTestPlanet() {
+  const payload = createExportJson();
+  const text = JSON.stringify(payload);
+  try {
+    localStorage.setItem(TEST_PRESET_KEY, text);
+  } catch {
+    window.alert('PLT Gen could not store the test planet in this browser session.');
+    return;
+  }
+  persistGeneratorState();
+  const url = new URL('/', window.location.href);
+  url.searchParams.set('pltGenTest', '1');
+  if (window.opener && !window.opener.closed) {
+    window.opener.location.href = url.href;
+    window.opener.focus();
+    return;
+  }
+  const gameWindow = window.open(url.href, 'moonrock-crafter');
+  gameWindow?.focus?.();
 }
 
 async function boot() {
@@ -344,13 +529,29 @@ async function boot() {
   state.ringSize = gameBalance.mining?.ringSize || state.ringSize;
   state.surfaceGapMin = gameBalance.mining?.planetSurfaceSpacingMin || state.surfaceGapMin;
   state.surfaceGapMax = gameBalance.mining?.planetSurfaceSpacingMax || state.surfaceGapMax;
+  restoreGeneratorState();
   buildControls();
   document.querySelector('[data-randomize]')?.addEventListener('click', () => {
     state.seed = Math.floor(1 + Math.random() * 999999999);
     syncControlOutputs();
     scheduleRender();
   });
+  document.querySelector('[data-reset-view]')?.addEventListener('click', resetPreviewView);
   document.querySelector('[data-save-po1]')?.addEventListener('click', savePo1Json);
+  document.querySelector('[data-play-test]')?.addEventListener('click', playTestPlanet);
+  const viewport = document.querySelector('[data-preview-viewport]');
+  viewport?.addEventListener('pointerenter', () => {
+    previewView.pointerInside = true;
+  });
+  viewport?.addEventListener('pointerleave', () => {
+    previewView.pointerInside = false;
+  });
+  window.addEventListener('resize', scheduleViewDraw);
+  if (viewport && typeof ResizeObserver !== 'undefined') {
+    previewResizeObserver = new ResizeObserver(scheduleViewDraw);
+    previewResizeObserver.observe(viewport);
+  }
+  startPreviewInputLoop();
   scheduleRender();
   getRoot()?.classList.add('is-ready');
 }
