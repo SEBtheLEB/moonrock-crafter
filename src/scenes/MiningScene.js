@@ -2345,19 +2345,45 @@ export class MiningScene {
   }
 
   getControllerShipAimWorld() {
+    const direction = this.getControllerShipAimVector();
+    if (!direction) return null;
+    const range = this.getControllerToolAimRange('ship');
+    const distance = Math.max(72, range * Math.min(1, direction.magnitude));
+    return {
+      x: this.ship.x + direction.x * distance,
+      y: this.ship.y + direction.y * distance,
+    };
+  }
+
+  getControllerShipAimVector() {
     const inputMode = document.documentElement.dataset.inputMode;
-    const allowDirectionalAim = this.game.input.isControllerActive?.()
+    const controllerActive = Boolean(this.game.input.isControllerActive?.());
+    const allowDirectionalAim = controllerActive
       || inputMode === 'touch'
       || document.documentElement.dataset.forceTouchControls === 'true';
     if (!allowDirectionalAim) return null;
+
     const aim = this.game.input.aimVector || { x: 0, y: 0 };
-    const magnitude = Math.hypot(aim.x, aim.y);
-    if (magnitude < 0.12) return null;
-    const range = this.getControllerToolAimRange('ship');
-    const distance = Math.max(72, range * Math.min(1, magnitude));
+    const aimMagnitude = Math.hypot(aim.x, aim.y);
+    if (aimMagnitude > 0.12) {
+      return {
+        x: aim.x / aimMagnitude,
+        y: aim.y / aimMagnitude,
+        magnitude: clamp01(aimMagnitude),
+        source: 'aim',
+      };
+    }
+
+    const move = controllerActive
+      ? (this.game.input.gamepadMove || { x: 0, y: 0 })
+      : (this.game.input.virtualMove || { x: 0, y: 0 });
+    const moveMagnitude = Math.hypot(move.x, move.y);
+    if (moveMagnitude <= 0.18) return null;
     return {
-      x: this.ship.x + (aim.x / magnitude) * distance,
-      y: this.ship.y + (aim.y / magnitude) * distance,
+      x: move.x / moveMagnitude,
+      y: move.y / moveMagnitude,
+      magnitude: clamp01(moveMagnitude),
+      source: 'move',
     };
   }
 
@@ -10990,15 +11016,17 @@ export class MiningScene {
   }
 
   isControllerAimIndicatorActive() {
-    if (this.buildSnapCursorEnabled && (this.isBuildToolSelected() || this.isMinerToolSelected())) return false;
     if (!this.isControllerPromptMode()) return false;
-    if (this.islandMode === 'onIsland') return Boolean(this.getControllerIslandAimVector());
-    const aim = this.game.input.aimVector || { x: 0, y: 0 };
-    return Math.hypot(aim.x, aim.y) > 0.12;
+    if (this.islandMode === 'onIsland') {
+      if (this.buildSnapCursorEnabled && (this.isBuildToolSelected() || this.isMinerToolSelected())) return false;
+      return Boolean(this.getControllerIslandAimVector());
+    }
+    return Boolean(this.getControllerShipAimVector());
   }
 
   drawControllerShipAimIndicator(ctx) {
     const active = this.isControllerAimIndicatorActive();
+    const direction = this.getControllerShipAimVector();
     const aimWorld = active ? this.getControllerShipAimWorld() : null;
     const start = this.cameraView.worldToScreen(this.ship.x, this.ship.y);
     const end = aimWorld
@@ -11006,6 +11034,7 @@ export class MiningScene {
       : start;
     const visual = this.getControllerAimVisual('ship', start, end, {
       active: Boolean(active && aimWorld),
+      magnitudeOverride: direction?.magnitude,
     });
     if (!visual) return;
     this.drawControllerAimBall(ctx, visual.start, visual.end, {
@@ -11134,8 +11163,8 @@ export class MiningScene {
 
     const targetX = start.x;
     const targetY = start.y;
-    const stiffness = 46;
-    const damping = 8.5;
+    const stiffness = 420;
+    const damping = 26;
     state.velocityX += (targetX - state.endX) * stiffness * delta;
     state.velocityY += (targetY - state.endY) * stiffness * delta;
     const damp = Math.exp(-damping * delta);
@@ -11145,11 +11174,11 @@ export class MiningScene {
     state.endY += state.velocityY * delta;
 
     const targetAlpha = 0;
-    const alphaRate = 4.8;
+    const alphaRate = 12;
     state.alpha += (targetAlpha - state.alpha) * Math.min(1, delta * alphaRate);
-    state.magnitude += (targetMagnitude - state.magnitude) * Math.min(1, delta * 5.6);
+    state.magnitude += (targetMagnitude - state.magnitude) * Math.min(1, delta * 13);
 
-    if (!active && state.alpha < 0.015 && Math.hypot(state.endX - start.x, state.endY - start.y) < 1.5) {
+    if (!active && state.alpha < 0.015 && Math.hypot(state.endX - start.x, state.endY - start.y) < 2.5) {
       state.endX = start.x;
       state.endY = start.y;
       state.velocityX = 0;
