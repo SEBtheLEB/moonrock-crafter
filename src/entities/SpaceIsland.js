@@ -347,7 +347,6 @@ export class SpaceIsland {
       ctx.translate(-player.centerX, -player.centerY);
       player.draw(ctx, { x: 0 }, time);
       drawPlayerEquipment?.(ctx);
-      this.drawPlayerDepthShadow(ctx, player, time);
       ctx.restore();
     }
     drawCombatEffects?.(ctx);
@@ -415,37 +414,6 @@ export class SpaceIsland {
     ctx.beginPath();
     ctx.ellipse(0, 39, 18, 5, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
-  }
-
-  getPlayerDepthDarkness(player) {
-    if (!player || !this.terrain?.getDarknessAtWithLights) return 0;
-    const samples = [
-      [player.centerX, player.centerY],
-      [player.centerX, player.y + 8],
-      [player.centerX, player.y + player.height - 6],
-      [player.x + 5, player.centerY],
-      [player.x + player.width - 5, player.centerY],
-    ];
-    return samples.reduce((max, sample) => Math.max(max, this.terrain.getDarknessAtWithLights(sample[0], sample[1])), 0);
-  }
-
-  drawPlayerDepthShadow(ctx, player, time = 0) {
-    const darkness = this.getPlayerDepthDarkness(player);
-    if (darkness <= 0.035) return;
-    const alpha = clamp01((darkness - 0.03) * 0.82);
-    ctx.save();
-    ctx.fillStyle = `rgba(2, 4, 10, ${alpha})`;
-    ctx.beginPath();
-    ctx.roundRect(player.x + 2.5, player.y, player.width - 5, player.height, 8);
-    ctx.fill();
-    if (alpha > 0.32) {
-      ctx.globalAlpha = Math.min(0.22, alpha * 0.45);
-      ctx.fillStyle = '#66d8e8';
-      ctx.beginPath();
-      ctx.arc(player.x + (player.facing > 0 ? 21 : 9), player.y + 18, 3.2 + Math.sin(time * 5) * 0.25, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.restore();
   }
 

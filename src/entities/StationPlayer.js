@@ -126,11 +126,6 @@ export class StationPlayer {
       return;
     }
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
-    ctx.beginPath();
-    ctx.ellipse(this.width / 2, this.height + 5, 17, 4.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
     const bodyGradient = ctx.createLinearGradient(0, 6, 0, this.height - 4);
     bodyGradient.addColorStop(0, '#f1e6c8');
     bodyGradient.addColorStop(0.52, '#d9c79a');

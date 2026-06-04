@@ -16,6 +16,7 @@ export class TerrainWallSystem {
     const nextValue = Math.max(0, Number(value) || 0);
     if (terrain.wallCells[index] === nextValue) return false;
     terrain.wallCells[index] = nextValue;
+    terrain.wallRenderDirty = true;
     terrain.contourCache?.clear();
     terrain.markAirExposureDirty({ defer: true });
     terrain.markLightingOverlayDirty({
@@ -96,6 +97,7 @@ export class TerrainWallSystem {
       }
     }
     terrain.contourCache?.clear();
+    terrain.wallRenderDirty = true;
     terrain.markAirExposureDirty({ defer: false });
     terrain.markLightingOverlayDirty({ defer: false, full: true });
     terrain.renderDirty = true;
@@ -137,6 +139,7 @@ export class TerrainWallSystem {
       return false;
     }
     terrain.contourCache?.clear();
+    terrain.wallRenderDirty = true;
     terrain.markAirExposureDirty({ defer: false });
     terrain.markLightingOverlayDirty({ defer: false, full: true });
     terrain.renderDirty = true;

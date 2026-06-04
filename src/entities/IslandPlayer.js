@@ -206,11 +206,6 @@ export class IslandPlayer {
       return;
     }
 
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath();
-    ctx.ellipse(this.width / 2, this.height + this.height * 0.07, this.width * 0.47, this.height * 0.064, 0, 0, Math.PI * 2);
-    ctx.fill();
-
     const bodyGradient = ctx.createLinearGradient(0, 1, 0, this.height - 1);
     bodyGradient.addColorStop(0, '#f3e9ce');
     bodyGradient.addColorStop(0.5, '#d7c59a');

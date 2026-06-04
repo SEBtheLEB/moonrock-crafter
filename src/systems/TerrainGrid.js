@@ -716,6 +716,9 @@ export class TerrainGrid {
     this.damage = new Float32Array(cols * rows);
     this.renderCanvas = null;
     this.renderCtx = null;
+    this.wallRenderCanvas = null;
+    this.wallRenderCtx = null;
+    this.wallRenderDirty = true;
     this.renderDirty = true;
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
@@ -765,6 +768,7 @@ export class TerrainGrid {
       this.textureCache?.clear();
       this.visualRebuildQueue?.clear();
       this.visualRebuildScheduled = false;
+      this.wallRenderDirty = true;
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
@@ -1974,7 +1978,6 @@ export class TerrainGrid {
       ctx.rect(rect.x, rect.y, rect.width, rect.height);
     }
     ctx.clip();
-    this.drawBackgroundWalls(ctx, bounds);
     this.drawConstructedMaterials(ctx, bounds);
     ctx.restore();
     this.clearLightingOverlayCells(cutoutCells.length ? cutoutCells : null, bounds);
@@ -3282,6 +3285,7 @@ export class TerrainGrid {
     const sh = Math.min(this.height - sy, Math.ceil(viewportHeight) + this.cellSize * 4);
     if (sw <= 0 || sh <= 0) return;
     ctx.save();
+    this.drawWallRenderCache(ctx, camera, { sx, sy, sw, sh });
     ctx.drawImage(this.renderCanvas, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
     this.drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh });
     this.drawLiveDamageOverlays(ctx, camera, { sx, sy, sw, sh });
@@ -3371,7 +3375,6 @@ export class TerrainGrid {
   }
 
   drawTerrainLayers(ctx, bounds = null, { drawOutline = true, fastRedraw = false } = {}) {
-    this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds, { fastRedraw });
     this.drawOreVeins(ctx, bounds, { fastRedraw });
@@ -3383,7 +3386,6 @@ export class TerrainGrid {
   }
 
   drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
-    this.drawFastBackgroundWalls(ctx, bounds);
     this.drawFastNaturalMass(ctx, bounds);
     this.drawOreVeins(ctx, bounds, { fastRedraw: true });
     if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: true });
@@ -4062,6 +4064,39 @@ export class TerrainGrid {
     ctx.restore();
   }
 
+  getWallRenderCanvas() {
+    if (!this.wallRenderCanvas) {
+      this.wallRenderCanvas = document.createElement('canvas');
+      this.wallRenderCtx = this.wallRenderCanvas.getContext('2d');
+      this.wallRenderDirty = true;
+    }
+    if (this.wallRenderCanvas.width !== this.width || this.wallRenderCanvas.height !== this.height) {
+      this.wallRenderCanvas.width = this.width;
+      this.wallRenderCanvas.height = this.height;
+      this.wallRenderDirty = true;
+    }
+    return this.wallRenderCanvas;
+  }
+
+  redrawWallRenderCache() {
+    if (typeof document === 'undefined') return null;
+    const canvas = this.getWallRenderCanvas();
+    const ctx = this.wallRenderCtx;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawBackgroundWalls(ctx, null);
+    this.wallRenderDirty = false;
+    return canvas;
+  }
+
+  drawWallRenderCache(ctx, camera, { sx, sy, sw, sh } = {}) {
+    if (!TERRAIN_WALLS.enabled || !this.wallCells?.length) return;
+    const canvas = this.wallRenderDirty || !this.wallRenderCanvas
+      ? this.redrawWallRenderCache()
+      : this.wallRenderCanvas;
+    if (!canvas || sw <= 0 || sh <= 0) return;
+    ctx.drawImage(canvas, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
+  }
+
   getRenderCanvas() {
     if (!this.renderCanvas) {
       if (this.isRecentMiningEdit()) this.warnIfMiningRebuildInvariant({ functionName: 'getRenderCanvas', canvasResized: true });
@@ -4084,6 +4119,9 @@ export class TerrainGrid {
   releaseRenderCache() {
     this.renderCanvas = null;
     this.renderCtx = null;
+    this.wallRenderCanvas = null;
+    this.wallRenderCtx = null;
+    this.wallRenderDirty = true;
     this.lightingCanvas = null;
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
