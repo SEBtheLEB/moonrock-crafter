@@ -747,7 +747,10 @@ export class TerrainGrid {
   }
 
   static createForIsland(island, world, savedTerrain = null) {
-    if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length) {
+    const requestedCellSize = Math.max(4, Number(island?.terrainCellSize) || DEFAULT_TERRAIN_CELL_SIZE);
+    const savedCellSizeMatches = !island?.terrainCellSize
+      || Math.round(Number(savedTerrain?.cellSize) || 0) === Math.round(requestedCellSize);
+    if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length && savedCellSizeMatches) {
       const terrain = new TerrainGrid({
         cols: savedTerrain.cols,
         rows: savedTerrain.rows,
@@ -767,7 +770,7 @@ export class TerrainGrid {
       return terrain;
     }
 
-    const cellSize = DEFAULT_TERRAIN_CELL_SIZE;
+    const cellSize = requestedCellSize;
     const cols = Math.ceil(world.width / cellSize);
     const rows = Math.ceil(world.height / cellSize);
     const seed = Number.isFinite(island.terrainSeed)

@@ -2,11 +2,12 @@ import { islands } from '../data/islands.js?v=158';
 import { TerrainGrid } from './TerrainGrid.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
 
-const ISLAND_LAYOUT_VERSION = 11;
+const ISLAND_LAYOUT_VERSION = 12;
 const PLANET_TAG_PREFIX = 'P';
 const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
 const STARTER_PLANET_BASE_SIZE = 3400;
 const STARTER_PLANET_SIZE = STARTER_PLANET_BASE_SIZE * 3;
+const STARTER_PLANET_TERRAIN_CELL_SIZE = 34;
 const STARTER_PLANET_ORBIT_DISTANCE = Math.round(
   7200 + (STARTER_PLANET_SIZE - STARTER_PLANET_BASE_SIZE) * 0.39,
 );
@@ -209,7 +210,7 @@ export class IslandSystem {
       this.game.state.islands.doors ||= {};
       this.game.state.islands.shipAnchors ||= {};
     }
-    if (previousLayoutVersion < 11) this.migrateStarterPlanetForLargeP01();
+    if (previousLayoutVersion < 12) this.migrateStarterPlanetForLargeP01();
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
     this.game.state.islands.layout = layout;
@@ -335,6 +336,7 @@ export class IslandSystem {
         size: starterPlanetSize,
       }),
       size: starterPlanetSize,
+      terrainCellSize: STARTER_PLANET_TERRAIN_CELL_SIZE,
       discovered: true,
       dangerLevel: 1,
       landingZoneRadius: innerAtmosphereDepth,
