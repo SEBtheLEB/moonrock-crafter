@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moonrock-crafter-v164';
+const CACHE_NAME = 'moonrock-crafter-v163';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -29,28 +29,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  const isNavigation = event.request.mode === 'navigate'
-    || url.pathname === '/'
-    || url.pathname.endsWith('/index.html');
   const isSourceAsset = url.pathname.includes('/src/') || url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
-
-  if (isNavigation) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, copy.clone());
-              cache.put('./index.html', copy);
-            });
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html'))),
-    );
-    return;
-  }
 
   if (isSourceAsset) {
     event.respondWith(
