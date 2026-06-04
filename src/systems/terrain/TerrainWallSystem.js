@@ -122,10 +122,11 @@ export class TerrainWallSystem {
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
         const index = terrain.index(col, row);
-        if (terrain.wallCells[index] > 0) continue;
         if (!this.shouldHaveNaturalWallCell(col, row, { stableDepth: true })) continue;
         const material = terrain.getCell(col, row);
-        terrain.wallCells[index] = this.getTypeForTile(col, row, material || 1);
+        const nextWall = this.getTypeForTile(col, row, material || 1);
+        if (terrain.wallCells[index] === nextWall) continue;
+        terrain.wallCells[index] = nextWall;
         changed = true;
       }
     }

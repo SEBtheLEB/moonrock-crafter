@@ -29,7 +29,7 @@ export const TERRAIN_MATERIALS = {
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11, 12]);
 
 const TERRAIN_SAVE_VERSION = 25;
-const TERRAIN_WALL_LAYER_VERSION = 4;
+const TERRAIN_WALL_LAYER_VERSION = 5;
 const SURFACE_IRON_TERRAIN_MIGRATION_VERSION = 2;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
@@ -1953,33 +1953,14 @@ export class TerrainGrid {
 
   applyImmediateMiningCutout(bounds, cells = []) {
     if (!bounds || !this.renderCanvas || !this.renderCtx || this.fullRenderDirty) return false;
-    const rect = this.getDrawRect(bounds, 0);
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    const ctx = this.renderCtx;
     const cutoutCells = Array.isArray(cells) && cells.length
       ? cells.filter((cell) => Number.isInteger(cell?.col) && Number.isInteger(cell?.row) && this.isInside(cell.col, cell.row))
       : [];
-    if (cutoutCells.length) {
-      for (const cell of cutoutCells) {
-        const cellRect = this.getDrawRect({ minCol: cell.col, maxCol: cell.col, minRow: cell.row, maxRow: cell.row }, 0);
-        ctx.clearRect(cellRect.x, cellRect.y, cellRect.width, cellRect.height);
-      }
-    } else {
-      ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
-    }
-    ctx.save();
-    ctx.beginPath();
-    if (cutoutCells.length) {
-      for (const cell of cutoutCells) {
-        const cellRect = this.getDrawRect({ minCol: cell.col, maxCol: cell.col, minRow: cell.row, maxRow: cell.row }, 0);
-        ctx.rect(cellRect.x, cellRect.y, cellRect.width, cellRect.height);
-      }
-    } else {
-      ctx.rect(rect.x, rect.y, rect.width, rect.height);
-    }
-    ctx.clip();
-    this.drawConstructedMaterials(ctx, bounds);
-    ctx.restore();
+    this.redrawTerrainRegion(this.renderCtx, bounds, {
+      fastRedraw: true,
+      paddingCells: Math.max(2, this.getMiningDirtyRadiusCells?.() || 2),
+      drawOutline: false,
+    });
     this.clearLightingOverlayCells(cutoutCells.length ? cutoutCells : null, bounds);
     return true;
   }

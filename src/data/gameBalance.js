@@ -246,7 +246,7 @@ export const gameBalance = {
       enabled: true,
       startDepth: 0.55,
       materialInfluenceRadius: 4,
-      textureAlpha: 0.22,
+      textureAlpha: 0.46,
       edgeAlpha: 0,
       surfaceFadeDepth: 4.5,
       sampleSubdivisions: 2,
