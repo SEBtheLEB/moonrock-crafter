@@ -2,6 +2,13 @@ const PLAYER_SPRITE_SHEET_URL = './assets/img/generated/player/templateforchar.p
 const FRAME_SIZE = 32;
 
 const PLAYER_SPRITE_ANIMATIONS = {
+  idle: {
+    fps: 1,
+    sourceFacesLeft: false,
+    frames: [
+      { row: 0, col: 0 },
+    ],
+  },
   run: {
     fps: 10,
     sourceFacesLeft: true,
@@ -55,7 +62,7 @@ function getAnimationFrame(animation, time = 0, velocityY = 0) {
 }
 
 export function drawPlayerSpriteAnimation(ctx, {
-  state = 'run',
+  state = 'idle',
   time = 0,
   width = 34,
   height = 58,
@@ -99,4 +106,3 @@ export function drawPlayerSpriteAnimation(ctx, {
   ctx.restore();
   return true;
 }
-

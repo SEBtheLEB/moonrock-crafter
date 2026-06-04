@@ -1,4 +1,4 @@
-import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=180';
+import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=181';
 
 const PLAYER_WIDTH = 34;
 const PLAYER_HEIGHT = 58;
@@ -113,7 +113,7 @@ export class StationPlayer {
     ctx.scale(squashX, squashY);
     ctx.translate(-this.width / 2, -this.height / 2);
 
-    const spriteState = !this.onGround ? 'jump' : Math.abs(this.vx) > 18 ? 'run' : null;
+    const spriteState = !this.onGround ? 'jump' : Math.abs(this.vx) > 18 ? 'run' : 'idle';
     if (spriteState && drawPlayerSpriteAnimation(ctx, {
       state: spriteState,
       time,
