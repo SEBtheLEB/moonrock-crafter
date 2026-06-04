@@ -133,6 +133,8 @@ const SHOW_CACHE_RESOLUTION_DEBUG = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
 const TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS = Math.max(4, TERRAIN_TUNING.localContourContextCells || 4);
+const TERRAIN_VISUAL_REBUILD_PADDING_CELLS = Math.max(5, TERRAIN_TUNING.visualRebuildPaddingCells ?? 5);
+const TERRAIN_VISUAL_REBUILD_CHUNKS_PER_FRAME = Math.max(1, TERRAIN_TUNING.visualRebuildChunksPerFrame ?? 1);
 
 if (typeof globalThis !== 'undefined') {
   if (typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
@@ -702,6 +704,8 @@ export class TerrainGrid {
     this.landingY = landingY;
     this.chunkSizeCells = DEFAULT_TERRAIN_CHUNK_CELLS;
     this.dirtyChunks = new Set();
+    this.visualRebuildQueue = new Set();
+    this.visualRebuildScheduled = false;
     const cellCount = cols * rows;
     this.cells = cells ? Uint8Array.from(cells) : new Uint8Array(cellCount);
     this.wallCells = wallCells?.length === cellCount ? Uint8Array.from(wallCells) : new Uint8Array(cellCount);
@@ -752,6 +756,8 @@ export class TerrainGrid {
     this.lastMiningBrokenCount = 0;
     this.removeGameArtReadyListener = onGameArtReady(() => {
       this.textureCache?.clear();
+      this.visualRebuildQueue?.clear();
+      this.visualRebuildScheduled = false;
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
@@ -1932,6 +1938,154 @@ export class TerrainGrid {
       console.log('[terrain dirty chunks]', { bounds, range, added: count, total: this.dirtyChunks.size });
     }
     return count;
+  }
+
+  getChunkKey(chunkCol, chunkRow) {
+    return `${chunkCol},${chunkRow}`;
+  }
+
+  parseChunkKey(key) {
+    const [rawCol, rawRow] = String(key).split(',');
+    const chunkCol = Number(rawCol);
+    const chunkRow = Number(rawRow);
+    if (!Number.isInteger(chunkCol) || !Number.isInteger(chunkRow)) return null;
+    return { chunkCol, chunkRow };
+  }
+
+  getChunkBounds(chunkCol, chunkRow) {
+    const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
+    const minCol = chunkCol * chunkSize;
+    const minRow = chunkRow * chunkSize;
+    if (minCol >= this.cols || minRow >= this.rows || chunkCol < 0 || chunkRow < 0) return null;
+    return {
+      minCol: clamp(minCol, 0, this.cols - 1),
+      maxCol: clamp(minCol + chunkSize - 1, 0, this.cols - 1),
+      minRow: clamp(minRow, 0, this.rows - 1),
+      maxRow: clamp(minRow + chunkSize - 1, 0, this.rows - 1),
+    };
+  }
+
+  applyImmediateMiningCutout(bounds, cells = []) {
+    if (!bounds || !this.renderCanvas || !this.renderCtx || this.fullRenderDirty) return false;
+    const rect = this.getDrawRect(bounds, 0);
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    const ctx = this.renderCtx;
+    const cutoutCells = Array.isArray(cells) && cells.length
+      ? cells.filter((cell) => Number.isInteger(cell?.col) && Number.isInteger(cell?.row) && this.isInside(cell.col, cell.row))
+      : [];
+    if (cutoutCells.length) {
+      for (const cell of cutoutCells) {
+        const cellRect = this.getDrawRect({ minCol: cell.col, maxCol: cell.col, minRow: cell.row, maxRow: cell.row }, 0);
+        ctx.clearRect(cellRect.x, cellRect.y, cellRect.width, cellRect.height);
+      }
+    } else {
+      ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    ctx.save();
+    ctx.beginPath();
+    if (cutoutCells.length) {
+      for (const cell of cutoutCells) {
+        const cellRect = this.getDrawRect({ minCol: cell.col, maxCol: cell.col, minRow: cell.row, maxRow: cell.row }, 0);
+        ctx.rect(cellRect.x, cellRect.y, cellRect.width, cellRect.height);
+      }
+    } else {
+      ctx.rect(rect.x, rect.y, rect.width, rect.height);
+    }
+    ctx.clip();
+    this.drawBackgroundWalls(ctx, bounds);
+    this.drawConstructedMaterials(ctx, bounds);
+    ctx.restore();
+    return true;
+  }
+
+  queueTerrainVisualRebuild(bounds, paddingCells = TERRAIN_VISUAL_REBUILD_PADDING_CELLS) {
+    if (!bounds) return 0;
+    if (!this.renderCanvas || !this.renderCtx || this.fullRenderDirty) {
+      this.markDirtyBounds(bounds, Math.max(TERRAIN_VISUAL_REBUILD_PADDING_CELLS, paddingCells || 0));
+      this.renderDirty = true;
+      this.fullRenderDirty = true;
+      return this.countChunksForBounds(bounds);
+    }
+    const paddedBounds = this.expandCellBounds(
+      bounds,
+      Math.max(TERRAIN_VISUAL_REBUILD_PADDING_CELLS, paddingCells || 0),
+    );
+    const range = this.getChunkRangeForBounds(paddedBounds);
+    let added = 0;
+    for (let chunkRow = range.minChunkRow; chunkRow <= range.maxChunkRow; chunkRow += 1) {
+      for (let chunkCol = range.minChunkCol; chunkCol <= range.maxChunkCol; chunkCol += 1) {
+        const key = this.getChunkKey(chunkCol, chunkRow);
+        if (!this.visualRebuildQueue.has(key)) added += 1;
+        this.visualRebuildQueue.add(key);
+      }
+    }
+    if (added > 0 && this.isDebugFlagEnabled('SHOW_DIRTY_CHUNKS', SHOW_DIRTY_CHUNKS)) {
+      console.log('[terrain visual rebuild queued]', {
+        bounds,
+        paddedBounds,
+        added,
+        total: this.visualRebuildQueue.size,
+      });
+    }
+    if (this.visualRebuildQueue.size > 0) this.scheduleTerrainVisualFlush();
+    return added;
+  }
+
+  scheduleTerrainVisualFlush() {
+    if (this.visualRebuildScheduled) return;
+    this.visualRebuildScheduled = true;
+    const callback = () => {
+      this.visualRebuildScheduled = false;
+      this.processTerrainVisualRebuildQueue();
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(callback);
+    else setTimeout(callback, 16);
+  }
+
+  processTerrainVisualRebuildQueue({ maxChunks = TERRAIN_VISUAL_REBUILD_CHUNKS_PER_FRAME } = {}) {
+    if (!this.visualRebuildQueue?.size) return 0;
+    if (this.progressivePrewarm) {
+      this.scheduleTerrainVisualFlush();
+      return 0;
+    }
+    if (!this.renderCanvas || !this.renderCtx || this.fullRenderDirty) {
+      this.renderDirty = true;
+      this.fullRenderDirty = true;
+      this.visualRebuildQueue.clear();
+      return 0;
+    }
+
+    const limit = Math.max(1, maxChunks || 1);
+    let processed = 0;
+    let processedBounds = null;
+    const debug = this.beginTerrainRebuildDebug('queued terrain visual rebuild', {
+      chunksRebuilt: Math.min(limit, this.visualRebuildQueue.size),
+      fullPlanetRebuild: false,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    try {
+      for (const key of this.visualRebuildQueue) {
+        this.visualRebuildQueue.delete(key);
+        const chunk = this.parseChunkKey(key);
+        const bounds = chunk ? this.getChunkBounds(chunk.chunkCol, chunk.chunkRow) : null;
+        if (bounds) {
+          processedBounds = this.mergeBounds(processedBounds, bounds);
+          this.redrawTerrainRegion(this.renderCtx, bounds, { fastRedraw: false });
+          processed += 1;
+        }
+        if (processed >= limit) break;
+      }
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: processedBounds ? this.countCellsInBounds(processedBounds) : 0,
+        chunksRebuilt: processed,
+        fullPlanetRebuild: false,
+        fromMining: this.isRecentMiningEdit(),
+        bounds: processedBounds,
+      });
+    }
+    if (this.visualRebuildQueue.size > 0) this.scheduleTerrainVisualFlush();
+    return processed;
   }
 
   invalidateRoughEdgesAroundCell(col, row, { radius = 1 } = {}) {
@@ -3160,6 +3314,7 @@ export class TerrainGrid {
     this.fullRenderDirty = false;
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
+    if (fullPlanetRebuild) this.visualRebuildQueue?.clear();
   }
 
   redrawTerrainRegion(ctx, bounds, { fastRedraw = false } = {}) {
@@ -3929,6 +4084,8 @@ export class TerrainGrid {
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
+    this.visualRebuildQueue?.clear();
+    this.visualRebuildScheduled = false;
     this.clearContourRenderCaches();
     this.collisionContours = null;
     this.surfaceRadiusLookupCache?.clear();
@@ -3986,6 +4143,8 @@ export class TerrainGrid {
     this.fullRenderDirty = true;
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
+    this.visualRebuildQueue.clear();
+    this.visualRebuildScheduled = false;
     return false;
   }
 

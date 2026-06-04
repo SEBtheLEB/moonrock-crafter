@@ -182,9 +182,6 @@ export class TerrainBlockEditSystem {
           maxRow: cell.row,
         });
         qualityPadding = Math.max(qualityPadding, this.getDirtyPaddingCellsForMaterialChange(cell.material, 0));
-        if (terrain.renderCanvas && !terrain.fullRenderDirty) {
-          terrain.markDirtyCell(cell.col, cell.row, this.getFastEditDirtyPaddingCells());
-        }
       }
       this.invalidateEditedTerrainGeometry({
         keepSurfacePath: true,
@@ -192,15 +189,25 @@ export class TerrainBlockEditSystem {
         nextMaterial: 0,
         editedCells,
       });
-      if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, full: true });
-      terrain.markFastTerrainEdit(editBounds, qualityPadding);
-      terrain.renderDirty = true;
-      if (!terrain.renderCanvas || terrain.fullRenderDirty) terrain.fullRenderDirty = true;
       terrain.recordMiningEditDebug?.(editBounds, broken.length);
+      if (brokeEmissiveMaterial) {
+        terrain.markLightingOverlayDirty({
+          defer: true,
+          bounds: editBounds,
+        });
+      }
+      if (terrain.renderCanvas && terrain.renderCtx && !terrain.fullRenderDirty) {
+        terrain.applyImmediateMiningCutout?.(editBounds, editedCells);
+        terrain.queueTerrainVisualRebuild?.(editBounds, Math.max(5, qualityPadding));
+      } else {
+        terrain.markDirtyBounds?.(editBounds, Math.max(5, qualityPadding));
+        terrain.renderDirty = true;
+        terrain.fullRenderDirty = true;
+      }
     }
     terrain.finishTerrainRebuildDebug?.(debug, {
       tilesProcessed,
-      chunksRebuilt: terrain.dirtyChunks?.size || 0,
+      chunksRebuilt: terrain.visualRebuildQueue?.size || terrain.dirtyChunks?.size || 0,
       fullPlanetRebuild: Boolean(terrain.fullRenderDirty && !terrain.dirtyBounds),
       fromMining: true,
       brokenTiles: broken.length,
