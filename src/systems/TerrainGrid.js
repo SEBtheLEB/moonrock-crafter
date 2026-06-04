@@ -148,11 +148,19 @@ const TERRAIN_WALLS = {
 };
 
 const WALL_CONTOUR_OPTIONS = {
-  ...MATERIAL_CONTOUR_OPTIONS,
+  ...VISUAL_CONTOUR_OPTIONS,
+  sampleSubdivisions: TERRAIN_WALLS.sampleSubdivisions ?? TERRAIN_TUNING.wallSubdivisions ?? VISUAL_CONTOUR_OPTIONS.sampleSubdivisions,
   densityRadiusCells: TERRAIN_WALLS.densityRadiusCells ?? TERRAIN_TUNING.wallDensityRadiusCells ?? 1.22,
   densityThreshold: TERRAIN_WALLS.densityThreshold ?? TERRAIN_TUNING.wallDensityThreshold ?? 0.46,
   smoothingIterations: TERRAIN_WALLS.smoothingIterations ?? TERRAIN_TUNING.wallSmoothingIterations ?? 2,
   smoothingAmount: TERRAIN_WALLS.smoothingAmount ?? TERRAIN_TUNING.wallSmoothingAmount ?? 0.2,
+  minSegmentLength: TERRAIN_WALLS.minSegmentLength ?? TERRAIN_TUNING.wallMinSegmentLength ?? VISUAL_CONTOUR_OPTIONS.minSegmentLength,
+  sharpAngleDegrees: TERRAIN_WALLS.sharpAngleDegrees ?? TERRAIN_TUNING.wallSharpAngleDegrees ?? VISUAL_CONTOUR_OPTIONS.sharpAngleDegrees,
+  sharpAngleAmount: TERRAIN_WALLS.sharpAngleAmount ?? TERRAIN_TUNING.wallSharpAngleAmount ?? VISUAL_CONTOUR_OPTIONS.sharpAngleAmount,
+  chamferAngleDegrees: TERRAIN_WALLS.chamferAngleDegrees ?? TERRAIN_TUNING.wallChamferAngleDegrees ?? VISUAL_CONTOUR_OPTIONS.chamferAngleDegrees,
+  chamferLengthCells: TERRAIN_WALLS.chamferLengthCells ?? TERRAIN_TUNING.wallChamferLengthCells ?? VISUAL_CONTOUR_OPTIONS.chamferLengthCells,
+  chamferMinLength: TERRAIN_WALLS.chamferMinLength ?? TERRAIN_TUNING.wallChamferMinLength ?? VISUAL_CONTOUR_OPTIONS.chamferMinLength,
+  chamferMaxLength: TERRAIN_WALLS.chamferMaxLength ?? TERRAIN_TUNING.wallChamferMaxLength ?? VISUAL_CONTOUR_OPTIONS.chamferMaxLength,
   gridSnapAmount: TERRAIN_WALLS.gridSnapAmount ?? TERRAIN_TUNING.wallGridSnapAmount ?? 0.18,
   cornerRoundAmount: TERRAIN_WALLS.cornerRoundAmount ?? TERRAIN_TUNING.wallCornerRoundAmount ?? 0.14,
 };
@@ -3083,16 +3091,12 @@ export class TerrainGrid {
     }
   }
 
-  drawTerrainLayers(ctx, bounds = null, { fastRedraw = false, drawOutline = true } = {}) {
-    if (bounds && fastRedraw) {
-      this.drawFastTerrainLayers(ctx, bounds, { drawOutline });
-      return;
-    }
+  drawTerrainLayers(ctx, bounds = null, { drawOutline = true } = {}) {
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
-    this.drawRockTexture(ctx, bounds, { fastRedraw });
-    this.drawOreVeins(ctx, bounds, { fastRedraw });
-    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw });
+    this.drawRockTexture(ctx, bounds, { fastRedraw: false });
+    this.drawOreVeins(ctx, bounds, { fastRedraw: false });
+    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: false });
     this.drawConstructedMaterials(ctx, bounds);
   }
 
@@ -4166,7 +4170,10 @@ export class TerrainGrid {
 
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
     if (bounds) {
-      this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
+      const loops = this.buildContourLoopsInBounds(predicate, bounds, options);
+      for (const loop of loops) {
+        this.traceContourLoop(ctx, loop.points, options);
+      }
       return;
     }
     const loops = this.getContourLoops(predicate, cacheKey, options);
@@ -4299,30 +4306,32 @@ export class TerrainGrid {
         currentKey = pointKey(nextPoint);
       }
 
+      const closed = currentKey === startKey;
       const cleaned = removeDuplicateContourPoints(points);
       if (cleaned.length < 3) continue;
       const smoothed = smoothContour(cleaned, options, gridStep);
       loops.push({
         points: smoothed,
         bounds: contourBounds(smoothed),
+        closed,
       });
     }
     return loops;
   }
 
-  traceContourLoop(ctx, points, options = VISUAL_CONTOUR_OPTIONS) {
+  traceContourLoop(ctx, points, options = VISUAL_CONTOUR_OPTIONS, { close = true } = {}) {
     if (!points?.length) return;
-    if (points.length < 4) {
+    if (!close || points.length < 4) {
       ctx.moveTo(points[0].x, points[0].y);
       for (let index = 1; index < points.length; index += 1) ctx.lineTo(points[index].x, points[index].y);
-      ctx.closePath();
+      if (close) ctx.closePath();
       return;
     }
     const roundAmount = clamp01(options.cornerRoundAmount ?? 0.1);
     if (roundAmount <= 0.001) {
       ctx.moveTo(points[0].x, points[0].y);
       for (let index = 1; index < points.length; index += 1) ctx.lineTo(points[index].x, points[index].y);
-      ctx.closePath();
+      if (close) ctx.closePath();
       return;
     }
     const offsetToward = (point, target) => ({
@@ -4342,7 +4351,7 @@ export class TerrainGrid {
       ctx.lineTo(before.x, before.y);
       ctx.quadraticCurveTo(point.x, point.y, after.x, after.y);
     }
-    ctx.closePath();
+    if (close) ctx.closePath();
   }
 
   getMarchingIndex(col, row, predicate) {
@@ -4974,7 +4983,8 @@ export class TerrainGrid {
     const roughLoops = sourceLoops.map((loop) => {
       const sourcePoints = loop.points || [];
       const points = [];
-      for (let index = 0; index < sourcePoints.length; index += 1) {
+      const segmentCount = loop.closed === false ? sourcePoints.length - 1 : sourcePoints.length;
+      for (let index = 0; index < segmentCount; index += 1) {
         const a = sourcePoints[index];
         const b = sourcePoints[(index + 1) % sourcePoints.length];
         const segmentLength = Math.hypot(b.x - a.x, b.y - a.y);
@@ -5031,6 +5041,7 @@ export class TerrainGrid {
         points,
         sourceBounds: loop.bounds,
         bounds: contourBounds(points),
+        closed: loop.closed !== false,
       };
     }).filter((loop) => loop.points.length >= 3);
     return roughLoops;
@@ -5046,7 +5057,7 @@ export class TerrainGrid {
     };
   }
 
-  traceRoughContourLoop(ctx, points, offset = 0) {
+  traceRoughContourLoop(ctx, points, offset = 0, { close = true } = {}) {
     if (!points?.length) return;
     const getPoint = (point) => ({
       x: point.x - (point.normal?.x || 0) * offset,
@@ -5054,22 +5065,31 @@ export class TerrainGrid {
     });
     const first = getPoint(points[0]);
     ctx.moveTo(first.x, first.y);
-    for (let index = 1; index <= points.length; index += 1) {
+    const limit = close ? points.length : points.length - 1;
+    for (let index = 1; index <= limit; index += 1) {
       const previous = getPoint(points[(index - 1 + points.length) % points.length]);
       const current = getPoint(points[index % points.length]);
       const midX = (previous.x + current.x) * 0.5;
       const midY = (previous.y + current.y) * 0.5;
       ctx.quadraticCurveTo(previous.x, previous.y, midX, midY);
     }
-    ctx.closePath();
+    if (close) ctx.closePath();
   }
 
   forEachRoughContourLoop(bounds, callback) {
-    const clipBounds = this.getContourClipBounds(bounds);
-    for (const loop of this.getRoughContourLoops(bounds)) {
-      if (clipBounds && !boundsOverlap(loop.bounds, clipBounds) && !boundsOverlap(loop.sourceBounds, clipBounds)) continue;
+    for (const loop of this.getVisibleRoughContourLoops(bounds)) {
       callback(loop);
     }
+  }
+
+  getVisibleRoughContourLoops(bounds = null) {
+    const clipBounds = this.getContourClipBounds(bounds);
+    return this.getRoughContourLoops(bounds)
+      .filter((loop) => (
+        !clipBounds
+        || boundsOverlap(loop.bounds, clipBounds)
+        || boundsOverlap(loop.sourceBounds, clipBounds)
+      ));
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
@@ -5086,12 +5106,17 @@ export class TerrainGrid {
         stats = this.drawRoughEdgeLines(ctx, bounds);
         return;
       }
-      if (outlineOnly) {
-        stats = this.drawRoughEdgeLines(ctx, bounds);
-        return;
-      }
       if (bounds) {
         stats = this.drawLocalRoughContourLayer(ctx, bounds, { fastRedraw });
+        return;
+      }
+      if (outlineOnly) {
+        const loops = this.getRoughContourLoops(bounds);
+        this.drawRoughContourLinesForLoops(ctx, loops);
+        stats = {
+          tilesProcessed: this.countCellsInBounds(bounds),
+          roughEdgesDrawn: loops.length,
+        };
         return;
       }
       if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
@@ -5111,24 +5136,40 @@ export class TerrainGrid {
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false } = {}) {
-    const segments = this.getLocalRoughContourSegments(bounds);
-    if (!segments.length) {
+    const loops = this.getLocalRoughContourLoops(bounds);
+    if (!loops.length) {
       return {
         tilesProcessed: this.countCellsInBounds(bounds),
         roughEdgesDrawn: 0,
       };
     }
     if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
-      this.drawLocalRoughContourShadows(ctx, segments);
+      this.drawRoughContourShadowsForLoops(ctx, loops);
     }
-    this.drawLocalRoughContourLines(ctx, segments);
+    this.drawRoughContourLinesForLoops(ctx, loops);
     if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
       this.drawRoughSurfaceDetails(ctx, bounds);
     }
     return {
       tilesProcessed: this.countCellsInBounds(bounds),
-      roughEdgesDrawn: segments.length,
+      roughEdgesDrawn: loops.length,
     };
+  }
+
+  getLocalRoughContourLoops(bounds) {
+    if (!bounds) return [];
+    const clipBounds = this.getContourClipBounds(bounds);
+    const sourceLoops = this.buildContourLoopsInBounds(
+      (col, row) => this.isNaturalSolidCell(col, row),
+      bounds,
+      VISUAL_CONTOUR_OPTIONS,
+    );
+    return this.createRoughContourLoopsFromSource(sourceLoops)
+      .filter((loop) => (
+        !clipBounds
+        || boundsOverlap(loop.bounds, clipBounds)
+        || boundsOverlap(loop.sourceBounds, clipBounds)
+      ));
   }
 
   getLocalRoughContourSegments(bounds) {
@@ -5295,37 +5336,45 @@ export class TerrainGrid {
   }
 
   drawRoughContourShadows(ctx, bounds = null) {
+    this.drawRoughContourShadowsForLoops(ctx, this.getVisibleRoughContourLoops(bounds));
+  }
+
+  drawRoughContourShadowsForLoops(ctx, loops) {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.forEachRoughContourLoop(bounds, (loop) => {
+    for (const loop of loops) {
       const averageShadow = loop.points.reduce((total, point) => total + (point.style?.edgeShadowStrength ?? 0.28), 0) / Math.max(1, loop.points.length);
       ctx.strokeStyle = `rgba(5, 8, 14, ${clamp01(averageShadow)})`;
       ctx.lineWidth = Math.max(3.8, this.cellSize * 0.19);
       ctx.beginPath();
-      this.traceRoughContourLoop(ctx, loop.points, this.cellSize * 0.08);
+      this.traceRoughContourLoop(ctx, loop.points, this.cellSize * 0.08, { close: loop.closed !== false });
       ctx.stroke();
-    });
+    }
     ctx.restore();
   }
 
   drawRoughContourLines(ctx, bounds = null) {
+    this.drawRoughContourLinesForLoops(ctx, this.getVisibleRoughContourLoops(bounds));
+  }
+
+  drawRoughContourLinesForLoops(ctx, loops) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    this.forEachRoughContourLoop(bounds, (loop) => {
+    for (const loop of loops) {
       ctx.strokeStyle = 'rgba(5, 11, 19, 0.62)';
       ctx.lineWidth = Math.max(2.5, this.cellSize * 0.16);
       ctx.beginPath();
-      this.traceRoughContourLoop(ctx, loop.points);
+      this.traceRoughContourLoop(ctx, loop.points, 0, { close: loop.closed !== false });
       ctx.stroke();
       ctx.strokeStyle = withAlpha(palette.edge, 0.72);
       ctx.lineWidth = Math.max(1.05, this.cellSize * 0.06);
       ctx.beginPath();
-      this.traceRoughContourLoop(ctx, loop.points);
+      this.traceRoughContourLoop(ctx, loop.points, 0, { close: loop.closed !== false });
       ctx.stroke();
-    });
+    }
     ctx.restore();
   }
 
@@ -5575,16 +5624,14 @@ export class TerrainGrid {
   }
 
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
-    if (bounds) {
-      this.strokeSampledMarchingEdges(ctx, style, width, bounds, predicate, options);
-      return;
-    }
-    const loops = this.getContourLoops(predicate, cacheKey, options);
+    const loops = bounds
+      ? this.buildContourLoopsInBounds(predicate, bounds, options)
+      : this.getContourLoops(predicate, cacheKey, options);
     ctx.strokeStyle = style;
     ctx.lineWidth = width;
     ctx.beginPath();
     for (const loop of loops) {
-      this.traceContourLoop(ctx, loop.points, options);
+      this.traceContourLoop(ctx, loop.points, options, { close: loop.closed !== false });
     }
     ctx.stroke();
   }
