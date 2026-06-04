@@ -5,6 +5,9 @@ import { gameBalance } from '../data/gameBalance.js?v=158';
 const ISLAND_LAYOUT_VERSION = 10;
 const PLANET_TAG_PREFIX = 'P';
 const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
+const STARTER_PLANET_ID = 'crashPlanet';
+const STARTER_PLANET_TAG = 'P01';
+const STARTER_PLANET_SIZE = 3400;
 
 export class IslandSystem {
   constructor(game) {
@@ -83,7 +86,15 @@ export class IslandSystem {
   }
 
   createTerrain(island, world) {
-    return TerrainGrid.createForIsland(island, world, this.getSavedTerrain(island.id));
+    const savedTerrain = this.getSavedTerrain(island.id);
+    if (savedTerrain?.cells?.length && !TerrainGrid.savedTerrainMatchesWorld(savedTerrain, world)) {
+      this.clearSavedIslandRuntimeState(island.id, {
+        resetStarterStructures: island.id === (this.game.state.story?.starterPlanetId || STARTER_PLANET_ID),
+      });
+      this.game.saveGame();
+      return TerrainGrid.createForIsland(island, world, null);
+    }
+    return TerrainGrid.createForIsland(island, world, savedTerrain);
   }
 
   getSavedTerrain(islandId) {
@@ -185,7 +196,9 @@ export class IslandSystem {
       && this.game.state.islands.layout.length
     ) {
       const layout = this.game.state.islands.layout;
-      if (this.assignPlanetTags(layout)) this.game.saveGame();
+      const tagsChanged = this.assignPlanetTags(layout);
+      const starterChanged = this.normalizeStarterPlanetLayout(layout);
+      if (tagsChanged || starterChanged) this.game.saveGame();
       return layout;
     }
     const previousLayoutVersion = Number(this.game.state.islands.layoutVersion) || 0;
@@ -209,6 +222,84 @@ export class IslandSystem {
     this.game.state.islands.layout = layout;
     this.game.state.islands.layoutVersion = ISLAND_LAYOUT_VERSION;
     return layout;
+  }
+
+  normalizeStarterPlanetLayout(layout = []) {
+    const starterId = this.game.state.story?.starterPlanetId || STARTER_PLANET_ID;
+    const starter = layout.find((island) => (
+      island?.id === starterId
+      || island?.id === STARTER_PLANET_ID
+      || this.normalizePlanetTag(island?.tag || island?.planetTag) === STARTER_PLANET_TAG
+    ));
+    if (!starter) return false;
+
+    const width = Number(starter.size?.width) || 0;
+    const height = Number(starter.size?.height) || 0;
+    const isOversizedStarter = width > STARTER_PLANET_SIZE * 1.5 || height > STARTER_PLANET_SIZE * 1.5;
+    if (!isOversizedStarter) return false;
+
+    starter.id = STARTER_PLANET_ID;
+    starter.tag = STARTER_PLANET_TAG;
+    starter.planetTag = STARTER_PLANET_TAG;
+    starter.type = 'crashPlanet';
+    starter.layoutId = 'crashPlanet';
+    starter.size = { width: STARTER_PLANET_SIZE, height: STARTER_PLANET_SIZE };
+    delete starter.terrainCellSize;
+    this.game.state.story ||= {};
+    this.game.state.story.starterPlanetId = STARTER_PLANET_ID;
+    this.clearSavedIslandRuntimeState(STARTER_PLANET_ID, { resetStarterStructures: true });
+    return true;
+  }
+
+  clearSavedIslandRuntimeState(islandId, { resetStarterStructures = false } = {}) {
+    if (!islandId) return false;
+    this.game.state.islands ||= { visited: {}, terrain: {} };
+    let changed = false;
+    const clearBucket = (bucketName) => {
+      const bucket = this.game.state.islands?.[bucketName];
+      if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, islandId)) return;
+      delete bucket[islandId];
+      changed = true;
+    };
+    ['terrain', 'flags', 'torches', 'platforms', 'doors', 'shipAnchors'].forEach(clearBucket);
+
+    if (this.game.state.base?.islandId === islandId) {
+      this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
+      changed = true;
+    }
+
+    if (!resetStarterStructures) return changed;
+    const story = this.game.state.story ||= {};
+    if (story.baseLab) {
+      story.baseLab = null;
+      changed = true;
+    }
+    if (story.craftingStationPlaced || story.craftingStation?.islandId === islandId) {
+      story.craftingStationPlaced = false;
+      story.craftingStation = null;
+      this.ensureInventoryAtLeast('craftingStationKit', 1);
+      changed = true;
+    }
+    if (story.researchStationPlaced || story.researchStation?.islandId === islandId) {
+      story.researchStationPlaced = false;
+      story.researchStation = null;
+      this.ensureInventoryAtLeast('researchStationKit', 1);
+      changed = true;
+    }
+    if (story.starterEngineTower) {
+      story.starterEngineTower = null;
+      changed = true;
+    }
+    if (story.starterEngine?.islandId === islandId) {
+      story.starterEngine = null;
+      changed = true;
+    }
+    return changed;
+  }
+
+  ensureInventoryAtLeast(itemId, amount = 1) {
+    this.game.state.inventory ||= {};
+    this.game.state.inventory[itemId] = Math.max(Number(this.game.state.inventory[itemId]) || 0, amount);
   }
 
   formatPlanetTag(index) {

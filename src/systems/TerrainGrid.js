@@ -747,14 +747,7 @@ export class TerrainGrid {
   }
 
   static createForIsland(island, world, savedTerrain = null) {
-    const savedCellSize = Number(savedTerrain?.cellSize) || 0;
-    const savedCols = Number(savedTerrain?.cols) || 0;
-    const savedRows = Number(savedTerrain?.rows) || 0;
-    const savedWidth = savedCols * savedCellSize;
-    const savedHeight = savedRows * savedCellSize;
-    const savedTerrainMatchesWorld = savedTerrain?.cells?.length === savedCols * savedRows
-      && Math.abs(savedWidth - world.width) <= Math.max(1, savedCellSize)
-      && Math.abs(savedHeight - world.height) <= Math.max(1, savedCellSize);
+    const savedTerrainMatchesWorld = TerrainGrid.savedTerrainMatchesWorld(savedTerrain, world);
 
     // Saved terrain can outlive layout migrations; reject stale oversized grids.
     if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length && savedTerrainMatchesWorld) {
@@ -794,6 +787,21 @@ export class TerrainGrid {
     });
     terrain.generate(island);
     return terrain;
+  }
+
+  static savedTerrainMatchesWorld(savedTerrain, world = {}) {
+    if (!savedTerrain?.cells?.length) return false;
+    const savedCellSize = Number(savedTerrain.cellSize) || 0;
+    const savedCols = Number(savedTerrain.cols) || 0;
+    const savedRows = Number(savedTerrain.rows) || 0;
+    const worldWidth = Number(world.width) || 0;
+    const worldHeight = Number(world.height) || 0;
+    if (!savedCellSize || !savedCols || !savedRows || !worldWidth || !worldHeight) return false;
+    const savedWidth = savedCols * savedCellSize;
+    const savedHeight = savedRows * savedCellSize;
+    return savedTerrain.cells.length === savedCols * savedRows
+      && Math.abs(savedWidth - worldWidth) <= Math.max(1, savedCellSize)
+      && Math.abs(savedHeight - worldHeight) <= Math.max(1, savedCellSize);
   }
 
   serialize() {
