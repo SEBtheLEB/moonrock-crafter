@@ -4215,10 +4215,9 @@ export class TerrainGrid {
 
   buildMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
     if (bounds) {
-      const loops = this.buildContourLoopsInBounds(predicate, bounds, options);
-      for (const loop of loops) {
-        this.traceContourLoop(ctx, loop.points, options);
-      }
+      // Filled/clipped regional masks must stay cell-local. Contour loops can
+      // be open at local bounds, and filling those paths closes them into shards.
+      this.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
       return;
     }
     const loops = this.getContourLoops(predicate, cacheKey, options);
