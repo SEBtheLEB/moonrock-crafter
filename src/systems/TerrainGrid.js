@@ -128,9 +128,6 @@ const TERRAIN_ROUGHNESS = {
 
 const SHOW_TERRAIN_REBUILD_DEBUG = false;
 const SHOW_DIRTY_CHUNKS = false;
-const SHOW_TERRAIN_DIRTY_REGIONS = false;
-const SHOW_TERRAIN_CHUNK_BOUNDS = false;
-const SHOW_TERRAIN_MASK_DEBUG = false;
 const SHOW_ROUGH_EDGE_DEBUG = false;
 const SHOW_CACHE_RESOLUTION_DEBUG = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
@@ -143,9 +140,6 @@ const TERRAIN_VISUAL_REBUILD_CHUNKS_PER_FRAME = Math.max(1, TERRAIN_TUNING.visua
 if (typeof globalThis !== 'undefined') {
   if (typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
   if (typeof globalThis.SHOW_DIRTY_CHUNKS === 'undefined') globalThis.SHOW_DIRTY_CHUNKS = SHOW_DIRTY_CHUNKS;
-  if (typeof globalThis.SHOW_TERRAIN_DIRTY_REGIONS === 'undefined') globalThis.SHOW_TERRAIN_DIRTY_REGIONS = SHOW_TERRAIN_DIRTY_REGIONS;
-  if (typeof globalThis.SHOW_TERRAIN_CHUNK_BOUNDS === 'undefined') globalThis.SHOW_TERRAIN_CHUNK_BOUNDS = SHOW_TERRAIN_CHUNK_BOUNDS;
-  if (typeof globalThis.SHOW_TERRAIN_MASK_DEBUG === 'undefined') globalThis.SHOW_TERRAIN_MASK_DEBUG = SHOW_TERRAIN_MASK_DEBUG;
   if (typeof globalThis.SHOW_ROUGH_EDGE_DEBUG === 'undefined') globalThis.SHOW_ROUGH_EDGE_DEBUG = SHOW_ROUGH_EDGE_DEBUG;
   if (typeof globalThis.SHOW_CACHE_RESOLUTION_DEBUG === 'undefined') globalThis.SHOW_CACHE_RESOLUTION_DEBUG = SHOW_CACHE_RESOLUTION_DEBUG;
 }
@@ -743,7 +737,7 @@ export class TerrainGrid {
     this.collisionContours = null;
     this.surfacePathCache = null;
     this.surfaceRadiusLookupCache = new Map();
-    this.roughnessRenderEnabled = false;
+    this.roughnessRenderEnabled = Boolean(TERRAIN_ROUGHNESS.enabled);
     this.lightingRenderEnabled = Boolean(TERRAIN_LIGHTING.enabled);
     this.lightingDebugEnabled = false;
     this.depthDebugEnabled = false;
@@ -3247,7 +3241,7 @@ export class TerrainGrid {
 
   draw(ctx, camera, viewportWidth, viewportHeight = this.height, options = {}) {
     const now = this.getClockNow();
-    const nextRoughnessEnabled = false;
+    const nextRoughnessEnabled = TERRAIN_ROUGHNESS.enabled && options?.roughness !== false;
     const nextLightingEnabled = TERRAIN_LIGHTING.enabled && options?.lighting !== false;
     const nextLightingDebugEnabled = Boolean(options?.lightingDebug);
     const nextDepthDebugEnabled = Boolean(options?.depthDebug);
@@ -3289,7 +3283,6 @@ export class TerrainGrid {
     const sh = Math.min(this.height - sy, Math.ceil(viewportHeight) + this.cellSize * 4);
     if (sw <= 0 || sh <= 0) return;
     ctx.save();
-    this.drawWallRenderCache(ctx, camera, { sx, sy, sw, sh });
     ctx.drawImage(this.renderCanvas, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
     this.drawCachedDepthLightingOverlay(ctx, camera, { sx, sy, sw, sh });
     this.drawLiveDamageOverlays(ctx, camera, { sx, sy, sw, sh });
@@ -3339,12 +3332,10 @@ export class TerrainGrid {
     else this.trimVisualRebuildQueueTo(rebuildBounds);
   }
 
-  redrawTerrainRegion(ctx, bounds, { fastRedraw = false, paddingCells = null, drawOutline = true } = {}) {
-    const clearPadding = Number.isFinite(paddingCells)
-      ? Math.max(0, paddingCells) * this.cellSize
-      : fastRedraw
-        ? Math.min(this.getLocalRedrawPaddingPixels(), this.cellSize * 6)
-        : this.getLocalRedrawPaddingPixels();
+  redrawTerrainRegion(ctx, bounds, { fastRedraw = false } = {}) {
+    const clearPadding = fastRedraw
+      ? Math.min(this.getLocalRedrawPaddingPixels(), this.cellSize * 6)
+      : this.getLocalRedrawPaddingPixels();
     const cellPadding = Math.max(1, Math.ceil(clearPadding / this.cellSize));
     const paintBounds = {
       minCol: clamp(bounds.minCol - cellPadding, 0, this.cols - 1),
@@ -3354,17 +3345,6 @@ export class TerrainGrid {
     };
     const rect = this.getDrawRect(bounds, clearPadding);
     if (rect.width <= 0 || rect.height <= 0) return;
-    const chunkKey = `region:${paintBounds.minCol},${paintBounds.minRow}-${paintBounds.maxCol},${paintBounds.maxRow}`;
-    if (this.isDebugFlagEnabled('SHOW_TERRAIN_DIRTY_REGIONS', SHOW_TERRAIN_DIRTY_REGIONS)) {
-      console.log('Rebuilding terrain chunk', chunkKey, {
-        canvasWidth: ctx.canvas?.width || 0,
-        canvasHeight: ctx.canvas?.height || 0,
-        worldX: rect.x,
-        worldY: rect.y,
-        alpha: ctx.globalAlpha,
-        composite: ctx.globalCompositeOperation,
-      });
-    }
     const debug = this.beginTerrainRebuildDebug('chunk rebuild', {
       bounds: paintBounds,
       chunksRebuilt: this.countChunksForBounds(paintBounds),
@@ -3374,24 +3354,11 @@ export class TerrainGrid {
     try {
       ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
       ctx.save();
-      try {
-        ctx.beginPath();
-        ctx.rect(rect.x, rect.y, rect.width, rect.height);
-        ctx.clip();
-        if (this.isDebugFlagEnabled('SHOW_TERRAIN_CHUNK_BOUNDS', SHOW_TERRAIN_CHUNK_BOUNDS)) {
-          this.warnTerrainDebugOverlayDraw();
-          ctx.save();
-          ctx.strokeStyle = 'rgba(255, 215, 96, 0.9)';
-          ctx.lineWidth = Math.max(1, this.cellSize * 0.08);
-          ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
-          ctx.restore();
-        }
-        this.drawTerrainLayers(ctx, paintBounds, { fastRedraw, drawOutline });
-      } finally {
-        ctx.restore();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
-      }
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.width, rect.height);
+      ctx.clip();
+      this.drawTerrainLayers(ctx, paintBounds, { fastRedraw });
+      ctx.restore();
     } finally {
       this.finishTerrainRebuildDebug(debug, {
         tilesProcessed: this.countCellsInBounds(paintBounds),
@@ -3403,6 +3370,11 @@ export class TerrainGrid {
   }
 
   drawTerrainLayers(ctx, bounds = null, { drawOutline = true, fastRedraw = false } = {}) {
+    if (bounds && (fastRedraw || this.isRecentMiningEdit())) {
+      this.drawFastTerrainLayers(ctx, bounds, { drawOutline });
+      return;
+    }
+    this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
     this.drawRockTexture(ctx, bounds, { fastRedraw });
     this.drawOreVeins(ctx, bounds, { fastRedraw });
@@ -3411,11 +3383,15 @@ export class TerrainGrid {
   }
 
   drawTerrainOutlineLayer(ctx, bounds = null, { fastRedraw = false } = {}) {
+    if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
+    else this.drawEdgeContours(ctx, bounds);
   }
 
   drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
+    this.drawFastBackgroundWalls(ctx, bounds);
     this.drawFastNaturalMass(ctx, bounds);
-    this.drawOreVeins(ctx, bounds, { fastRedraw: true });
+    this.drawFastRockTexture(ctx, bounds);
+    this.drawFastOreVeins(ctx, bounds);
     if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: true });
     this.drawConstructedMaterials(ctx, bounds);
   }
@@ -3447,20 +3423,67 @@ export class TerrainGrid {
     gradient.addColorStop(0, palette.top);
     gradient.addColorStop(0.48, palette.body);
     gradient.addColorStop(1, palette.deep);
+    const size = this.cellSize;
+    ctx.save();
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        if (!this.isNaturalSolidCell(col, row)) continue;
+        ctx.rect(col * size, row * size, size, size);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFastRockTexture(ctx, bounds) {
+    if (!bounds) return;
+    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
     const tile = this.getTextureTile(
       `stone:${this.seed}:${this.biome}`,
       (tileCtx, width, height) => this.drawStoneTextureTile(tileCtx, width, height, palette),
     );
     const pattern = ctx.createPattern(tile, 'repeat');
-    const rect = this.getDrawRect(bounds);
-    if (rect.width <= 0 || rect.height <= 0) return;
+    if (!pattern) return;
+    const size = this.cellSize;
     ctx.save();
-    this.clipNaturalMass(ctx, bounds);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-    if (pattern) {
+    ctx.fillStyle = pattern;
+    ctx.beginPath();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        if (!this.isNaturalSolidCell(col, row)) continue;
+        ctx.rect(col * size, row * size, size, size);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFastOreVeins(ctx, bounds) {
+    if (!bounds) return;
+    const size = this.cellSize;
+    ctx.save();
+    for (const [materialKey, data] of Object.entries(TERRAIN_MATERIALS)) {
+      const material = Number(materialKey);
+      if (material <= 1 || this.isConstructedMaterial(material)) continue;
+      if (!data?.color || !this.hasMaterialInBounds(material, bounds, 0)) continue;
+      const tile = this.getTextureTile(
+        `ore:${this.seed}:${material}:${data.color}:${data.edge}`,
+        (tileCtx, width, height) => this.drawOreTextureTile(tileCtx, width, height, data, material),
+      );
+      const pattern = ctx.createPattern(tile, 'repeat');
+      if (!pattern) continue;
+      ctx.globalAlpha = material >= 4 ? 0.95 : 0.86;
       ctx.fillStyle = pattern;
-      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.beginPath();
+      for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+        for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+          if (this.getCell(col, row) !== material) continue;
+          ctx.rect(col * size, row * size, size, size);
+        }
+      }
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -4498,7 +4521,7 @@ export class TerrainGrid {
 
   buildSampledMarchingCellPath(ctx, predicate, bounds, options = VISUAL_CONTOUR_OPTIONS) {
     const step = this.getContourStep(options);
-    const padding = this.getLocalContourContextPaddingPixels(options);
+    const padding = this.cellSize * 3;
     const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
@@ -4942,7 +4965,6 @@ export class TerrainGrid {
 
   drawRockTexture(ctx, bounds = null, { fastRedraw = false } = {}) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
-    const contourOptions = bounds ? LOCAL_SURFACE_CONTOUR_OPTIONS : VISUAL_CONTOUR_OPTIONS;
     this.drawPatternInMask(
       ctx,
       (col, row) => this.isNaturalSolidCell(col, row),
@@ -4951,7 +4973,6 @@ export class TerrainGrid {
       bounds,
       1,
       'natural-solid',
-      contourOptions,
     );
     if (!fastRedraw) this.drawStoneCracks(ctx, palette, bounds);
   }
@@ -5468,7 +5489,47 @@ export class TerrainGrid {
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
-    return;
+    const debug = this.beginTerrainRebuildDebug('rough edge generation', {
+      bounds,
+      chunksRebuilt: this.countChunksForBounds(bounds),
+      fullPlanetRebuild: !bounds,
+      fromMining: this.isRecentMiningEdit(),
+    });
+    let stats = null;
+    const outlineOnly = this.isRoughnessOutlineOnly();
+    try {
+      if (fastRedraw && !outlineOnly && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
+      }
+      if (outlineOnly) {
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
+      }
+      if (bounds) {
+        if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughEdgeChipCuts(ctx, bounds);
+        if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughEdgeShadows(ctx, bounds);
+        if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+          this.drawRoughSurfaceDetails(ctx, bounds);
+        }
+        if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughPebbleLips(ctx, bounds);
+        stats = this.drawRoughEdgeLines(ctx, bounds);
+        return;
+      }
+      if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughContourShadows(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.surfaceDetails !== false) this.drawRoughSurfaceDetails(ctx, bounds);
+      if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughContourPebbleLips(ctx, bounds);
+      this.drawRoughContourLines(ctx, bounds);
+    } finally {
+      this.finishTerrainRebuildDebug(debug, {
+        tilesProcessed: stats?.tilesProcessed || this.countCellsInBounds(bounds),
+        roughEdgesDrawn: stats?.roughEdgesDrawn || 0,
+        chunksRebuilt: this.countChunksForBounds(bounds),
+        fullPlanetRebuild: !bounds,
+        fromMining: this.isRecentMiningEdit(),
+      });
+    }
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false, outlineOnly = false } = {}) {
@@ -6074,19 +6135,13 @@ export class TerrainGrid {
   }
 
   drawDebug(ctx, flags = {}) {
-    if (!flags?.rawGrid && !flags?.visualMesh && !flags?.collision) return;
-    this.warnTerrainDebugOverlayDraw();
+    if (!flags?.rawGrid && !flags?.visualMesh && !flags?.collision && !flags?.roughnessDebug) return;
     ctx.save();
     if (flags.rawGrid) this.drawRawGridDebug(ctx);
     if (flags.visualMesh) this.drawVisualMeshDebug(ctx);
     if (flags.collision) this.drawCollisionDebug(ctx);
+    if (flags.roughnessDebug) this.drawRoughnessDebug(ctx);
     ctx.restore();
-  }
-
-  warnTerrainDebugOverlayDraw() {
-    if (this.warnedTerrainDebugOverlayDraw) return;
-    this.warnedTerrainDebugOverlayDraw = true;
-    console.warn('DEBUG TERRAIN OVERLAY DRAWING DURING GAMEPLAY');
   }
 
   drawRawGridDebug(ctx) {
