@@ -60,6 +60,18 @@ const VISUAL_CONTOUR_OPTIONS = {
   spikeFlattenAmount: TERRAIN_TUNING.visualSpikeFlattenAmount ?? 0.58,
 };
 
+const LOCAL_SURFACE_CONTOUR_OPTIONS = {
+  ...VISUAL_CONTOUR_OPTIONS,
+  sampleSubdivisions: Math.max(
+    VISUAL_CONTOUR_OPTIONS.sampleSubdivisions,
+    TERRAIN_TUNING.localSurfaceSubdivisions || VISUAL_CONTOUR_OPTIONS.sampleSubdivisions * 2,
+  ),
+  densityRadiusCells: TERRAIN_TUNING.localSurfaceDensityRadiusCells
+    ?? Math.max(VISUAL_CONTOUR_OPTIONS.densityRadiusCells, 1.42),
+  gridSnapAmount: TERRAIN_TUNING.localSurfaceGridSnapAmount
+    ?? Math.min(VISUAL_CONTOUR_OPTIONS.gridSnapAmount, 0.08),
+};
+
 const COLLISION_CONTOUR_OPTIONS = {
   sampleSubdivisions: TERRAIN_COLLISION_SUBDIVISIONS,
   densityRadiusCells: TERRAIN_COLLISION_DENSITY_RADIUS,
@@ -4176,7 +4188,13 @@ export class TerrainGrid {
     gradient.addColorStop(0.48, palette.body);
     gradient.addColorStop(1, palette.deep);
     ctx.fillStyle = gradient;
-    this.fillMarchingPath(ctx, (col, row) => this.isNaturalSolidCell(col, row), bounds, 'natural-solid');
+    this.fillMarchingPath(
+      ctx,
+      (col, row) => this.isNaturalSolidCell(col, row),
+      bounds,
+      'natural-solid',
+      bounds ? LOCAL_SURFACE_CONTOUR_OPTIONS : VISUAL_CONTOUR_OPTIONS,
+    );
   }
 
   fillMarchingPath(ctx, predicate, bounds = null, cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
@@ -4680,6 +4698,7 @@ export class TerrainGrid {
 
   drawRockTexture(ctx, bounds = null, { fastRedraw = false } = {}) {
     const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
+    const contourOptions = bounds ? LOCAL_SURFACE_CONTOUR_OPTIONS : VISUAL_CONTOUR_OPTIONS;
     this.drawPatternInMask(
       ctx,
       (col, row) => this.isNaturalSolidCell(col, row),
@@ -4688,6 +4707,7 @@ export class TerrainGrid {
       bounds,
       1,
       'natural-solid',
+      contourOptions,
     );
     if (!fastRedraw) this.drawStoneCracks(ctx, palette, bounds);
   }
@@ -5271,8 +5291,9 @@ export class TerrainGrid {
 
   forEachLocalRoughContourSegment(bounds, callback) {
     if (!bounds) return;
-    const step = this.getContourStep(VISUAL_CONTOUR_OPTIONS);
-    const padding = this.getLocalContourContextPaddingPixels(VISUAL_CONTOUR_OPTIONS);
+    const contourOptions = LOCAL_SURFACE_CONTOUR_OPTIONS;
+    const step = this.getContourStep(contourOptions);
+    const padding = this.getLocalContourContextPaddingPixels(contourOptions);
     const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
@@ -5283,7 +5304,7 @@ export class TerrainGrid {
       col,
       row,
       step,
-      VISUAL_CONTOUR_OPTIONS,
+      contourOptions,
     );
 
     for (let row = minRow; row <= maxRow; row += 1) {
