@@ -747,7 +747,17 @@ export class TerrainGrid {
   }
 
   static createForIsland(island, world, savedTerrain = null) {
-    if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length) {
+    const savedCellSize = Number(savedTerrain?.cellSize) || 0;
+    const savedCols = Number(savedTerrain?.cols) || 0;
+    const savedRows = Number(savedTerrain?.rows) || 0;
+    const savedWidth = savedCols * savedCellSize;
+    const savedHeight = savedRows * savedCellSize;
+    const savedTerrainMatchesWorld = savedTerrain?.cells?.length === savedCols * savedRows
+      && Math.abs(savedWidth - world.width) <= Math.max(1, savedCellSize)
+      && Math.abs(savedHeight - world.height) <= Math.max(1, savedCellSize);
+
+    // Saved terrain can outlive layout migrations; reject stale oversized grids.
+    if (savedTerrain?.version === TERRAIN_SAVE_VERSION && savedTerrain?.cells?.length && savedTerrainMatchesWorld) {
       const terrain = new TerrainGrid({
         cols: savedTerrain.cols,
         rows: savedTerrain.rows,
