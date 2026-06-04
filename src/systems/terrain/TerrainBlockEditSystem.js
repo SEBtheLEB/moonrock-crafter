@@ -58,6 +58,7 @@ export class TerrainBlockEditSystem {
     previousMaterial = 0,
     nextMaterial = 0,
     editedCells = [],
+    skipRoughOutlineInvalidation = false,
   } = {}) {
     const terrain = this.terrain;
     const touchedNaturalSurface = (
@@ -67,7 +68,7 @@ export class TerrainBlockEditSystem {
     if (keepSurfacePath) {
       // Bounded redraws sample live cells; stale full-map rough loops are discarded without rebuilding here.
       terrain.markContourRenderCachesStale({ rough: false });
-      if (touchedNaturalSurface) {
+      if (touchedNaturalSurface && !skipRoughOutlineInvalidation) {
         const editBounds = editedCells.reduce((bounds, cell) => {
           if (!Number.isInteger(cell?.col) || !Number.isInteger(cell?.row)) return bounds;
           return terrain.mergeBounds(bounds, {
@@ -198,6 +199,7 @@ export class TerrainBlockEditSystem {
         previousMaterial,
         nextMaterial: 0,
         editedCells,
+        skipRoughOutlineInvalidation: true,
       });
       terrain.recordMiningEditDebug?.(editBounds, broken.length);
       if (brokeEmissiveMaterial) {

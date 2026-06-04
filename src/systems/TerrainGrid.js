@@ -2085,6 +2085,7 @@ export class TerrainGrid {
           this.redrawTerrainRegion(this.renderCtx, bounds, {
             fastRedraw: false,
             paddingCells: TERRAIN_MINING_DIRTY_RADIUS_CELLS,
+            drawOutline: false,
           });
           processed += 1;
         }
@@ -3338,7 +3339,7 @@ export class TerrainGrid {
     else this.trimVisualRebuildQueueTo(rebuildBounds);
   }
 
-  redrawTerrainRegion(ctx, bounds, { fastRedraw = false, paddingCells = null } = {}) {
+  redrawTerrainRegion(ctx, bounds, { fastRedraw = false, paddingCells = null, drawOutline = true } = {}) {
     const clearPadding = Number.isFinite(paddingCells)
       ? Math.max(0, paddingCells) * this.cellSize
       : fastRedraw
@@ -3365,7 +3366,7 @@ export class TerrainGrid {
       ctx.beginPath();
       ctx.rect(rect.x, rect.y, rect.width, rect.height);
       ctx.clip();
-      this.drawTerrainLayers(ctx, paintBounds, { fastRedraw });
+      this.drawTerrainLayers(ctx, paintBounds, { fastRedraw, drawOutline });
       ctx.restore();
     } finally {
       this.finishTerrainRebuildDebug(debug, {
