@@ -114,7 +114,7 @@ const TERRAIN_ROUGHNESS = {
   ...(TERRAIN_TUNING.roughness || {}),
 };
 
-const SHOW_TERRAIN_REBUILD_DEBUG = true;
+const SHOW_TERRAIN_REBUILD_DEBUG = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 3;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
 
@@ -5180,23 +5180,23 @@ export class TerrainGrid {
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false } = {}) {
-    const segments = this.getLocalRoughContourSegments(bounds);
-    if (!segments.length) {
+    const loops = this.getLocalRoughContourLoops(bounds);
+    if (!loops.length) {
       return {
         tilesProcessed: this.countCellsInBounds(bounds),
         roughEdgesDrawn: 0,
       };
     }
     if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
-      this.drawLocalRoughContourShadows(ctx, segments);
+      this.drawRoughContourShadowsForLoops(ctx, loops);
     }
-    this.drawLocalRoughContourLines(ctx, segments);
+    this.drawRoughContourLinesForLoops(ctx, loops);
     if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
       this.drawRoughSurfaceDetails(ctx, bounds);
     }
     return {
       tilesProcessed: this.countCellsInBounds(bounds),
-      roughEdgesDrawn: segments.length,
+      roughEdgesDrawn: loops.length,
     };
   }
 
@@ -5207,7 +5207,7 @@ export class TerrainGrid {
       (col, row) => this.isNaturalSolidCell(col, row),
       bounds,
       VISUAL_CONTOUR_OPTIONS,
-    );
+    ).map((loop) => ({ ...loop, closed: false }));
     return this.createRoughContourLoopsFromSource(sourceLoops)
       .filter((loop) => (
         !clipBounds
