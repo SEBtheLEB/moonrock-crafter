@@ -120,6 +120,7 @@ const SHOW_ROUGH_EDGE_DEBUG = false;
 const SHOW_CACHE_RESOLUTION_DEBUG = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
+const TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS = Math.max(4, TERRAIN_TUNING.localContourContextCells || 4);
 
 if (typeof globalThis !== 'undefined') {
   if (typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
@@ -4235,7 +4236,7 @@ export class TerrainGrid {
 
   buildSampledMarchingCellPath(ctx, predicate, bounds, options = VISUAL_CONTOUR_OPTIONS) {
     const step = this.getContourStep(options);
-    const padding = this.cellSize * 3;
+    const padding = this.getLocalContourContextPaddingPixels(options);
     const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
@@ -5039,7 +5040,7 @@ export class TerrainGrid {
 
   buildContourLoopsInBounds(predicate, bounds, options = VISUAL_CONTOUR_OPTIONS) {
     const step = this.getContourStep(options);
-    const padding = this.cellSize * 3;
+    const padding = this.getLocalContourContextPaddingPixels(options);
     const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
@@ -5151,12 +5152,20 @@ export class TerrainGrid {
 
   getContourClipBounds(bounds = null) {
     if (!bounds) return null;
+    const padding = this.getLocalContourContextPaddingPixels(VISUAL_CONTOUR_OPTIONS);
     return {
-      minX: clamp(bounds.minCol * this.cellSize - this.cellSize * 3, 0, this.width),
-      minY: clamp(bounds.minRow * this.cellSize - this.cellSize * 3, 0, this.height),
-      maxX: clamp((bounds.maxCol + 1) * this.cellSize + this.cellSize * 3, 0, this.width),
-      maxY: clamp((bounds.maxRow + 1) * this.cellSize + this.cellSize * 3, 0, this.height),
+      minX: clamp(bounds.minCol * this.cellSize - padding, 0, this.width),
+      minY: clamp(bounds.minRow * this.cellSize - padding, 0, this.height),
+      maxX: clamp((bounds.maxCol + 1) * this.cellSize + padding, 0, this.width),
+      maxY: clamp((bounds.maxRow + 1) * this.cellSize + padding, 0, this.height),
     };
+  }
+
+  getLocalContourContextPaddingPixels(options = VISUAL_CONTOUR_OPTIONS) {
+    const densityContext = Math.ceil(options.densityRadiusCells || 1);
+    const smoothingContext = Math.ceil((options.smoothingIterations || 0) * Math.max(1, options.smoothingAmount || 0));
+    const contextCells = Math.max(TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS, densityContext + smoothingContext + 2);
+    return this.cellSize * contextCells;
   }
 
   traceRoughContourLoop(ctx, points, offset = 0, { close = true } = {}) {
@@ -5204,22 +5213,8 @@ export class TerrainGrid {
     let stats = null;
     const outlineOnly = this.isRoughnessOutlineOnly();
     try {
-      if (fastRedraw && !outlineOnly && TERRAIN_ROUGHNESS.fastRedrawSimple !== false) {
-        stats = this.drawRoughEdgeLines(ctx, bounds);
-        return;
-      }
       if (bounds) {
-        if (outlineOnly) {
-          stats = this.drawRoughEdgeLines(ctx, bounds);
-          return;
-        }
-        if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughEdgeChipCuts(ctx, bounds);
-        if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughEdgeShadows(ctx, bounds);
-        if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
-          this.drawRoughSurfaceDetails(ctx, bounds);
-        }
-        if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughPebbleLips(ctx, bounds);
-        stats = this.drawRoughEdgeLines(ctx, bounds);
+        stats = this.drawLocalRoughContourLayer(ctx, bounds, { fastRedraw, outlineOnly });
         return;
       }
       if (outlineOnly) {
@@ -5247,7 +5242,7 @@ export class TerrainGrid {
     }
   }
 
-  drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false } = {}) {
+  drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false, outlineOnly = false } = {}) {
     const loops = this.getLocalRoughContourLoops(bounds);
     if (!loops.length) {
       return {
@@ -5255,13 +5250,19 @@ export class TerrainGrid {
         roughEdgesDrawn: 0,
       };
     }
-    if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
+    if (!outlineOnly && TERRAIN_ROUGHNESS.chipCuts !== false) {
+      this.drawRoughContourChipCutsForLoops(ctx, loops);
+    }
+    if (!outlineOnly && TERRAIN_ROUGHNESS.edgeShadows !== false) {
       this.drawRoughContourShadowsForLoops(ctx, loops);
     }
-    this.drawRoughContourLinesForLoops(ctx, loops);
-    if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+    if (!outlineOnly && !fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
       this.drawRoughSurfaceDetails(ctx, bounds);
     }
+    if (!outlineOnly && TERRAIN_ROUGHNESS.pebbleLips !== false) {
+      this.drawRoughContourPebbleLipsForLoops(ctx, loops);
+    }
+    this.drawRoughContourLinesForLoops(ctx, loops);
     return {
       tilesProcessed: this.countCellsInBounds(bounds),
       roughEdgesDrawn: loops.length,
@@ -5275,7 +5276,7 @@ export class TerrainGrid {
       (col, row) => this.isNaturalSolidCell(col, row),
       bounds,
       VISUAL_CONTOUR_OPTIONS,
-    ).map((loop) => ({ ...loop, closed: false }));
+    );
     return this.createRoughContourLoopsFromSource(sourceLoops)
       .filter((loop) => (
         !clipBounds
@@ -5293,7 +5294,7 @@ export class TerrainGrid {
   forEachLocalRoughContourSegment(bounds, callback) {
     if (!bounds) return;
     const step = this.getContourStep(VISUAL_CONTOUR_OPTIONS);
-    const padding = this.cellSize * 4;
+    const padding = this.getLocalContourContextPaddingPixels(VISUAL_CONTOUR_OPTIONS);
     const minCol = clamp(Math.floor((bounds.minCol * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const maxCol = clamp(Math.ceil(((bounds.maxCol + 1) * this.cellSize + padding) / step), 0, Math.max(0, Math.ceil(this.width / step) - 1));
     const minRow = clamp(Math.floor((bounds.minRow * this.cellSize - padding) / step), 0, Math.max(0, Math.ceil(this.height / step) - 1));
@@ -5417,10 +5418,15 @@ export class TerrainGrid {
   }
 
   drawRoughContourChipCuts(ctx, bounds = null) {
+    this.drawRoughContourChipCutsForLoops(ctx, this.getVisibleRoughContourLoops(bounds));
+  }
+
+  drawRoughContourChipCutsForLoops(ctx, loops) {
+    if (!loops?.length) return;
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
     ctx.fillStyle = 'rgba(0,0,0,1)';
-    this.forEachRoughContourLoop(bounds, (loop) => {
+    loops.forEach((loop) => {
       const points = loop.points;
       const step = Math.max(3, Math.floor(points.length / Math.max(12, Math.min(52, points.length * 0.28))));
       for (let index = 0; index < points.length; index += step) {
@@ -5491,8 +5497,13 @@ export class TerrainGrid {
   }
 
   drawRoughContourPebbleLips(ctx, bounds = null) {
+    this.drawRoughContourPebbleLipsForLoops(ctx, this.getVisibleRoughContourLoops(bounds));
+  }
+
+  drawRoughContourPebbleLipsForLoops(ctx, loops) {
+    if (!loops?.length) return;
     ctx.save();
-    this.forEachRoughContourLoop(bounds, (loop) => {
+    loops.forEach((loop) => {
       const points = loop.points;
       const step = Math.max(7, Math.floor(points.length / 42));
       for (let index = 0; index < points.length; index += step) {
