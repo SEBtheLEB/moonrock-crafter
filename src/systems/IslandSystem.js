@@ -283,7 +283,6 @@ export class IslandSystem {
     if (story.researchStationPlaced || story.researchStation?.islandId === islandId) {
       story.researchStationPlaced = false;
       story.researchStation = null;
-      this.ensureInventoryAtLeast('researchStationKit', 1);
       changed = true;
     }
     if (story.starterEngineTower) {
@@ -359,7 +358,6 @@ export class IslandSystem {
       this.game.state.story.starterEngine = null;
       this.game.state.story.starterEngineRecovered = false;
       this.game.systems.inventory?.add?.('craftingStationKit', 1, { skipSave: true });
-      this.game.systems.inventory?.add?.('researchStationKit', 1, { skipSave: true });
     }
     this.game.saveGame();
     this.game.systems.navigation?.refreshLocations?.();

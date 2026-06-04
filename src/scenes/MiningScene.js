@@ -74,7 +74,7 @@ const STARTER_FURNACE_DEPTH = 58;
 const FURNACE_FUEL_ITEM_ID = 'fireCore';
 const FURNACE_SMELTS_PER_FIRE_CORE = 10;
 const FURNACE_DEFAULT_SMELT_SECONDS = 4;
-const STARTER_BASE_BUILD_VERSION = 3;
+const STARTER_BASE_BUILD_VERSION = 4;
 const CRAFTING_STATION_WIDTH = 150;
 const CRAFTING_STATION_CLEARANCE = 106;
 const CRAFTING_STATION_DEPTH = 54;
@@ -657,27 +657,12 @@ export class MiningScene {
         landingSurfaceLocal: { x: hoverDock.x, y: hoverDock.y },
         shipHoverDockLocal: { x: hoverDock.x, y: hoverDock.y },
       };
-      const craftPoint = lab.getCraftingStationPoint();
-      const researchPoint = lab.getResearchStationPoint();
-      const crafting = new PlacedCraftingStation({
-        x: craftPoint.x,
-        y: craftPoint.y,
-        rotation: craftPoint.rotation,
-        compact: true,
-        shape: PlacedCraftingStation.createDefaultShape(),
-      });
-      const research = new PlacedResearchStation({
-        x: researchPoint.x,
-        y: researchPoint.y,
-        rotation: researchPoint.rotation,
-        compact: true,
-      });
+      const craftingState = this.createStarterFacilityCraftingStationState(lab, island.id, story.craftingStation);
       story.craftingStationPlaced = true;
-      story.craftingStation = { ...crafting.serialize(), islandId: island.id };
-      story.researchStationPlaced = true;
-      story.researchStation = { ...research.serialize(), islandId: island.id };
+      story.craftingStation = craftingState;
+      story.researchStationPlaced = false;
+      story.researchStation = null;
       this.game.systems.inventory.remove('craftingStationKit', 1, { skipSave: true });
-      this.game.systems.inventory.remove('researchStationKit', 1, { skipSave: true });
       this.game.state.base = {
         established: true,
         islandId: island.id,
@@ -698,6 +683,11 @@ export class MiningScene {
     }
 
     this.baseLab = story.baseLab?.islandId === island.id ? BaseLab.deserialize(story.baseLab) : null;
+    if (this.baseLab) {
+      const removedResearch = this.removeStarterResearchStationFromP01(story, island.id);
+      const fixedCrafting = this.ensureStarterFacilityCraftingStation(story, island.id, this.baseLab);
+      if (removedResearch || fixedCrafting) this.game.saveGame();
+    }
     if (this.baseLab && !this.game.state.base?.established) {
       this.game.state.base = {
         established: true,
@@ -718,6 +708,58 @@ export class MiningScene {
     this.ensureStarterEngineTower(island);
     if (this.baseLab) this.ensureStarterBaseDoor(island, this.baseLab);
     return this.baseLab;
+  }
+
+  createStarterFacilityCraftingStationState(lab, islandId, existing = null) {
+    const craftPoint = lab.getCraftingStationPoint();
+    const crafting = new PlacedCraftingStation({
+      id: existing?.id || `${islandId}-starter-crafting-station`,
+      x: craftPoint.x,
+      y: craftPoint.y,
+      rotation: craftPoint.rotation,
+      compact: true,
+      shape: existing?.shape || PlacedCraftingStation.createDefaultShape(),
+    });
+    return { ...crafting.serialize(), islandId };
+  }
+
+  isCraftingStationInsideStarterFacility(station, lab) {
+    if (!station || !lab) return false;
+    const x = Number(station.x);
+    const y = Number(station.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const size = lab.cellSize || 25;
+    const bodyCenterY = y - size;
+    return x >= lab.left + size
+      && x <= lab.right - size
+      && bodyCenterY >= lab.top + size
+      && bodyCenterY <= lab.bottom - size * 0.12
+      && lab.containsPoint(x, bodyCenterY, 0);
+  }
+
+  ensureStarterFacilityCraftingStation(story, islandId, lab) {
+    const existing = story.craftingStation;
+    const shouldPlace = !story.craftingStationPlaced
+      || !existing
+      || existing.islandId !== islandId
+      || !this.isCraftingStationInsideStarterFacility(existing, lab);
+    if (!shouldPlace) return false;
+    story.craftingStationPlaced = true;
+    story.craftingStation = this.createStarterFacilityCraftingStationState(lab, islandId, existing);
+    this.placedCraftingStation = PlacedCraftingStation.deserialize(story.craftingStation);
+    this.game.systems.inventory.remove('craftingStationKit', 1, { skipSave: true });
+    return true;
+  }
+
+  removeStarterResearchStationFromP01(story, islandId) {
+    const research = story.researchStation;
+    const onStarter = !research?.islandId || research.islandId === islandId;
+    if (!story.researchStationPlaced && !research) return false;
+    if (!onStarter) return false;
+    story.researchStationPlaced = false;
+    story.researchStation = null;
+    this.placedResearchStation = null;
+    return true;
   }
 
   ensureStarterEngineTower(island) {

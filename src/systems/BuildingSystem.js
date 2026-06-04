@@ -207,7 +207,7 @@ export class BuildingSystem {
       floorRow,
       ceilingRow,
       interiorHeightCells,
-      buildVersion: 3,
+      buildVersion: 4,
       window,
       supportCols,
       doorCells: {

@@ -89,13 +89,13 @@ export class BaseLab {
   getCraftingStationPoint() {
     if (Number.isFinite(this.leftCol) && this.cellSize) {
       return {
-        x: (this.leftCol + 7.5) * this.cellSize,
-        y: this.y,
+        x: (this.leftCol + 16.5) * this.cellSize,
+        y: this.y - this.cellSize * 0.06,
         rotation: this.rotation,
       };
     }
     return {
-      x: this.x - this.width * 0.22,
+      x: this.x,
       y: this.y - 8,
       rotation: this.rotation,
     };
