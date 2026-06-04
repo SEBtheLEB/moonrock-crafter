@@ -50,8 +50,6 @@ export class DebugPanel {
     const terrainRawButton = new Button('Raw Grid', () => this.toggleTerrainDebug('rawGrid'), { icon: 'R', variant: 'metal' }).element;
     const terrainMeshButton = new Button('Mesh', () => this.toggleTerrainDebug('visualMesh'), { icon: 'M', variant: 'metal' }).element;
     const terrainCollisionButton = new Button('Collider', () => this.toggleTerrainDebug('collision'), { icon: 'C', variant: 'metal' }).element;
-    const terrainRoughnessButton = new Button('Rough Edges', () => this.toggleTerrainRoughness(), { icon: '~', variant: 'metal' }).element;
-    const terrainRoughnessDebugButton = new Button('Rough Debug', () => this.toggleTerrainDebug('roughnessDebug'), { icon: 'D', variant: 'metal' }).element;
     const terrainLightingButton = new Button('Lighting', () => this.toggleTerrainLighting(), { icon: 'L', variant: 'metal' }).element;
     const terrainLightDebugButton = new Button('Light Debug', () => this.toggleTerrainDebug('lightingDebug'), { icon: '*', variant: 'metal' }).element;
     const terrainDepthDebugButton = new Button('Depth Debug', () => this.toggleTerrainDebug('depthDebug'), { icon: 'Z', variant: 'metal' }).element;
@@ -60,8 +58,8 @@ export class DebugPanel {
     this.terrainRawButton = terrainRawButton;
     this.terrainMeshButton = terrainMeshButton;
     this.terrainCollisionButton = terrainCollisionButton;
-    this.terrainRoughnessButton = terrainRoughnessButton;
-    this.terrainRoughnessDebugButton = terrainRoughnessDebugButton;
+    this.terrainRoughnessButton = null;
+    this.terrainRoughnessDebugButton = null;
     this.terrainLightingButton = terrainLightingButton;
     this.terrainLightDebugButton = terrainLightDebugButton;
     this.terrainDepthDebugButton = terrainDepthDebugButton;
@@ -74,8 +72,6 @@ export class DebugPanel {
       terrainRawButton,
       terrainMeshButton,
       terrainCollisionButton,
-      terrainRoughnessButton,
-      terrainRoughnessDebugButton,
       terrainLightingButton,
       terrainLightDebugButton,
       terrainDepthDebugButton,
@@ -94,6 +90,11 @@ export class DebugPanel {
   toggleTerrainDebug(key) {
     this.game.state.debug ||= {};
     this.game.state.debug.terrain ||= {};
+    if (key === 'roughnessDebug') {
+      this.game.state.debug.terrain.roughnessDebug = false;
+      this.note('Terrain roughness has been removed.');
+      return;
+    }
     this.game.state.debug.terrain[key] = !this.game.state.debug.terrain[key];
     this.game.saveGame();
     this.updateToggleButtons();
@@ -103,10 +104,11 @@ export class DebugPanel {
   toggleTerrainRoughness() {
     this.game.state.debug ||= {};
     this.game.state.debug.terrain ||= {};
-    this.game.state.debug.terrain.roughness = true;
+    this.game.state.debug.terrain.roughness = false;
+    this.game.state.debug.terrain.roughnessDebug = false;
     this.game.saveGame();
     this.updateToggleButtons();
-    this.note('Terrain roughness is locked on.');
+    this.note('Terrain roughness has been removed.');
   }
 
   toggleTerrainLighting() {
@@ -184,11 +186,6 @@ export class DebugPanel {
     this.terrainRawButton?.classList.toggle('is-active', Boolean(debug.terrain?.rawGrid));
     this.terrainMeshButton?.classList.toggle('is-active', Boolean(debug.terrain?.visualMesh));
     this.terrainCollisionButton?.classList.toggle('is-active', Boolean(debug.terrain?.collision));
-    if (this.terrainRoughnessButton) {
-      this.terrainRoughnessButton.classList.add('is-active');
-      this.terrainRoughnessButton.setAttribute('aria-pressed', 'true');
-    }
-    this.terrainRoughnessDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.roughnessDebug));
     this.terrainLightingButton?.classList.toggle('is-active', debug.terrain?.lighting !== false);
     this.terrainLightDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.lightingDebug));
     this.terrainDepthDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.depthDebug));

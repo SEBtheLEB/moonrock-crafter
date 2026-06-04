@@ -734,7 +734,7 @@ export class TerrainGrid {
     this.collisionContours = null;
     this.surfacePathCache = null;
     this.surfaceRadiusLookupCache = new Map();
-    this.roughnessRenderEnabled = Boolean(TERRAIN_ROUGHNESS.enabled);
+    this.roughnessRenderEnabled = false;
     this.lightingRenderEnabled = Boolean(TERRAIN_LIGHTING.enabled);
     this.lightingDebugEnabled = false;
     this.depthDebugEnabled = false;
@@ -765,7 +765,6 @@ export class TerrainGrid {
       this.textureCache?.clear();
       this.visualRebuildQueue?.clear();
       this.visualRebuildScheduled = false;
-      this.markRoughDebugDirty();
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
@@ -2022,19 +2021,11 @@ export class TerrainGrid {
   }
 
   invalidateRoughContourCacheForLocalEdit(bounds = null, paddingCells = TERRAIN_MINING_DIRTY_RADIUS_CELLS) {
-    if (this.roughContourCache?.size) this.roughContourCache.clear();
-    this.markRoughDebugDirty(bounds, paddingCells);
+    return 0;
   }
 
   markRoughDebugDirty(bounds = null, paddingCells = TERRAIN_VISUAL_REBUILD_PADDING_CELLS) {
-    this.roughDebugDirty = true;
-    if (!bounds || !this.roughDebugCanvas || this.roughDebugFullDirty) {
-      this.roughDebugFullDirty = true;
-      this.roughDebugDirtyBounds = null;
-      return;
-    }
-    const expanded = this.expandCellBounds(bounds, Math.max(2, paddingCells || 0));
-    this.roughDebugDirtyBounds = this.mergeBounds(this.roughDebugDirtyBounds, expanded);
+    return 0;
   }
 
   trimVisualRebuildQueueTo(bounds) {
@@ -2105,29 +2096,11 @@ export class TerrainGrid {
   }
 
   invalidateRoughEdgesAroundCell(col, row, { radius = 1 } = {}) {
-    if (!this.roughEdgeCache?.size) return 0;
-    let deleted = 0;
-    const materialIds = Object.keys(TERRAIN_MATERIALS);
-    for (let y = row - radius; y <= row + radius; y += 1) {
-      for (let x = col - radius; x <= col + radius; x += 1) {
-        if (!this.isInside(x, y)) continue;
-        for (const directionName of EDGE_DIRECTION_NAMES) {
-          for (const materialId of materialIds) {
-            if (this.roughEdgeCache.delete(`${x}:${y}:${directionName}:${materialId}`)) deleted += 1;
-          }
-        }
-      }
-    }
-    return deleted;
+    return 0;
   }
 
   invalidateRoughEdgesForEditedCells(cells = []) {
-    let deleted = 0;
-    for (const cell of cells) {
-      if (!Number.isInteger(cell?.col) || !Number.isInteger(cell?.row)) continue;
-      deleted += this.invalidateRoughEdgesAroundCell(cell.col, cell.row, { radius: 1 });
-    }
-    return deleted;
+    return 0;
   }
 
   markAirExposureDirty({ defer = false } = {}) {
@@ -3248,7 +3221,7 @@ export class TerrainGrid {
 
   draw(ctx, camera, viewportWidth, viewportHeight = this.height, options = {}) {
     const now = this.getClockNow();
-    const nextRoughnessEnabled = Boolean(TERRAIN_ROUGHNESS.enabled);
+    const nextRoughnessEnabled = false;
     const nextLightingEnabled = TERRAIN_LIGHTING.enabled && options?.lighting !== false;
     const nextLightingDebugEnabled = Boolean(options?.lightingDebug);
     const nextDepthDebugEnabled = Boolean(options?.depthDebug);
@@ -3388,7 +3361,6 @@ export class TerrainGrid {
   }
 
   drawTerrainOutlineLayer(ctx, bounds = null, { fastRedraw = false } = {}) {
-    this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
   }
 
   drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
@@ -5411,42 +5383,7 @@ export class TerrainGrid {
   }
 
   drawExposedEdgeRoughness(ctx, bounds = null, { fastRedraw = false } = {}) {
-    const debug = this.beginTerrainRebuildDebug('rough edge generation', {
-      bounds,
-      chunksRebuilt: this.countChunksForBounds(bounds),
-      fullPlanetRebuild: !bounds,
-      fromMining: this.isRecentMiningEdit(),
-    });
-    let stats = null;
-    const outlineOnly = this.isRoughnessOutlineOnly();
-    try {
-      if (bounds) {
-        stats = this.drawLocalRoughContourLayer(ctx, bounds, { fastRedraw, outlineOnly });
-        return;
-      }
-      if (outlineOnly) {
-        const loops = this.getRoughContourLoops(bounds);
-        this.drawRoughContourLinesForLoops(ctx, loops);
-        stats = {
-          tilesProcessed: this.countCellsInBounds(bounds),
-          roughEdgesDrawn: loops.length,
-        };
-        return;
-      }
-      if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughContourChipCuts(ctx, bounds);
-      if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughContourShadows(ctx, bounds);
-      if (TERRAIN_ROUGHNESS.surfaceDetails !== false) this.drawRoughSurfaceDetails(ctx, bounds);
-      if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughContourPebbleLips(ctx, bounds);
-      this.drawRoughContourLines(ctx, bounds);
-    } finally {
-      this.finishTerrainRebuildDebug(debug, {
-        tilesProcessed: stats?.tilesProcessed || this.countCellsInBounds(bounds),
-        roughEdgesDrawn: stats?.roughEdgesDrawn || 0,
-        chunksRebuilt: this.countChunksForBounds(bounds),
-        fullPlanetRebuild: !bounds,
-        fromMining: this.isRecentMiningEdit(),
-      });
-    }
+    return;
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false, outlineOnly = false } = {}) {
@@ -6006,15 +5943,7 @@ export class TerrainGrid {
   }
 
   drawRoughnessDebug(ctx, bounds = null) {
-    if (typeof document === 'undefined') return;
-    const canvas = this.getRoughDebugCanvas();
-    if (this.roughDebugDirty) this.redrawRoughnessDebugCache();
-    const rect = bounds ? this.getDrawRect(bounds, this.cellSize * 3) : null;
-    if (rect && rect.width > 0 && rect.height > 0) {
-      ctx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, rect.x, rect.y, rect.width, rect.height);
-      return;
-    }
-    ctx.drawImage(canvas, 0, 0);
+    return;
   }
 
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {
@@ -6060,12 +5989,11 @@ export class TerrainGrid {
   }
 
   drawDebug(ctx, flags = {}) {
-    if (!flags?.rawGrid && !flags?.visualMesh && !flags?.collision && !flags?.roughnessDebug) return;
+    if (!flags?.rawGrid && !flags?.visualMesh && !flags?.collision) return;
     ctx.save();
     if (flags.rawGrid) this.drawRawGridDebug(ctx);
     if (flags.visualMesh) this.drawVisualMeshDebug(ctx);
     if (flags.collision) this.drawCollisionDebug(ctx);
-    if (flags.roughnessDebug) this.drawRoughnessDebug(ctx);
     ctx.restore();
   }
 

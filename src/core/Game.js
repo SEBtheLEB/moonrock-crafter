@@ -133,7 +133,7 @@ export class Game {
           rawGrid: false,
           visualMesh: false,
           collision: false,
-          roughness: true,
+          roughness: false,
           roughnessDebug: false,
           lighting: true,
           lightingDebug: false,
@@ -315,7 +315,8 @@ export class Game {
         seed: savedState.islands?.seed ?? defaultState.islands?.seed,
       },
     };
-    merged.debug.terrain.roughness = true;
+    merged.debug.terrain.roughness = false;
+    merged.debug.terrain.roughnessDebug = false;
     if (merged.story?.furnaceBuilt) delete merged.inventory.fireCore;
     if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
     if (merged.story?.researchStationPlaced) delete merged.inventory.researchStationKit;
