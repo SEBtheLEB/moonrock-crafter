@@ -315,6 +315,7 @@ export class Game {
         seed: savedState.islands?.seed ?? defaultState.islands?.seed,
       },
     };
+    merged.debug.terrain.roughness = true;
     if (merged.story?.furnaceBuilt) delete merged.inventory.fireCore;
     if (merged.story?.craftingStationPlaced) delete merged.inventory.craftingStationKit;
     if (merged.story?.researchStationPlaced) delete merged.inventory.researchStationKit;

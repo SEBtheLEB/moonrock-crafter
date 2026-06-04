@@ -65,9 +65,12 @@ export class TerrainBlockEditSystem {
       || (nextMaterial > 0 && !terrain.isConstructedMaterial(nextMaterial))
     );
     if (keepSurfacePath) {
-      // Bounded redraws sample live cells, so keep full-map rough contour caches intact.
+      // Bounded redraws sample live cells; stale full-map rough loops are discarded without rebuilding here.
       terrain.markContourRenderCachesStale({ rough: false });
-      if (touchedNaturalSurface) terrain.invalidateRoughEdgesForEditedCells?.(editedCells);
+      if (touchedNaturalSurface) {
+        terrain.invalidateRoughEdgesForEditedCells?.(editedCells);
+        terrain.invalidateRoughContourCacheForLocalEdit?.();
+      }
       return;
     }
     terrain.clearContourRenderCaches();

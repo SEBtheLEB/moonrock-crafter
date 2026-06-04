@@ -704,7 +704,8 @@ export class TerrainGrid {
     this.landingY = landingY;
     this.chunkSizeCells = DEFAULT_TERRAIN_CHUNK_CELLS;
     this.dirtyChunks = new Set();
-    this.visualRebuildQueue = new Set();
+    this.visualRebuildQueue = new Map();
+    this.visualRebuildQueueId = 0;
     this.visualRebuildScheduled = false;
     const cellCount = cols * rows;
     this.cells = cells ? Uint8Array.from(cells) : new Uint8Array(cellCount);
@@ -1940,31 +1941,6 @@ export class TerrainGrid {
     return count;
   }
 
-  getChunkKey(chunkCol, chunkRow) {
-    return `${chunkCol},${chunkRow}`;
-  }
-
-  parseChunkKey(key) {
-    const [rawCol, rawRow] = String(key).split(',');
-    const chunkCol = Number(rawCol);
-    const chunkRow = Number(rawRow);
-    if (!Number.isInteger(chunkCol) || !Number.isInteger(chunkRow)) return null;
-    return { chunkCol, chunkRow };
-  }
-
-  getChunkBounds(chunkCol, chunkRow) {
-    const chunkSize = Math.max(4, this.chunkSizeCells || DEFAULT_TERRAIN_CHUNK_CELLS);
-    const minCol = chunkCol * chunkSize;
-    const minRow = chunkRow * chunkSize;
-    if (minCol >= this.cols || minRow >= this.rows || chunkCol < 0 || chunkRow < 0) return null;
-    return {
-      minCol: clamp(minCol, 0, this.cols - 1),
-      maxCol: clamp(minCol + chunkSize - 1, 0, this.cols - 1),
-      minRow: clamp(minRow, 0, this.rows - 1),
-      maxRow: clamp(minRow + chunkSize - 1, 0, this.rows - 1),
-    };
-  }
-
   applyImmediateMiningCutout(bounds, cells = []) {
     if (!bounds || !this.renderCanvas || !this.renderCtx || this.fullRenderDirty) return false;
     const rect = this.getDrawRect(bounds, 0);
@@ -1998,6 +1974,15 @@ export class TerrainGrid {
     return true;
   }
 
+  cellBoundsOverlap(a, b, padding = 0) {
+    if (!a || !b) return false;
+    const pad = Math.max(0, Math.ceil(padding));
+    return !(a.maxCol + pad < b.minCol
+      || a.minCol - pad > b.maxCol
+      || a.maxRow + pad < b.minRow
+      || a.minRow - pad > b.maxRow);
+  }
+
   queueTerrainVisualRebuild(bounds, paddingCells = TERRAIN_VISUAL_REBUILD_PADDING_CELLS) {
     if (!bounds) return 0;
     if (!this.renderCanvas || !this.renderCtx || this.fullRenderDirty) {
@@ -2006,29 +1991,40 @@ export class TerrainGrid {
       this.fullRenderDirty = true;
       return this.countChunksForBounds(bounds);
     }
-    const paddedBounds = this.expandCellBounds(
-      bounds,
-      Math.max(TERRAIN_VISUAL_REBUILD_PADDING_CELLS, paddingCells || 0),
-    );
-    const range = this.getChunkRangeForBounds(paddedBounds);
-    let added = 0;
-    for (let chunkRow = range.minChunkRow; chunkRow <= range.maxChunkRow; chunkRow += 1) {
-      for (let chunkCol = range.minChunkCol; chunkCol <= range.maxChunkCol; chunkCol += 1) {
-        const key = this.getChunkKey(chunkCol, chunkRow);
-        if (!this.visualRebuildQueue.has(key)) added += 1;
-        this.visualRebuildQueue.add(key);
-      }
+    let queuedBounds = this.expandCellBounds(bounds, 0);
+    const mergePadding = Math.max(TERRAIN_VISUAL_REBUILD_PADDING_CELLS, paddingCells || 0);
+    let mergedExisting = 0;
+    for (const [key, pendingBounds] of this.visualRebuildQueue) {
+      if (!this.cellBoundsOverlap(pendingBounds, queuedBounds, mergePadding)) continue;
+      queuedBounds = this.mergeBounds(queuedBounds, pendingBounds);
+      this.visualRebuildQueue.delete(key);
+      mergedExisting += 1;
     }
-    if (added > 0 && this.isDebugFlagEnabled('SHOW_DIRTY_CHUNKS', SHOW_DIRTY_CHUNKS)) {
+    const key = `region:${this.visualRebuildQueueId += 1}`;
+    this.visualRebuildQueue.set(key, queuedBounds);
+    if (this.isDebugFlagEnabled('SHOW_DIRTY_CHUNKS', SHOW_DIRTY_CHUNKS)) {
       console.log('[terrain visual rebuild queued]', {
         bounds,
-        paddedBounds,
-        added,
+        queuedBounds,
+        mergedExisting,
         total: this.visualRebuildQueue.size,
       });
     }
+    this.scheduleTerrainVisualFlush();
+    return 1;
+  }
+
+  invalidateRoughContourCacheForLocalEdit() {
+    if (!this.roughContourCache?.size) return;
+    this.roughContourCache.clear();
+  }
+
+  trimVisualRebuildQueueTo(bounds) {
+    if (!bounds || !this.visualRebuildQueue?.size) return;
+    for (const [key, pendingBounds] of this.visualRebuildQueue) {
+      if (this.cellBoundsOverlap(pendingBounds, bounds, 0)) this.visualRebuildQueue.delete(key);
+    }
     if (this.visualRebuildQueue.size > 0) this.scheduleTerrainVisualFlush();
-    return added;
   }
 
   scheduleTerrainVisualFlush() {
@@ -2064,10 +2060,8 @@ export class TerrainGrid {
       fromMining: this.isRecentMiningEdit(),
     });
     try {
-      for (const key of this.visualRebuildQueue) {
+      for (const [key, bounds] of this.visualRebuildQueue) {
         this.visualRebuildQueue.delete(key);
-        const chunk = this.parseChunkKey(key);
-        const bounds = chunk ? this.getChunkBounds(chunk.chunkCol, chunk.chunkRow) : null;
         if (bounds) {
           processedBounds = this.mergeBounds(processedBounds, bounds);
           this.redrawTerrainRegion(this.renderCtx, bounds, { fastRedraw: false });
@@ -3227,7 +3221,7 @@ export class TerrainGrid {
 
   draw(ctx, camera, viewportWidth, viewportHeight = this.height, options = {}) {
     const now = this.getClockNow();
-    const nextRoughnessEnabled = TERRAIN_ROUGHNESS.enabled && options?.roughness !== false;
+    const nextRoughnessEnabled = Boolean(TERRAIN_ROUGHNESS.enabled);
     const nextLightingEnabled = TERRAIN_LIGHTING.enabled && options?.lighting !== false;
     const nextLightingDebugEnabled = Boolean(options?.lightingDebug);
     const nextDepthDebugEnabled = Boolean(options?.depthDebug);
@@ -3315,6 +3309,7 @@ export class TerrainGrid {
     this.dirtyBounds = null;
     this.dirtyChunks.clear();
     if (fullPlanetRebuild) this.visualRebuildQueue?.clear();
+    else this.trimVisualRebuildQueueTo(rebuildBounds);
   }
 
   redrawTerrainRegion(ctx, bounds, { fastRedraw = false } = {}) {
@@ -3364,8 +3359,7 @@ export class TerrainGrid {
   }
 
   drawTerrainOutlineLayer(ctx, bounds = null, { fastRedraw = false } = {}) {
-    if (this.roughnessRenderEnabled) this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
-    else this.drawEdgeContours(ctx, bounds);
+    this.drawExposedEdgeRoughness(ctx, bounds, { fastRedraw });
   }
 
   drawFastTerrainLayers(ctx, bounds, { drawOutline = true } = {}) {
@@ -5882,25 +5876,22 @@ export class TerrainGrid {
   }
 
   drawRoughnessDebug(ctx, bounds = null) {
+    const scan = bounds || {
+      minCol: 0,
+      maxCol: this.cols - 1,
+      minRow: 0,
+      maxRow: this.rows - 1,
+    };
+    const segments = this.getLocalRoughContourSegments(scan);
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 214, 107, 0.75)';
     ctx.lineWidth = 1.2;
     ctx.setLineDash([4, 4]);
-    this.forEachRoughContourLoop(bounds, (loop) => {
-      ctx.beginPath();
-      this.traceRoughContourLoop(ctx, loop.points);
-      ctx.stroke();
+    ctx.beginPath();
+    segments.forEach((segment) => {
+      this.traceLocalRoughContourSegment(ctx, segment);
     });
-    ctx.restore();
-  }
-
-  drawEdgeContours(ctx, bounds = null) {
-    const palette = BIOME_PALETTES[this.biome] || BIOME_PALETTES.scrap;
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    this.strokeMarchingEdges(ctx, 'rgba(5, 11, 19, 0.5)', Math.max(4, this.cellSize * 0.28), bounds, (x, y) => this.isNaturalSolidCell(x, y), 'natural-solid');
-    this.strokeMarchingEdges(ctx, withAlpha(palette.edge, 0.42), Math.max(1.4, this.cellSize * 0.11), bounds, (x, y) => this.isNaturalSolidCell(x, y), 'natural-solid');
+    ctx.stroke();
     ctx.restore();
   }
 

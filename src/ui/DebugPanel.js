@@ -103,11 +103,10 @@ export class DebugPanel {
   toggleTerrainRoughness() {
     this.game.state.debug ||= {};
     this.game.state.debug.terrain ||= {};
-    const next = this.game.state.debug.terrain.roughness === false;
-    this.game.state.debug.terrain.roughness = next;
+    this.game.state.debug.terrain.roughness = true;
     this.game.saveGame();
     this.updateToggleButtons();
-    this.note(`Terrain roughness ${next ? 'on' : 'off'}.`);
+    this.note('Terrain roughness is locked on.');
   }
 
   toggleTerrainLighting() {
@@ -185,7 +184,10 @@ export class DebugPanel {
     this.terrainRawButton?.classList.toggle('is-active', Boolean(debug.terrain?.rawGrid));
     this.terrainMeshButton?.classList.toggle('is-active', Boolean(debug.terrain?.visualMesh));
     this.terrainCollisionButton?.classList.toggle('is-active', Boolean(debug.terrain?.collision));
-    this.terrainRoughnessButton?.classList.toggle('is-active', debug.terrain?.roughness !== false);
+    if (this.terrainRoughnessButton) {
+      this.terrainRoughnessButton.classList.add('is-active');
+      this.terrainRoughnessButton.setAttribute('aria-pressed', 'true');
+    }
     this.terrainRoughnessDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.roughnessDebug));
     this.terrainLightingButton?.classList.toggle('is-active', debug.terrain?.lighting !== false);
     this.terrainLightDebugButton?.classList.toggle('is-active', Boolean(debug.terrain?.lightingDebug));
