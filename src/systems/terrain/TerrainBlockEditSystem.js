@@ -180,7 +180,6 @@ export class TerrainBlockEditSystem {
     }
     if (broken.length) {
       let editBounds = null;
-      let qualityPadding = 0;
       let previousMaterial = 0;
       const editedCells = [];
       for (const cell of broken) {
@@ -193,7 +192,6 @@ export class TerrainBlockEditSystem {
           minRow: cell.row,
           maxRow: cell.row,
         });
-        qualityPadding = Math.max(qualityPadding, this.getDirtyPaddingCellsForMaterialChange(cell.material, 0));
       }
       this.invalidateEditedTerrainGeometry({
         keepSurfacePath: true,
@@ -210,9 +208,9 @@ export class TerrainBlockEditSystem {
       }
       if (terrain.renderCanvas && terrain.renderCtx && !terrain.fullRenderDirty) {
         terrain.applyImmediateMiningCutout?.(editBounds, editedCells);
-        terrain.queueTerrainVisualRebuild?.(editBounds, Math.max(5, qualityPadding));
+        terrain.queueTerrainVisualRebuild?.(editBounds, terrain.getMiningDirtyRadiusCells?.() || 3);
       } else {
-        terrain.markDirtyBounds?.(editBounds, Math.max(5, qualityPadding));
+        terrain.markDirtyBounds?.(editBounds, terrain.getMiningDirtyRadiusCells?.() || 3);
         terrain.renderDirty = true;
         terrain.fullRenderDirty = true;
       }

@@ -133,7 +133,8 @@ const SHOW_CACHE_RESOLUTION_DEBUG = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
 const TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS = Math.max(4, TERRAIN_TUNING.localContourContextCells || 4);
-const TERRAIN_VISUAL_REBUILD_PADDING_CELLS = Math.max(5, TERRAIN_TUNING.visualRebuildPaddingCells ?? 5);
+const TERRAIN_MINING_DIRTY_RADIUS_CELLS = Math.max(1, TERRAIN_TUNING.miningDirtyRadiusCells ?? 3);
+const TERRAIN_VISUAL_REBUILD_PADDING_CELLS = Math.max(1, TERRAIN_TUNING.visualRebuildPaddingCells ?? TERRAIN_MINING_DIRTY_RADIUS_CELLS);
 const TERRAIN_VISUAL_REBUILD_CHUNKS_PER_FRAME = Math.max(1, TERRAIN_TUNING.visualRebuildChunksPerFrame ?? 1);
 
 if (typeof globalThis !== 'undefined') {
@@ -2020,9 +2021,9 @@ export class TerrainGrid {
     return 1;
   }
 
-  invalidateRoughContourCacheForLocalEdit(bounds = null) {
+  invalidateRoughContourCacheForLocalEdit(bounds = null, paddingCells = TERRAIN_MINING_DIRTY_RADIUS_CELLS) {
     if (this.roughContourCache?.size) this.roughContourCache.clear();
-    this.markRoughDebugDirty(bounds);
+    this.markRoughDebugDirty(bounds, paddingCells);
   }
 
   markRoughDebugDirty(bounds = null, paddingCells = TERRAIN_VISUAL_REBUILD_PADDING_CELLS) {
@@ -2081,7 +2082,10 @@ export class TerrainGrid {
         this.visualRebuildQueue.delete(key);
         if (bounds) {
           processedBounds = this.mergeBounds(processedBounds, bounds);
-          this.redrawTerrainRegion(this.renderCtx, bounds, { fastRedraw: false });
+          this.redrawTerrainRegion(this.renderCtx, bounds, {
+            fastRedraw: false,
+            paddingCells: TERRAIN_MINING_DIRTY_RADIUS_CELLS,
+          });
           processed += 1;
         }
         if (processed >= limit) break;
@@ -2271,6 +2275,10 @@ export class TerrainGrid {
 
   getFastEditDirtyPaddingCells() {
     return this.blockSystem.getFastEditDirtyPaddingCells();
+  }
+
+  getMiningDirtyRadiusCells() {
+    return TERRAIN_MINING_DIRTY_RADIUS_CELLS;
   }
 
   mergeBounds(target, source) {
@@ -3330,10 +3338,12 @@ export class TerrainGrid {
     else this.trimVisualRebuildQueueTo(rebuildBounds);
   }
 
-  redrawTerrainRegion(ctx, bounds, { fastRedraw = false } = {}) {
-    const clearPadding = fastRedraw
-      ? Math.min(this.getLocalRedrawPaddingPixels(), this.cellSize * 6)
-      : this.getLocalRedrawPaddingPixels();
+  redrawTerrainRegion(ctx, bounds, { fastRedraw = false, paddingCells = null } = {}) {
+    const clearPadding = Number.isFinite(paddingCells)
+      ? Math.max(0, paddingCells) * this.cellSize
+      : fastRedraw
+        ? Math.min(this.getLocalRedrawPaddingPixels(), this.cellSize * 6)
+        : this.getLocalRedrawPaddingPixels();
     const cellPadding = Math.max(1, Math.ceil(clearPadding / this.cellSize));
     const paintBounds = {
       minCol: clamp(bounds.minCol - cellPadding, 0, this.cols - 1),
@@ -5932,7 +5942,7 @@ export class TerrainGrid {
       this.roughDebugDirty = false;
       return canvas;
     }
-    const clearPadding = this.cellSize * 3;
+    const clearPadding = this.roughDebugFullDirty ? this.cellSize * 3 : Math.max(2, this.cellSize * 0.35);
     const rect = this.roughDebugFullDirty
       ? { x: 0, y: 0, width: canvas.width, height: canvas.height }
       : this.getDrawRect(bounds, clearPadding);
@@ -5973,14 +5983,24 @@ export class TerrainGrid {
     };
     const segments = this.getLocalRoughContourSegments(scan);
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 214, 107, 0.75)';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 4]);
+    ctx.fillStyle = 'rgba(255, 214, 107, 0.75)';
+    const dotRadius = Math.max(0.7, this.cellSize * 0.035);
+    const spacing = Math.max(5, this.cellSize * 0.32);
     ctx.beginPath();
     segments.forEach((segment) => {
-      this.traceLocalRoughContourSegment(ctx, segment);
+      const length = Math.hypot(segment.mid.x - segment.a.x, segment.mid.y - segment.a.y)
+        + Math.hypot(segment.b.x - segment.mid.x, segment.b.y - segment.mid.y);
+      const steps = Math.max(1, Math.ceil(length / spacing));
+      for (let step = 0; step <= steps; step += 2) {
+        const t = step / steps;
+        const inv = 1 - t;
+        const x = inv * inv * segment.a.x + 2 * inv * t * segment.mid.x + t * t * segment.b.x;
+        const y = inv * inv * segment.a.y + 2 * inv * t * segment.mid.y + t * t * segment.b.y;
+        ctx.moveTo(x + dotRadius, y);
+        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+      }
     });
-    ctx.stroke();
+    ctx.fill();
     ctx.restore();
   }
 
