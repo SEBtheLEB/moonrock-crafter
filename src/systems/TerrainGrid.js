@@ -5180,23 +5180,23 @@ export class TerrainGrid {
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false } = {}) {
-    const loops = this.getLocalRoughContourLoops(bounds);
-    if (!loops.length) {
+    const segments = this.getLocalRoughContourSegments(bounds);
+    if (!segments.length) {
       return {
         tilesProcessed: this.countCellsInBounds(bounds),
         roughEdgesDrawn: 0,
       };
     }
     if (TERRAIN_ROUGHNESS.edgeShadows !== false) {
-      this.drawRoughContourShadowsForLoops(ctx, loops);
+      this.drawLocalRoughContourShadows(ctx, segments);
     }
-    this.drawRoughContourLinesForLoops(ctx, loops);
+    this.drawLocalRoughContourLines(ctx, segments);
     if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
       this.drawRoughSurfaceDetails(ctx, bounds);
     }
     return {
       tilesProcessed: this.countCellsInBounds(bounds),
-      roughEdgesDrawn: loops.length,
+      roughEdgesDrawn: segments.length,
     };
   }
 
