@@ -5152,12 +5152,7 @@ export class TerrainGrid {
 
   getContourClipBounds(bounds = null) {
     if (!bounds) return null;
-    return this.getLocalContourContextWorldBounds(bounds, VISUAL_CONTOUR_OPTIONS);
-  }
-
-  getLocalContourContextWorldBounds(bounds = null, options = VISUAL_CONTOUR_OPTIONS) {
-    if (!bounds) return null;
-    const padding = this.getLocalContourContextPaddingPixels(options);
+    const padding = this.getLocalContourContextPaddingPixels(VISUAL_CONTOUR_OPTIONS);
     return {
       minX: clamp(bounds.minCol * this.cellSize - padding, 0, this.width),
       minY: clamp(bounds.minRow * this.cellSize - padding, 0, this.height),
@@ -5171,26 +5166,6 @@ export class TerrainGrid {
     const smoothingContext = Math.ceil((options.smoothingIterations || 0) * Math.max(1, options.smoothingAmount || 0));
     const contextCells = Math.max(TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS, densityContext + smoothingContext + 2);
     return this.cellSize * contextCells;
-  }
-
-  isLocalContourLoopClipped(loop, contextBounds, options = VISUAL_CONTOUR_OPTIONS) {
-    if (!loop?.bounds || !contextBounds) return false;
-    const tolerance = Math.max(1, this.getContourStep(options) * 1.5);
-    return loop.bounds.minX <= contextBounds.minX + tolerance
-      || loop.bounds.minY <= contextBounds.minY + tolerance
-      || loop.bounds.maxX >= contextBounds.maxX - tolerance
-      || loop.bounds.maxY >= contextBounds.maxY - tolerance;
-  }
-
-  shouldKeepLocalContourLoopClosed(loop, contextBounds, options = VISUAL_CONTOUR_OPTIONS) {
-    if (loop?.closed === false) return false;
-    if (this.isLocalContourLoopClipped(loop, contextBounds, options)) return false;
-    const points = loop?.points || [];
-    if (points.length < 3) return false;
-    const first = points[0];
-    const last = points[points.length - 1];
-    const maxClosureDistance = Math.max(this.cellSize * 1.5, this.getContourStep(options) * 4);
-    return Math.hypot((first.x || 0) - (last.x || 0), (first.y || 0) - (last.y || 0)) <= maxClosureDistance;
   }
 
   traceRoughContourLoop(ctx, points, offset = 0, { close = true } = {}) {
@@ -5268,50 +5243,24 @@ export class TerrainGrid {
   }
 
   drawLocalRoughContourLayer(ctx, bounds, { fastRedraw = false, outlineOnly = false } = {}) {
-    const loops = this.getLocalRoughContourLoops(bounds);
-    if (!loops.length) {
+    const segments = this.getLocalRoughContourSegments(bounds);
+    if (!segments.length) {
       return {
         tilesProcessed: this.countCellsInBounds(bounds),
         roughEdgesDrawn: 0,
       };
     }
-    if (!outlineOnly && TERRAIN_ROUGHNESS.chipCuts !== false) {
-      this.drawRoughContourChipCutsForLoops(ctx, loops);
-    }
     if (!outlineOnly && TERRAIN_ROUGHNESS.edgeShadows !== false) {
-      this.drawRoughContourShadowsForLoops(ctx, loops);
+      this.drawLocalRoughContourShadows(ctx, segments);
     }
     if (!outlineOnly && !fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
       this.drawRoughSurfaceDetails(ctx, bounds);
     }
-    if (!outlineOnly && TERRAIN_ROUGHNESS.pebbleLips !== false) {
-      this.drawRoughContourPebbleLipsForLoops(ctx, loops);
-    }
-    this.drawRoughContourLinesForLoops(ctx, loops);
+    this.drawLocalRoughContourLines(ctx, segments);
     return {
       tilesProcessed: this.countCellsInBounds(bounds),
-      roughEdgesDrawn: loops.length,
+      roughEdgesDrawn: segments.length,
     };
-  }
-
-  getLocalRoughContourLoops(bounds) {
-    if (!bounds) return [];
-    const clipBounds = this.getContourClipBounds(bounds);
-    const contextBounds = this.getLocalContourContextWorldBounds(bounds, VISUAL_CONTOUR_OPTIONS);
-    const sourceLoops = this.buildContourLoopsInBounds(
-      (col, row) => this.isNaturalSolidCell(col, row),
-      bounds,
-      VISUAL_CONTOUR_OPTIONS,
-    ).map((loop) => ({
-      ...loop,
-      closed: this.shouldKeepLocalContourLoopClosed(loop, contextBounds, VISUAL_CONTOUR_OPTIONS),
-    }));
-    return this.createRoughContourLoopsFromSource(sourceLoops)
-      .filter((loop) => (
-        !clipBounds
-        || boundsOverlap(loop.bounds, clipBounds)
-        || boundsOverlap(loop.sourceBounds, clipBounds)
-      ));
   }
 
   getLocalRoughContourSegments(bounds) {
