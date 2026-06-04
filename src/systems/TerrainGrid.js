@@ -723,6 +723,11 @@ export class TerrainGrid {
     this.contourCache = new Map();
     this.roughEdgeCache = new Map();
     this.roughContourCache = new Map();
+    this.roughDebugCanvas = null;
+    this.roughDebugCtx = null;
+    this.roughDebugDirty = true;
+    this.roughDebugFullDirty = true;
+    this.roughDebugDirtyBounds = null;
     this.contourCacheStale = false;
     this.roughContourCacheStale = false;
     this.collisionContours = null;
@@ -759,6 +764,7 @@ export class TerrainGrid {
       this.textureCache?.clear();
       this.visualRebuildQueue?.clear();
       this.visualRebuildScheduled = false;
+      this.markRoughDebugDirty();
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
@@ -2014,9 +2020,20 @@ export class TerrainGrid {
     return 1;
   }
 
-  invalidateRoughContourCacheForLocalEdit() {
-    if (!this.roughContourCache?.size) return;
-    this.roughContourCache.clear();
+  invalidateRoughContourCacheForLocalEdit(bounds = null) {
+    if (this.roughContourCache?.size) this.roughContourCache.clear();
+    this.markRoughDebugDirty(bounds);
+  }
+
+  markRoughDebugDirty(bounds = null, paddingCells = TERRAIN_VISUAL_REBUILD_PADDING_CELLS) {
+    this.roughDebugDirty = true;
+    if (!bounds || !this.roughDebugCanvas || this.roughDebugFullDirty) {
+      this.roughDebugFullDirty = true;
+      this.roughDebugDirtyBounds = null;
+      return;
+    }
+    const expanded = this.expandCellBounds(bounds, Math.max(2, paddingCells || 0));
+    this.roughDebugDirtyBounds = this.mergeBounds(this.roughDebugDirtyBounds, expanded);
   }
 
   trimVisualRebuildQueueTo(bounds) {
@@ -2165,6 +2182,7 @@ export class TerrainGrid {
     this.roughEdgeCache?.clear();
     this.roughContourCache?.clear();
     this.roughContourCacheStale = false;
+    this.markRoughDebugDirty();
   }
 
   markContourRenderCachesStale({ rough = true } = {}) {
@@ -4068,6 +4086,11 @@ export class TerrainGrid {
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
     this.lightingFieldCtx = null;
+    this.roughDebugCanvas = null;
+    this.roughDebugCtx = null;
+    this.roughDebugDirty = true;
+    this.roughDebugFullDirty = true;
+    this.roughDebugDirtyBounds = null;
     this.shadowSystem.release();
     this.progressivePrewarm = null;
     this.airExposureMap = null;
@@ -5875,7 +5898,73 @@ export class TerrainGrid {
     ctx.restore();
   }
 
-  drawRoughnessDebug(ctx, bounds = null) {
+  getRoughDebugCanvas() {
+    if (!this.roughDebugCanvas) {
+      this.roughDebugCanvas = document.createElement('canvas');
+      this.roughDebugCtx = this.roughDebugCanvas.getContext('2d');
+      this.roughDebugDirty = true;
+      this.roughDebugFullDirty = true;
+      this.roughDebugDirtyBounds = null;
+    }
+    if (this.roughDebugCanvas.width !== this.width || this.roughDebugCanvas.height !== this.height) {
+      this.roughDebugCanvas.width = this.width;
+      this.roughDebugCanvas.height = this.height;
+      this.roughDebugDirty = true;
+      this.roughDebugFullDirty = true;
+      this.roughDebugDirtyBounds = null;
+    }
+    return this.roughDebugCanvas;
+  }
+
+  redrawRoughnessDebugCache() {
+    const canvas = this.getRoughDebugCanvas();
+    const debugCtx = this.roughDebugCtx;
+    if (!debugCtx) return canvas;
+    const bounds = this.roughDebugFullDirty
+      ? {
+        minCol: 0,
+        maxCol: this.cols - 1,
+        minRow: 0,
+        maxRow: this.rows - 1,
+      }
+      : this.roughDebugDirtyBounds;
+    if (!bounds) {
+      this.roughDebugDirty = false;
+      return canvas;
+    }
+    const clearPadding = this.cellSize * 3;
+    const rect = this.roughDebugFullDirty
+      ? { x: 0, y: 0, width: canvas.width, height: canvas.height }
+      : this.getDrawRect(bounds, clearPadding);
+    if (rect.width <= 0 || rect.height <= 0) return canvas;
+    debugCtx.clearRect(rect.x, rect.y, rect.width, rect.height);
+    debugCtx.save();
+    debugCtx.beginPath();
+    debugCtx.rect(rect.x, rect.y, rect.width, rect.height);
+    debugCtx.clip();
+    if (this.roughDebugFullDirty) this.drawRoughnessDebugLoops(debugCtx);
+    else this.drawRoughnessDebugSegments(debugCtx, bounds);
+    debugCtx.restore();
+    this.roughDebugDirty = false;
+    this.roughDebugFullDirty = false;
+    this.roughDebugDirtyBounds = null;
+    return canvas;
+  }
+
+  drawRoughnessDebugLoops(ctx) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 214, 107, 0.75)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    this.forEachRoughContourLoop(null, (loop) => {
+      ctx.beginPath();
+      this.traceRoughContourLoop(ctx, loop.points);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  drawRoughnessDebugSegments(ctx, bounds = null) {
     const scan = bounds || {
       minCol: 0,
       maxCol: this.cols - 1,
@@ -5893,6 +5982,18 @@ export class TerrainGrid {
     });
     ctx.stroke();
     ctx.restore();
+  }
+
+  drawRoughnessDebug(ctx, bounds = null) {
+    if (typeof document === 'undefined') return;
+    const canvas = this.getRoughDebugCanvas();
+    if (this.roughDebugDirty) this.redrawRoughnessDebugCache();
+    const rect = bounds ? this.getDrawRect(bounds, this.cellSize * 3) : null;
+    if (rect && rect.width > 0 && rect.height > 0) {
+      ctx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, rect.x, rect.y, rect.width, rect.height);
+      return;
+    }
+    ctx.drawImage(canvas, 0, 0);
   }
 
   strokeMarchingEdges(ctx, style, width, bounds = null, predicate = (x, y) => this.isSolidCell(x, y), cacheKey = null, options = VISUAL_CONTOUR_OPTIONS) {

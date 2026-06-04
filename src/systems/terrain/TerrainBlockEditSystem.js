@@ -68,8 +68,17 @@ export class TerrainBlockEditSystem {
       // Bounded redraws sample live cells; stale full-map rough loops are discarded without rebuilding here.
       terrain.markContourRenderCachesStale({ rough: false });
       if (touchedNaturalSurface) {
+        const editBounds = editedCells.reduce((bounds, cell) => {
+          if (!Number.isInteger(cell?.col) || !Number.isInteger(cell?.row)) return bounds;
+          return terrain.mergeBounds(bounds, {
+            minCol: cell.col,
+            maxCol: cell.col,
+            minRow: cell.row,
+            maxRow: cell.row,
+          });
+        }, null);
         terrain.invalidateRoughEdgesForEditedCells?.(editedCells);
-        terrain.invalidateRoughContourCacheForLocalEdit?.();
+        terrain.invalidateRoughContourCacheForLocalEdit?.(editBounds);
       }
       return;
     }
