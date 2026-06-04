@@ -2,14 +2,9 @@ import { islands } from '../data/islands.js?v=158';
 import { TerrainGrid } from './TerrainGrid.js?v=158';
 import { gameBalance } from '../data/gameBalance.js?v=158';
 
-const ISLAND_LAYOUT_VERSION = 11;
+const ISLAND_LAYOUT_VERSION = 10;
 const PLANET_TAG_PREFIX = 'P';
 const CIRCLE_NAMES = ['Inner Circle', 'Inner Mid Circle', 'Mid Circle', 'Outer Mid Circle', 'Outer Circle'];
-const STARTER_PLANET_BASE_SIZE = 3400;
-const STARTER_PLANET_SIZE = STARTER_PLANET_BASE_SIZE * 3;
-const STARTER_PLANET_ORBIT_DISTANCE = Math.round(
-  7200 + (STARTER_PLANET_SIZE - STARTER_PLANET_BASE_SIZE) * 0.39,
-);
 
 export class IslandSystem {
   constructor(game) {
@@ -209,36 +204,11 @@ export class IslandSystem {
       this.game.state.islands.doors ||= {};
       this.game.state.islands.shipAnchors ||= {};
     }
-    if (previousLayoutVersion < 11) this.migrateStarterPlanetForLargeP01();
     const layout = this.createProceduralPois();
     this.assignPlanetTags(layout);
     this.game.state.islands.layout = layout;
     this.game.state.islands.layoutVersion = ISLAND_LAYOUT_VERSION;
     return layout;
-  }
-
-  migrateStarterPlanetForLargeP01() {
-    const starterId = this.game.state.story?.starterPlanetId || 'crashPlanet';
-    ['terrain', 'flags', 'torches', 'platforms', 'doors', 'shipAnchors'].forEach((key) => {
-      if (this.game.state.islands?.[key]) delete this.game.state.islands[key][starterId];
-    });
-    const story = this.game.state.story || {};
-    story.baseLab = null;
-    if (story.craftingStationPlaced || story.craftingStation?.islandId === starterId) {
-      story.craftingStationPlaced = false;
-      story.craftingStation = null;
-      this.game.state.inventory.craftingStationKit = Math.max(this.game.state.inventory.craftingStationKit || 0, 1);
-    }
-    if (story.researchStationPlaced || story.researchStation?.islandId === starterId) {
-      story.researchStationPlaced = false;
-      story.researchStation = null;
-      this.game.state.inventory.researchStationKit = Math.max(this.game.state.inventory.researchStationKit || 0, 1);
-    }
-    story.starterEngineTower = null;
-    if (!story.starterEngineRecovered && !story.thrustersRepaired) story.starterEngine = null;
-    if (this.game.state.base?.islandId === starterId) {
-      this.game.state.base = { established: false, islandId: null, flagId: null, local: null };
-    }
   }
 
   formatPlanetTag(index) {
@@ -320,7 +290,6 @@ export class IslandSystem {
     const ringSize = gameBalance.mining?.ringSize || 20000;
     const innerAtmosphereDepth = gameBalance.mining?.planetInnerAtmosphereDepth || 2500;
     const outerAtmosphereDepth = gameBalance.mining?.planetAtmosphereDepth || 5000;
-    const starterPlanetSize = { width: STARTER_PLANET_SIZE, height: STARTER_PLANET_SIZE };
     layout.push({
       id: 'crashPlanet',
       name: 'Menderfall',
@@ -331,10 +300,10 @@ export class IslandSystem {
       circleName: this.getCircleName(0),
       atmosphereClass: 'stable',
       gravityStabilizerRequirement: 1,
-      worldPosition: this.positionInRing(random, 0, ringSize, STARTER_PLANET_ORBIT_DISTANCE, STARTER_PLANET_ORBIT_DISTANCE + 1, layout, {
-        size: starterPlanetSize,
+      worldPosition: this.positionInRing(random, 0, ringSize, 7200, Math.min(13800, ringSize - 19000), layout, {
+        size: { width: 3400, height: 3400 },
       }),
-      size: starterPlanetSize,
+      size: { width: 3400, height: 3400 },
       discovered: true,
       dangerLevel: 1,
       landingZoneRadius: innerAtmosphereDepth,
