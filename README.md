@@ -12,6 +12,14 @@ From the project root:
 npm start
 ```
 
+This starts the local server and opens Moonrock Crafter in an Electron desktop window.
+
+To run only the browser server:
+
+```bash
+npm run serve
+```
+
 Then open:
 
 ```text

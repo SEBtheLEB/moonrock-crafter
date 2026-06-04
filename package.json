@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "scripts/electron-main.cjs",
   "scripts": {
-    "start": "node scripts/dev-server.mjs",
+    "start": "electron .",
+    "serve": "node scripts/dev-server.mjs",
     "check": "node scripts/dev-server.mjs --smoke",
     "generate:icons": "node scripts/generate-icons.mjs"
+  },
+  "devDependencies": {
+    "electron": "^42.3.3"
   }
 }
