@@ -1,4 +1,5 @@
 import { gameBalance } from '../data/gameBalance.js?v=158';
+import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=180';
 
 const PLAYER_GRID_SIZE = gameBalance.terrain?.cellSize || 17;
 const WIDTH = Math.round(PLAYER_GRID_SIZE * 1.44);
@@ -191,6 +192,19 @@ export class IslandPlayer {
     ctx.scale(squashX, squashY);
     if (this.hitCooldown > 0 && Math.sin(time * 32) > 0) ctx.globalAlpha = 0.55;
     ctx.translate(-this.width / 2, -this.height / 2);
+
+    const spriteState = !this.onGround ? 'jump' : Math.abs(this.vx) > 18 ? 'run' : null;
+    if (spriteState && drawPlayerSpriteAnimation(ctx, {
+      state: spriteState,
+      time,
+      width: this.width,
+      height: this.height,
+      facing: this.facing,
+      velocityY: this.vy,
+    })) {
+      ctx.restore();
+      return;
+    }
 
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();

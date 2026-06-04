@@ -1,3 +1,5 @@
+import { drawPlayerSpriteAnimation } from '../data/playerSpriteSheet.js?v=180';
+
 const PLAYER_WIDTH = 34;
 const PLAYER_HEIGHT = 58;
 const MOVE_ACCELERATION = 14;
@@ -110,6 +112,19 @@ export class StationPlayer {
     ctx.translate(sx + this.width / 2, sy + this.height / 2 + walkBob);
     ctx.scale(squashX, squashY);
     ctx.translate(-this.width / 2, -this.height / 2);
+
+    const spriteState = !this.onGround ? 'jump' : Math.abs(this.vx) > 18 ? 'run' : null;
+    if (spriteState && drawPlayerSpriteAnimation(ctx, {
+      state: spriteState,
+      time,
+      width: this.width,
+      height: this.height,
+      facing: this.facing,
+      velocityY: this.vy,
+    })) {
+      ctx.restore();
+      return;
+    }
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
     ctx.beginPath();
