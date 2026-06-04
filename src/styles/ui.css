@@ -3600,6 +3600,9 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   gap: 6px;
   align-content: start;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 
 .crafting-survival-modal .voxel-recipe-card {
@@ -4345,7 +4348,8 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   .crafting-survival-modal .voxel-craft-recipe-list {
     grid-auto-flow: row;
     grid-auto-columns: auto;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .crafting-survival-modal .voxel-recipe-card {

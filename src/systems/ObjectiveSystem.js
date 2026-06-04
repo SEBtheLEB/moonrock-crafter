@@ -185,7 +185,7 @@ export class ObjectiveSystem {
       details.tips = gravityRecipe ? [
         'Fire Cores are larger now and live at the exact center of P01.',
         'After crafting the Gravity Machine, press G to reorient around P01 and reach the copper patch on the underside.',
-        'The purple Moon Crystal ore is intentionally too hard for the Mark I miner, so mark it and come back later.',
+        'Purple Moon Crystal seams near P01 surface can power a Battery Generator upgrade for the mining gun.',
       ] : [];
     }
 

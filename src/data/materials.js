@@ -51,6 +51,17 @@ export const materials = [
     zoneAvailability: ['crafted'],
   },
   {
+    id: 'batteryGenerator',
+    name: 'Battery Generator',
+    rarity: 'uncommon',
+    icon: 'BG',
+    color: '#a7ff7a',
+    baseValue: 0,
+    weight: 0.5,
+    description: 'A compact moon-crystal power module that can be attached to the mining gun for stronger terrain cutting.',
+    zoneAvailability: ['crafted'],
+  },
+  {
     id: 'shipEngine',
     name: 'Replacement Engine',
     rarity: 'rare',

@@ -340,10 +340,20 @@ export class IslandScene {
     }
   }
 
+  getMiningGunModulePowerBonus() {
+    const blueprint = this.game.state.story?.equipmentBlueprints?.minerTool;
+    if (!blueprint?.modules?.batteryGenerator) return 0;
+    return gameBalance.earlyGame?.crashStart?.batteryGeneratorMiningPowerBonus ?? 0.28;
+  }
+
+  getTerrainMiningStatPower() {
+    return (this.miningStats.miningPower ?? 0) + this.getMiningGunModulePowerBonus();
+  }
+
   getTerrainMiningPower() {
     const base = gameBalance.mining.terrainMiningPowerBase ?? 0.42;
     const scale = gameBalance.mining.terrainMiningPowerScale ?? 0.78;
-    const power = base + Math.max(0, this.miningStats.miningPower || 0) * scale;
+    const power = base + Math.max(0, this.getTerrainMiningStatPower()) * scale;
     return this.isGodMode() ? power * GOD_MODE_MINING_MULTIPLIER : power;
   }
 
@@ -351,7 +361,7 @@ export class IslandScene {
     if (this.isGodMode()) return true;
     const data = TERRAIN_MATERIALS[material];
     const requiredPower = data?.miningPowerRequired ?? 0;
-    return (this.miningStats.miningPower ?? 0) + 0.001 >= requiredPower;
+    return this.getTerrainMiningStatPower() + 0.001 >= requiredPower;
   }
 
   isGodMode() {

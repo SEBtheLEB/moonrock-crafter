@@ -20,7 +20,7 @@ export const TERRAIN_MATERIALS = {
   6: { id: 'fireCore', name: 'Fire Core', color: '#ff5d3d', edge: '#ffd36b', hardness: 11.2, yield: 1, materialId: 'fireCore', miningPowerRequired: 0 },
   7: { id: 'crystallizedStone', name: 'Crystallized Stone', color: '#445262', edge: '#9ed7ff', hardness: 14.6, yield: 1, materialId: 'crystallizedStone', miningPowerRequired: 1.15 },
   8: { id: 'redCrystal', name: 'Red Crystal', color: '#a9213c', edge: '#ff6f7d', hardness: 9.4, yield: 1, materialId: 'redCrystal', miningPowerRequired: 1.15 },
-  9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 1.25, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
+  9: { id: 'moonCrystalOre', name: 'Moon Crystal', color: '#545a73', edge: '#a988ff', hardness: 8.4, yield: 1, materialId: 'moonCrystal', miningPowerRequired: 0.95, textureSrc: '/assets/img/ores/moon-crystal.png', textureScale: 0.86, textureOverlap: 12 },
   10: { id: 'facilityIron', name: 'Facility Iron', color: '#465462', edge: '#9fafbd', hardness: 12.2, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   11: { id: 'reinforcedIron', name: 'Reinforced Iron', color: '#26313d', edge: '#c2d0dd', hardness: 17.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 0 },
   12: { id: 'towerIron', name: 'Tower Iron', color: '#2d3c49', edge: '#8fd7ff', hardness: 18.5, yield: 1, materialId: 'ironDust', miningPowerRequired: 1.2 },
@@ -1416,9 +1416,10 @@ export class TerrainGrid {
     const oreDensity = TERRAIN_TUNING.oreDensity || 1;
     if (island.type === 'crashPlanet') {
       const starterVeins = [
-        { material: 9, count: Math.round(5 * oreDensity), radius: [22, 48], minDepth: 7, depthBias: 0.62, shallowChance: 0.04 },
+        { material: 9, count: Math.round(6 * oreDensity), radius: [22, 48], minDepth: 5, depthBias: 0.52, shallowChance: 0.18 },
       ];
       this.paintVeinPlan(random, starterVeins, surfaceRows);
+      this.paintStarterMoonCrystalPatch(random);
       this.paintStarterBottomCopperPatch(random);
       return;
     }
@@ -1490,6 +1491,32 @@ export class TerrainGrid {
         this.cellSize * (blob.radius * 0.74 + random() * 0.14),
         3,
       );
+    });
+  }
+
+  paintStarterMoonCrystalPatch(random) {
+    const seams = [
+      { angle: -Math.PI / 2 - 0.72, depth: 1.7, spread: 1.65 },
+      { angle: -Math.PI / 2 + 0.82, depth: 2.15, spread: 1.35 },
+    ];
+    seams.forEach((seam) => {
+      const surfaceRadius = this.getSurfaceRadiusAtAngle(seam.angle);
+      const normal = { x: Math.cos(seam.angle), y: Math.sin(seam.angle) };
+      const tangent = { x: -normal.y, y: normal.x };
+      const centerX = this.planetCenterX + normal.x * Math.max(0, surfaceRadius - this.cellSize * seam.depth);
+      const centerY = this.planetCenterY + normal.y * Math.max(0, surfaceRadius - this.cellSize * seam.depth);
+      for (let blob = -1; blob <= 1; blob += 1) {
+        const wobble = (random() - 0.5) * this.cellSize * 0.45;
+        const cx = centerX + tangent.x * blob * seam.spread * this.cellSize + normal.x * wobble * 0.25;
+        const cy = centerY + tangent.y * blob * seam.spread * this.cellSize + normal.y * wobble * 0.25;
+        this.paintOreEllipse(
+          cx,
+          cy,
+          this.cellSize * (1.1 + random() * 0.28),
+          this.cellSize * (0.82 + random() * 0.18),
+          9,
+        );
+      }
     });
   }
 

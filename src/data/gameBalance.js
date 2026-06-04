@@ -385,6 +385,24 @@ export const gameBalance = {
           mustBeConnected: true,
         },
       },
+      miningGunRecipe: {
+        id: 'minerTool',
+        name: 'Mining Gun',
+        requirements: {},
+        gridSize: 16,
+        shapeRules: {},
+      },
+      batteryGeneratorRecipe: {
+        id: 'batteryGenerator',
+        name: 'Battery Generator',
+        requirements: { moonCrystal: 2, ironIngot: 1, copperIngot: 1 },
+        gridSize: 16,
+        shapeRules: {
+          connected: true,
+          mustBeConnected: true,
+        },
+      },
+      batteryGeneratorMiningPowerBonus: 0.28,
       smelting: {
         ironDust: { output: 'ironIngot', time: 4 },
         copperShards: { output: 'copperIngot', time: 4 },
@@ -392,7 +410,7 @@ export const gameBalance = {
       shipRepair: {
         requirements: { shipEngine: 1 },
       },
-      startingPlanetMaterials: ['stoneOre', 'ironDust', 'copperShards'],
+      startingPlanetMaterials: ['stoneOre', 'ironDust', 'copperShards', 'moonCrystal'],
     },
     asteroids: {
       stone: { health: 28, scrapBeltWeight: 66 },
