@@ -6266,10 +6266,17 @@ export class MiningScene {
           <em>#${index + 1}</em>
           <small>module</small>
         `;
-        button.addEventListener('pointerdown', (event) => {
+        const selectModule = (event = null) => {
           this.selectVoxelCraftModule(itemId, blueprint.id || null, state);
-          this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
+          if (event) this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
           this.populateVoxelCraftingContent(content);
+        };
+        button.addEventListener('pointerdown', (event) => {
+          selectModule(event);
+        });
+        button.addEventListener('click', (event) => {
+          if (event.detail > 0) return;
+          selectModule();
         });
         materialGrid.append(button);
       });
@@ -6297,15 +6304,22 @@ export class MiningScene {
           <em>x${have}</em>
           <small>${used}/${needed} used${missing ? ` - need ${missing}` : ''}</small>
         `;
-        button.addEventListener('pointerdown', (event) => {
+        const selectMaterial = (event = null) => {
           state.selectedMaterialId = itemId;
           state.heldMaterialId = itemId;
           state.selectedModuleItemId = null;
           state.selectedModuleBlueprintId = null;
           state.eraseMode = false;
           state.detailMode = false;
-          this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
+          if (event) this.setVoxelCraftHeldCursorTarget(event, { visible: true, instant: true });
           this.populateVoxelCraftingContent(content);
+        };
+        button.addEventListener('pointerdown', (event) => {
+          selectMaterial(event);
+        });
+        button.addEventListener('click', (event) => {
+          if (event.detail > 0) return;
+          selectMaterial();
         });
         materialGrid.append(button);
       });

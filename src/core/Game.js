@@ -49,6 +49,7 @@ export class Game {
     this.controllerUiFocusScope = '';
     this.controllerUiNavRepeatTimer = 0;
     this.controllerUiNavLastKey = '';
+    this.controllerUiNavArmed = true;
     this.controllerUiWaitForRelease = false;
     this.isResettingWorld = false;
     this.planetGeneratorTestMode = false;
@@ -841,13 +842,14 @@ export class Game {
       this.controllerUiFocusScope = scope;
       this.controllerUiFocusIndex = 0;
       this.controllerUiNavLastKey = '';
+      this.controllerUiNavArmed = true;
       this.controllerUiNavRepeatTimer = 0;
       controls[0].focus({ preventScroll: true });
     }
 
     const actions = this.input.actions;
     if (this.controllerUiWaitForRelease) {
-      const holdingActivation = actions.confirm || actions.interact || actions.cancel || actions.pause;
+      const holdingActivation = actions.confirm || actions.interact || actions.jump || actions.cancel || actions.pause;
       if (holdingActivation) {
         this.suppressGameplayInputForUi(scope);
         return;
@@ -862,7 +864,7 @@ export class Game {
       return;
     }
 
-    const moveVector = this.getControllerUiMoveVector(actions);
+    const moveVector = this.getControllerUiMoveVector();
     if (moveVector) {
       this.moveControllerUiFocus(controls, moveVector);
       this.audio.playButtonHover();
@@ -870,7 +872,11 @@ export class Game {
 
     const activeIndex = controls.indexOf(document.activeElement);
     if (activeIndex >= 0) this.controllerUiFocusIndex = activeIndex;
-    if ((actions.justPressed.confirm || actions.justPressed.interact) && controls[this.controllerUiFocusIndex]) {
+    else {
+      this.controllerUiFocusIndex = Math.min(this.controllerUiFocusIndex, controls.length - 1);
+      controls[this.controllerUiFocusIndex]?.focus({ preventScroll: false });
+    }
+    if ((actions.justPressed.confirm || actions.justPressed.interact || actions.justPressed.jump) && controls[this.controllerUiFocusIndex]) {
       controls[this.controllerUiFocusIndex].click();
     }
     this.suppressGameplayInputForUi(scope);
@@ -894,35 +900,31 @@ export class Game {
       });
   }
 
-  getControllerUiMoveVector(actions) {
-    const directions = [
-      { key: 'right', vector: { x: 1, y: 0 } },
-      { key: 'left', vector: { x: -1, y: 0 } },
-      { key: 'down', vector: { x: 0, y: 1 } },
-      { key: 'up', vector: { x: 0, y: -1 } },
-    ];
-    const pressed = directions.find((direction) => actions.justPressed[direction.key]);
-    if (pressed) {
-      this.controllerUiNavLastKey = pressed.key;
-      this.controllerUiNavRepeatTimer = 0.28;
-      return pressed.vector;
-    }
-    const held = directions.find((direction) => actions[direction.key]);
-    if (!held) {
+  getControllerUiMoveVector() {
+    const move = this.input.gamepadMove || { x: 0, y: 0 };
+    const magnitude = Math.hypot(move.x, move.y);
+    const releaseThreshold = 0.38;
+    const engageThreshold = 0.74;
+    if (magnitude < releaseThreshold) {
+      this.controllerUiNavArmed = true;
       this.controllerUiNavLastKey = '';
       this.controllerUiNavRepeatTimer = 0;
       return null;
     }
-    if (held.key !== this.controllerUiNavLastKey) {
-      this.controllerUiNavLastKey = held.key;
-      this.controllerUiNavRepeatTimer = 0.28;
-      return held.vector;
-    }
-    if (this.controllerUiNavRepeatTimer <= 0) {
-      this.controllerUiNavRepeatTimer = 0.11;
-      return held.vector;
-    }
-    return null;
+    if (!this.controllerUiNavArmed || magnitude < engageThreshold) return null;
+    const horizontal = Math.abs(move.x) >= Math.abs(move.y);
+    const key = horizontal
+      ? (move.x > 0 ? 'right' : 'left')
+      : (move.y > 0 ? 'down' : 'up');
+    const vectors = {
+      right: { x: 1, y: 0 },
+      left: { x: -1, y: 0 },
+      down: { x: 0, y: 1 },
+      up: { x: 0, y: -1 },
+    };
+    this.controllerUiNavArmed = false;
+    this.controllerUiNavLastKey = key;
+    return vectors[key];
   }
 
   moveControllerUiFocus(controls, vector) {
@@ -966,7 +968,7 @@ export class Game {
       bestIndex = (currentIndex + direction + controls.length) % controls.length;
     }
     this.controllerUiFocusIndex = bestIndex;
-    controls[bestIndex].focus({ preventScroll: true });
+    controls[bestIndex].focus({ preventScroll: false });
   }
 
   suppressGameplayInputForUi(scope) {
@@ -1008,6 +1010,7 @@ export class Game {
     this.controllerUiWaitForRelease = true;
     this.controllerUiFocusScope = '';
     this.controllerUiNavLastKey = '';
+    this.controllerUiNavArmed = true;
     this.controllerUiNavRepeatTimer = 0;
   }
 }

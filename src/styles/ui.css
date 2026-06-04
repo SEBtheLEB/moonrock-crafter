@@ -3802,8 +3802,9 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   display: grid;
   gap: 5px;
   grid-template-rows: auto auto minmax(76px, 1fr) minmax(52px, auto) auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .crafting-survival-modal .voxel-material-palette,
@@ -4101,19 +4102,19 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 }
 
 .crafting-survival-modal .voxel-action-row {
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 0.72fr) minmax(0, 1.08fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .crafting-survival-modal .voxel-action-row.has-import {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .crafting-survival-modal .voxel-action-button,
 .crafting-survival-modal .voxel-bottom-button {
   min-height: clamp(32px, 5vh, 38px);
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px;
+  grid-template-columns: minmax(22px, auto) minmax(0, 1fr);
+  gap: 5px;
   align-items: center;
   justify-content: center;
   padding: 5px 7px;
@@ -4128,7 +4129,17 @@ html[data-layout-profile="pc"] .global-dialogue-box {
 
 .crafting-survival-modal .voxel-action-button span,
 .crafting-survival-modal .voxel-bottom-button span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
   color: var(--craft-cyan);
+}
+
+.crafting-survival-modal .voxel-action-button strong,
+.crafting-survival-modal .voxel-bottom-button strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.05;
 }
 
 .crafting-survival-modal .voxel-action-button.craft-primary {
@@ -4292,6 +4303,14 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   .crafting-survival-modal .voxel-craft-rules li {
     font-size: 0.62rem;
   }
+
+  .crafting-survival-modal .voxel-craft-info {
+    display: none;
+  }
+
+  .crafting-survival-modal .voxel-craft-side {
+    grid-template-rows: auto auto minmax(70px, 1fr) auto;
+  }
 }
 
 @media (max-width: 820px), (max-height: 430px) and (orientation: landscape) {
@@ -4308,7 +4327,13 @@ html[data-layout-profile="pc"] .global-dialogue-box {
   }
 
   .crafting-survival-modal .voxel-craft-side {
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .crafting-survival-modal .voxel-action-row,
+  .crafting-survival-modal .voxel-action-row.has-import {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .crafting-survival-modal .voxel-craft-tabs {
