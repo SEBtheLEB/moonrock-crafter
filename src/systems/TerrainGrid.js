@@ -115,11 +115,17 @@ const TERRAIN_ROUGHNESS = {
 };
 
 const SHOW_TERRAIN_REBUILD_DEBUG = false;
-const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 3;
+const SHOW_DIRTY_CHUNKS = false;
+const SHOW_ROUGH_EDGE_DEBUG = false;
+const SHOW_CACHE_RESOLUTION_DEBUG = false;
+const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
 
-if (typeof globalThis !== 'undefined' && typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') {
-  globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
+if (typeof globalThis !== 'undefined') {
+  if (typeof globalThis.SHOW_TERRAIN_REBUILD_DEBUG === 'undefined') globalThis.SHOW_TERRAIN_REBUILD_DEBUG = SHOW_TERRAIN_REBUILD_DEBUG;
+  if (typeof globalThis.SHOW_DIRTY_CHUNKS === 'undefined') globalThis.SHOW_DIRTY_CHUNKS = SHOW_DIRTY_CHUNKS;
+  if (typeof globalThis.SHOW_ROUGH_EDGE_DEBUG === 'undefined') globalThis.SHOW_ROUGH_EDGE_DEBUG = SHOW_ROUGH_EDGE_DEBUG;
+  if (typeof globalThis.SHOW_CACHE_RESOLUTION_DEBUG === 'undefined') globalThis.SHOW_CACHE_RESOLUTION_DEBUG = SHOW_CACHE_RESOLUTION_DEBUG;
 }
 
 const TERRAIN_LIGHTING = {
@@ -1754,10 +1760,34 @@ export class TerrainGrid {
   }
 
   isTerrainRebuildDebugEnabled() {
-    if (typeof globalThis?.SHOW_TERRAIN_REBUILD_DEBUG === 'boolean') {
-      return globalThis.SHOW_TERRAIN_REBUILD_DEBUG;
+    return this.isDebugFlagEnabled('SHOW_TERRAIN_REBUILD_DEBUG', SHOW_TERRAIN_REBUILD_DEBUG);
+  }
+
+  isDebugFlagEnabled(flagName, fallback = false) {
+    if (typeof globalThis !== 'undefined' && typeof globalThis[flagName] === 'boolean') {
+      return globalThis[flagName];
     }
-    return SHOW_TERRAIN_REBUILD_DEBUG;
+    return fallback;
+  }
+
+  warnIfMiningRebuildInvariant({
+    functionName = 'terrain rebuild',
+    chunksRebuilt = 0,
+    fullPlanetRebuild = false,
+    cacheCleared = null,
+    canvasResized = false,
+  } = {}) {
+    if (!this.isRecentMiningEdit()) return;
+    const payload = {
+      bounds: this.lastMiningEditBounds,
+      brokenTiles: this.lastMiningBrokenCount,
+    };
+    if (fullPlanetRebuild) console.error(`ERROR: mining triggered full planet rebuild in ${functionName}`, payload);
+    if (chunksRebuilt > TERRAIN_REBUILD_CHUNK_WARNING_LIMIT) {
+      console.warn(`WARNING: mining rebuilt too many chunks in ${functionName}`, { ...payload, chunksRebuilt });
+    }
+    if (cacheCleared) console.error(`ERROR: mining cleared a global terrain cache: ${cacheCleared}`, payload);
+    if (canvasResized) console.error(`ERROR: mining resized/recreated the full terrain canvas in ${functionName}`, payload);
   }
 
   beginTerrainRebuildDebug(functionName, details = {}) {
@@ -1885,6 +1915,9 @@ export class TerrainGrid {
         this.dirtyChunks.add(key);
       }
     }
+    if (count > 0 && this.isDebugFlagEnabled('SHOW_DIRTY_CHUNKS', SHOW_DIRTY_CHUNKS)) {
+      console.log('[terrain dirty chunks]', { bounds, range, added: count, total: this.dirtyChunks.size });
+    }
     return count;
   }
 
@@ -1961,6 +1994,10 @@ export class TerrainGrid {
   }
 
   clearContourRenderCaches({ rough = true } = {}) {
+    this.warnIfMiningRebuildInvariant({
+      functionName: 'clearContourRenderCaches',
+      cacheCleared: rough ? 'contourCache+roughContourCache' : 'contourCache',
+    });
     this.contourCache?.clear();
     this.contourCacheStale = false;
     if (!rough) return;
@@ -1981,10 +2018,18 @@ export class TerrainGrid {
       fromMining: this.isRecentMiningEdit(),
     });
     if (this.contourCacheStale) {
+      this.warnIfMiningRebuildInvariant({
+        functionName: 'flushStaleContourRenderCaches',
+        cacheCleared: 'contourCache',
+      });
       this.contourCache?.clear();
       this.contourCacheStale = false;
     }
     if (this.roughContourCacheStale) {
+      this.warnIfMiningRebuildInvariant({
+        functionName: 'flushStaleContourRenderCaches',
+        cacheCleared: 'roughEdgeCache+roughContourCache',
+      });
       this.roughEdgeCache?.clear();
       this.roughContourCache?.clear();
       this.roughContourCacheStale = false;
@@ -3071,6 +3116,11 @@ export class TerrainGrid {
     const chunksRebuilt = fullPlanetRebuild
       ? this.countChunksForBounds(null)
       : (this.dirtyChunks.size || this.countChunksForBounds(rebuildBounds));
+    this.warnIfMiningRebuildInvariant({
+      functionName: 'redrawTerrainCache',
+      chunksRebuilt,
+      fullPlanetRebuild,
+    });
     const debug = this.beginTerrainRebuildDebug('terrain visual rebuild', {
       bounds: rebuildBounds,
       chunksRebuilt,
@@ -3136,12 +3186,12 @@ export class TerrainGrid {
     }
   }
 
-  drawTerrainLayers(ctx, bounds = null, { drawOutline = true } = {}) {
+  drawTerrainLayers(ctx, bounds = null, { drawOutline = true, fastRedraw = false } = {}) {
     this.drawBackgroundWalls(ctx, bounds);
     this.drawOrganicMass(ctx, bounds);
-    this.drawRockTexture(ctx, bounds, { fastRedraw: false });
-    this.drawOreVeins(ctx, bounds, { fastRedraw: false });
-    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw: false });
+    this.drawRockTexture(ctx, bounds, { fastRedraw });
+    this.drawOreVeins(ctx, bounds, { fastRedraw });
+    if (drawOutline) this.drawTerrainOutlineLayer(ctx, bounds, { fastRedraw });
     this.drawConstructedMaterials(ctx, bounds);
   }
 
@@ -3832,14 +3882,19 @@ export class TerrainGrid {
 
   getRenderCanvas() {
     if (!this.renderCanvas) {
+      if (this.isRecentMiningEdit()) this.warnIfMiningRebuildInvariant({ functionName: 'getRenderCanvas', canvasResized: true });
       this.renderCanvas = document.createElement('canvas');
       this.renderCtx = this.renderCanvas.getContext('2d');
     }
     if (this.renderCanvas.width !== this.width || this.renderCanvas.height !== this.height) {
+      if (this.isRecentMiningEdit()) this.warnIfMiningRebuildInvariant({ functionName: 'getRenderCanvas', canvasResized: true });
       this.renderCanvas.width = this.width;
       this.renderCanvas.height = this.height;
       this.renderDirty = true;
       this.fullRenderDirty = true;
+      if (this.isDebugFlagEnabled('SHOW_CACHE_RESOLUTION_DEBUG', SHOW_CACHE_RESOLUTION_DEBUG)) {
+        console.log('[terrain cache resolution]', { width: this.renderCanvas.width, height: this.renderCanvas.height });
+      }
     }
     return this.renderCanvas;
   }
@@ -4916,6 +4971,9 @@ export class TerrainGrid {
 
     const data = { directionName, direction, materialId, style, points, chips };
     this.roughEdgeCache.set(key, data);
+    if (this.isDebugFlagEnabled('SHOW_ROUGH_EDGE_DEBUG', SHOW_ROUGH_EDGE_DEBUG)) {
+      console.log('[terrain rough edge regenerated]', { col, row, directionName, materialId });
+    }
     return data;
   }
 
@@ -5151,7 +5209,17 @@ export class TerrainGrid {
         return;
       }
       if (bounds) {
-        stats = this.drawLocalRoughContourLayer(ctx, bounds, { fastRedraw });
+        if (outlineOnly) {
+          stats = this.drawRoughEdgeLines(ctx, bounds);
+          return;
+        }
+        if (TERRAIN_ROUGHNESS.chipCuts !== false) this.drawRoughEdgeChipCuts(ctx, bounds);
+        if (TERRAIN_ROUGHNESS.edgeShadows !== false) this.drawRoughEdgeShadows(ctx, bounds);
+        if (!fastRedraw && TERRAIN_ROUGHNESS.surfaceDetails !== false) {
+          this.drawRoughSurfaceDetails(ctx, bounds);
+        }
+        if (TERRAIN_ROUGHNESS.pebbleLips !== false) this.drawRoughPebbleLips(ctx, bounds);
+        stats = this.drawRoughEdgeLines(ctx, bounds);
         return;
       }
       if (outlineOnly) {
