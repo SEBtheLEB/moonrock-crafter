@@ -490,9 +490,12 @@ class TerrainRenderChunk {
     // Stable mining terrain: chunks are transparent render targets. They draw
     // only tile-backed wall/block/edge pixels, avoiding the old rectangular
     // dirty-region canvas and global rough-contour mutation path.
-    this.drawWalls(ctx);
-    this.drawBlocks(ctx);
-    this.drawOutline(ctx);
+    this.drawSmoothWalls(ctx);
+    this.drawSmoothNaturalTerrain(ctx);
+    this.drawSmoothOreTerrain(ctx);
+    this.drawConstructedTerrain(ctx);
+    this.drawBlockCellDetail(ctx);
+    this.drawSmoothOutline(ctx);
 
     ctx.restore();
     ctx.globalCompositeOperation = 'source-over';
@@ -511,6 +514,212 @@ class TerrainRenderChunk {
       Math.round(worldX - cameraX),
       Math.round(worldY - cameraY),
     );
+  }
+
+  getBounds() {
+    return {
+      minCol: this.startCol,
+      maxCol: Math.min(this.terrain.cols - 1, this.startCol + this.cols - 1),
+      minRow: this.startRow,
+      maxRow: Math.min(this.terrain.rows - 1, this.startRow + this.rows - 1),
+    };
+  }
+
+  withWorldContext(ctx, callback) {
+    const terrain = this.terrain;
+    const worldX = this.startCol * terrain.cellSize;
+    const worldY = this.startRow * terrain.cellSize;
+    const bounds = this.getBounds();
+    ctx.save();
+    ctx.translate(-worldX, -worldY);
+    ctx.beginPath();
+    ctx.rect(worldX, worldY, this.canvas.width, this.canvas.height);
+    ctx.clip();
+    callback(ctx, bounds);
+    ctx.restore();
+  }
+
+  traceChunkCellShapes(ctx, predicate, { scale = 1 } = {}) {
+    const terrain = this.terrain;
+    ctx.beginPath();
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        if (!predicate(tileCol, tileRow)) continue;
+        terrain.traceCellShape(ctx, tileCol, tileRow, { scale });
+      }
+    }
+  }
+
+  drawSmoothWalls(ctx) {
+    this.drawWalls(ctx);
+  }
+
+  drawSmoothNaturalTerrain(ctx) {
+    const terrain = this.terrain;
+    this.withWorldContext(ctx, (worldCtx) => {
+      const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
+      const gradient = worldCtx.createLinearGradient(0, 0, 0, terrain.height);
+      gradient.addColorStop(0, palette.top);
+      gradient.addColorStop(0.48, palette.body);
+      gradient.addColorStop(1, palette.deep);
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), { scale: 1.018 });
+      worldCtx.fillStyle = gradient;
+      worldCtx.fill();
+
+      const tile = terrain.getTextureTile(
+        `stable-stone:${terrain.seed}:${terrain.biome}`,
+        (tileCtx, width, height) => terrain.drawStoneTextureTile(tileCtx, width, height, palette),
+      );
+      const pattern = worldCtx.createPattern(tile, 'repeat');
+      if (!pattern) return;
+      worldCtx.save();
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), { scale: 1.018 });
+      worldCtx.clip('nonzero');
+      worldCtx.globalAlpha = 0.78;
+      worldCtx.fillStyle = pattern;
+      worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
+      worldCtx.restore();
+    });
+  }
+
+  drawSmoothOreTerrain(ctx) {
+    const terrain = this.terrain;
+    this.withWorldContext(ctx, (worldCtx) => {
+      for (const [materialKey, data] of Object.entries(TERRAIN_MATERIALS)) {
+        const material = Number(materialKey);
+        if (material <= 1 || terrain.isConstructedMaterial(material)) continue;
+        if (!terrain.hasMaterialInBounds(material, this.getBounds(), 0)) continue;
+        const tile = terrain.getTextureTile(
+          `stable-ore:${terrain.seed}:${material}:${data.color}:${data.edge}`,
+          (tileCtx, width, height) => terrain.drawOreTextureTile(tileCtx, width, height, data, material),
+        );
+        const pattern = worldCtx.createPattern(tile, 'repeat');
+        if (!pattern) continue;
+        this.traceChunkCellShapes(worldCtx, (col, row) => terrain.getCell(col, row) === material, { scale: 1.012 });
+        worldCtx.save();
+        worldCtx.clip('nonzero');
+        worldCtx.globalAlpha = material >= 4 ? 0.95 : 0.86;
+        worldCtx.fillStyle = pattern;
+        worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
+        worldCtx.restore();
+      }
+    });
+  }
+
+  drawConstructedTerrain(ctx) {
+    const terrain = this.terrain;
+    this.withWorldContext(ctx, (worldCtx, bounds) => {
+      terrain.drawConstructedMaterials(worldCtx, bounds);
+    });
+  }
+
+  drawBlockCellDetail(ctx) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        const material = terrain.getCell(tileCol, tileRow);
+        if (material <= 0 || terrain.isConstructedMaterial(material)) continue;
+        const x = col * size;
+        const y = row * size;
+        const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+        const color = data.edge || '#9c9185';
+        const rightSolid = terrain.getCell(tileCol + 1, tileRow) > 0;
+        const downSolid = terrain.getCell(tileCol, tileRow + 1) > 0;
+
+        ctx.globalAlpha = material > 1 ? 0.11 : 0.055;
+        ctx.strokeStyle = withAlpha(mixHex(color, '#050509', 0.28), 0.75);
+        ctx.lineWidth = Math.max(0.7, size * 0.035);
+        ctx.beginPath();
+        if (rightSolid && hash2D(tileCol, tileRow, terrain.seed, material * 379) > 0.36) {
+          ctx.moveTo(x + size, y + size * 0.18);
+          ctx.lineTo(x + size, y + size * 0.82);
+        }
+        if (downSolid && hash2D(tileRow, tileCol, terrain.seed, material * 383) > 0.36) {
+          ctx.moveTo(x + size * 0.18, y + size);
+          ctx.lineTo(x + size * 0.82, y + size);
+        }
+        ctx.stroke();
+
+        const speck = hash2D(tileCol, tileRow, terrain.seed, material * 389);
+        if (speck > 0.38) {
+          ctx.globalAlpha = material > 1 ? 0.18 : 0.11;
+          ctx.fillStyle = speck > 0.68
+            ? withAlpha(mixHex(color, '#ffffff', 0.1), 0.9)
+            : 'rgba(8, 7, 8, 0.8)';
+          ctx.fillRect(
+            x + size * (0.18 + hash2D(tileRow, tileCol, terrain.seed, material * 397) * 0.58),
+            y + size * (0.2 + hash2D(tileCol, tileRow, terrain.seed, material * 401) * 0.52),
+            Math.max(1, size * 0.1),
+            Math.max(1, size * 0.08),
+          );
+        }
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  drawSmoothOutline(ctx) {
+    const terrain = this.terrain;
+    const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
+    this.drawOrganicOutlinePass(ctx, 'rgba(5, 8, 12, 0.58)', Math.max(3, terrain.cellSize * 0.24), 0.045);
+    this.drawOrganicOutlinePass(ctx, withAlpha(palette.edge, 0.46), Math.max(1.2, terrain.cellSize * 0.08), 0.03);
+  }
+
+  drawOrganicOutlinePass(ctx, style, width, jitterScale = 0.035) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    ctx.save();
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        if (!terrain.isNaturalSolidCell(tileCol, tileRow)) continue;
+        const x = col * size;
+        const y = row * size;
+        if (!terrain.isSolidCell(tileCol, tileRow - 1)) {
+          this.traceOrganicEdge(ctx, x, y, x + size, y, 0, -1, tileCol, tileRow, 11, jitterScale);
+        }
+        if (!terrain.isSolidCell(tileCol, tileRow + 1)) {
+          this.traceOrganicEdge(ctx, x + size, y + size, x, y + size, 0, 1, tileCol, tileRow, 17, jitterScale);
+        }
+        if (!terrain.isSolidCell(tileCol - 1, tileRow)) {
+          this.traceOrganicEdge(ctx, x, y + size, x, y, -1, 0, tileCol, tileRow, 23, jitterScale);
+        }
+        if (!terrain.isSolidCell(tileCol + 1, tileRow)) {
+          this.traceOrganicEdge(ctx, x + size, y, x + size, y + size, 1, 0, tileCol, tileRow, 29, jitterScale);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  traceOrganicEdge(ctx, x1, y1, x2, y2, normalX, normalY, col, row, salt, jitterScale) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    const inset = Math.max(1, size * 0.08);
+    const ax = x1 + (x2 - x1 === 0 ? 0 : Math.sign(x2 - x1) * inset);
+    const ay = y1 + (y2 - y1 === 0 ? 0 : Math.sign(y2 - y1) * inset);
+    const bx = x2 - (x2 - x1 === 0 ? 0 : Math.sign(x2 - x1) * inset);
+    const by = y2 - (y2 - y1 === 0 ? 0 : Math.sign(y2 - y1) * inset);
+    const midX = (ax + bx) * 0.5 + normalX * signedHash2D(col, row, terrain.seed, salt) * size * jitterScale;
+    const midY = (ay + by) * 0.5 + normalY * signedHash2D(row, col, terrain.seed, salt + 3) * size * jitterScale;
+    ctx.moveTo(ax, ay);
+    ctx.quadraticCurveTo(midX, midY, bx, by);
   }
 
   drawWalls(ctx) {
