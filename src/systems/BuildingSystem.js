@@ -330,8 +330,9 @@ export class BuildingSystem {
 
   commitTerrainStamp(terrain) {
     terrain.invalidateTerrainGeometry?.({ keepSurfacePath: false });
+    terrain.markAllTerrainRenderChunksDirty?.();
     terrain.renderDirty = true;
-    terrain.fullRenderDirty = true;
+    terrain.fullRenderDirty = !terrain.stableChunkRendererEnabled;
     terrain.markAirExposureDirty?.({ defer: true });
   }
 

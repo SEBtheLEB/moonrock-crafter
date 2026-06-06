@@ -29,11 +29,13 @@ export const TERRAIN_MATERIALS = {
 const CONSTRUCTED_MATERIAL_IDS = new Set([10, 11, 12]);
 
 const TERRAIN_SAVE_VERSION = 25;
-const TERRAIN_WALL_LAYER_VERSION = 5;
+const TERRAIN_WALL_LAYER_VERSION = 6;
 const SURFACE_IRON_TERRAIN_MIGRATION_VERSION = 2;
 const TERRAIN_TUNING = gameBalance.terrain || {};
 const DEFAULT_TERRAIN_CELL_SIZE = TERRAIN_TUNING.cellSize || 25;
 const DEFAULT_TERRAIN_CHUNK_CELLS = TERRAIN_TUNING.chunkSizeCells || 24;
+const STABLE_TERRAIN_CHUNK_CELLS = Math.max(8, TERRAIN_TUNING.stableChunkSizeCells || 16);
+const USE_STABLE_CHUNKED_TERRAIN_RENDERER = true;
 const TERRAIN_VISUAL_SUBDIVISIONS = TERRAIN_TUNING.visualSubdivisions || 2;
 const TERRAIN_COLLISION_SUBDIVISIONS = TERRAIN_TUNING.collisionSubdivisions || TERRAIN_VISUAL_SUBDIVISIONS;
 const TERRAIN_VISUAL_DENSITY_RADIUS = TERRAIN_TUNING.visualDensityRadiusCells || 1.32;
@@ -431,6 +433,213 @@ function signedHash2D(x, y, seed = 0, salt = 0) {
   return hash2D(x, y, seed, salt) * 2 - 1;
 }
 
+class TerrainRenderChunk {
+  constructor(terrain, chunkCol, chunkRow) {
+    this.terrain = terrain;
+    this.chunkCol = chunkCol;
+    this.chunkRow = chunkRow;
+    this.canvas = null;
+    this.ctx = null;
+    this.dirty = true;
+    this.cols = 0;
+    this.rows = 0;
+  }
+
+  get startCol() {
+    return this.chunkCol * this.terrain.chunkSizeCells;
+  }
+
+  get startRow() {
+    return this.chunkRow * this.terrain.chunkSizeCells;
+  }
+
+  syncCanvas() {
+    if (typeof document === 'undefined') return false;
+    const terrain = this.terrain;
+    const chunkSize = terrain.chunkSizeCells;
+    const cols = clamp(terrain.cols - this.startCol, 0, chunkSize);
+    const rows = clamp(terrain.rows - this.startRow, 0, chunkSize);
+    if (cols <= 0 || rows <= 0) return false;
+    const width = Math.max(1, Math.ceil(cols * terrain.cellSize));
+    const height = Math.max(1, Math.ceil(rows * terrain.cellSize));
+    if (!this.canvas) {
+      this.canvas = document.createElement('canvas');
+      this.ctx = this.canvas.getContext('2d');
+      this.ctx.imageSmoothingEnabled = false;
+    }
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.ctx.imageSmoothingEnabled = false;
+      this.dirty = true;
+    }
+    this.cols = cols;
+    this.rows = rows;
+    return true;
+  }
+
+  rebuild() {
+    if (!this.syncCanvas()) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Stable mining terrain: chunks are transparent render targets. They draw
+    // only tile-backed wall/block/edge pixels, avoiding the old rectangular
+    // dirty-region canvas and global rough-contour mutation path.
+    this.drawWalls(ctx);
+    this.drawBlocks(ctx);
+    this.drawOutline(ctx);
+
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    this.dirty = false;
+  }
+
+  render(ctx, cameraX = 0, cameraY = 0) {
+    if (this.dirty || !this.canvas) this.rebuild();
+    if (!this.canvas?.width || !this.canvas?.height) return;
+    const terrain = this.terrain;
+    const worldX = this.startCol * terrain.cellSize;
+    const worldY = this.startRow * terrain.cellSize;
+    ctx.drawImage(
+      this.canvas,
+      Math.round(worldX - cameraX),
+      Math.round(worldY - cameraY),
+    );
+  }
+
+  drawWalls(ctx) {
+    const terrain = this.terrain;
+    if (!terrain.wallConfig.enabled || !terrain.wallCells?.length) return;
+    const size = terrain.cellSize;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        const material = terrain.getWallCell(tileCol, tileRow);
+        if (material <= 0) continue;
+        const style = terrain.getWallStyleForMaterial(material);
+        const x = col * size;
+        const y = row * size;
+        ctx.globalAlpha = clamp01(style.alpha ?? 0.84);
+        ctx.fillStyle = style.base;
+        ctx.fillRect(x, y, size, size);
+
+        const noise = hash2D(tileCol, tileRow, terrain.seed, material * 131);
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = noise > 0.5 ? style.shadow : style.accent;
+        ctx.fillRect(x + size * 0.18, y + size * 0.22, Math.max(1, size * 0.12), Math.max(1, size * 0.08));
+        ctx.fillRect(x + size * 0.58, y + size * 0.62, Math.max(1, size * 0.16), Math.max(1, size * 0.08));
+        if (terrain.getWallCell(tileCol, tileRow - 1) !== material) {
+          ctx.globalAlpha = clamp01((TERRAIN_WALLS.edgeAlpha ?? 0.18) * 0.85);
+          ctx.fillStyle = style.edge;
+          ctx.fillRect(x, y, size, Math.max(1, size * 0.06));
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  drawBlocks(ctx) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        const material = terrain.getCell(tileCol, tileRow);
+        if (material <= 0) continue;
+        const x = col * size;
+        const y = row * size;
+        const color = this.getBlockColor(material, tileCol, tileRow);
+        const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, size, size);
+
+        ctx.globalAlpha = terrain.isConstructedMaterial(material) ? 0.2 : 0.12;
+        ctx.fillStyle = mixHex(data.edge || color, '#ffffff', 0.18);
+        ctx.fillRect(x, y, size, Math.max(1, size * 0.08));
+        ctx.fillRect(x, y, Math.max(1, size * 0.08), size);
+
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = '#050407';
+        ctx.fillRect(x, y + size - Math.max(1, size * 0.12), size, Math.max(1, size * 0.12));
+        ctx.fillRect(x + size - Math.max(1, size * 0.12), y, Math.max(1, size * 0.12), size);
+
+        const markAlpha = terrain.isConstructedMaterial(material) ? 0.18 : 0.14;
+        ctx.globalAlpha = markAlpha;
+        ctx.fillStyle = hash2D(tileCol, tileRow, terrain.seed, material * 271) > 0.48
+          ? mixHex(data.edge || color, '#ffffff', 0.08)
+          : '#151014';
+        ctx.fillRect(x + size * 0.28, y + size * 0.34, Math.max(1, size * 0.12), Math.max(1, size * 0.12));
+        ctx.fillRect(x + size * 0.62, y + size * 0.68, Math.max(1, size * 0.14), Math.max(1, size * 0.08));
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  getBlockColor(material, col, row) {
+    const terrain = this.terrain;
+    const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+    let color = data.color || TERRAIN_MATERIALS[1].color;
+    if (!terrain.isConstructedMaterial(material) && material === 1) {
+      const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
+      const x = col * terrain.cellSize + terrain.cellSize * 0.5;
+      const y = row * terrain.cellSize + terrain.cellSize * 0.5;
+      const depth = clamp01(terrain.getStablePlanetDepthAt(x, y) / Math.max(1, terrain.cellSize * 18));
+      color = mixHex(mixHex(palette.top, palette.body, 0.52), palette.deep, depth * 0.66);
+    }
+    const shade = signedHash2D(col, row, terrain.seed, material * 173) * 0.09;
+    return shade >= 0
+      ? mixHex(color, '#ffffff', shade)
+      : mixHex(color, '#050509', -shade * 1.25);
+  }
+
+  drawOutline(ctx) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(17, 14, 13, 0.92)';
+    ctx.lineWidth = Math.max(2, size * 0.16);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let row = 0; row < this.rows; row += 1) {
+      for (let col = 0; col < this.cols; col += 1) {
+        const tileCol = this.startCol + col;
+        const tileRow = this.startRow + row;
+        if (!terrain.isSolidCell(tileCol, tileRow)) continue;
+        const x = col * size;
+        const y = row * size;
+        if (!terrain.isSolidCell(tileCol, tileRow - 1)) {
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + size, y);
+        }
+        if (!terrain.isSolidCell(tileCol, tileRow + 1)) {
+          ctx.moveTo(x, y + size);
+          ctx.lineTo(x + size, y + size);
+        }
+        if (!terrain.isSolidCell(tileCol - 1, tileRow)) {
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + size);
+        }
+        if (!terrain.isSolidCell(tileCol + 1, tileRow)) {
+          ctx.moveTo(x + size, y);
+          ctx.lineTo(x + size, y + size);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function pointKey(point) {
   return `${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
 }
@@ -703,8 +912,12 @@ export class TerrainGrid {
     this.biome = biome;
     this.landingX = landingX;
     this.landingY = landingY;
-    this.chunkSizeCells = DEFAULT_TERRAIN_CHUNK_CELLS;
+    this.stableChunkRendererEnabled = USE_STABLE_CHUNKED_TERRAIN_RENDERER;
+    this.chunkSizeCells = this.stableChunkRendererEnabled
+      ? STABLE_TERRAIN_CHUNK_CELLS
+      : DEFAULT_TERRAIN_CHUNK_CELLS;
     this.dirtyChunks = new Set();
+    this.terrainRenderChunks = new Map();
     this.visualRebuildQueue = new Map();
     this.visualRebuildQueueId = 0;
     this.visualRebuildScheduled = false;
@@ -769,6 +982,7 @@ export class TerrainGrid {
       this.visualRebuildQueue?.clear();
       this.visualRebuildScheduled = false;
       this.wallRenderDirty = true;
+      this.markAllTerrainRenderChunksDirty?.();
       this.renderDirty = true;
       this.fullRenderDirty = true;
     });
@@ -914,6 +1128,7 @@ export class TerrainGrid {
     if (placedSurfaceIron) this.rebuildSurfaceProfiles();
     this.generateWallLayerForPlanet(island);
     this.surfaceIronMigrationVersion = SURFACE_IRON_TERRAIN_MIGRATION_VERSION;
+    this.markAllTerrainRenderChunksDirty();
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -929,6 +1144,7 @@ export class TerrainGrid {
     this.textureCache.clear();
     this.rebuildSurfaceProfiles();
     this.generateWallLayerForPlanet(island);
+    this.markAllTerrainRenderChunksDirty();
     this.renderDirty = true;
     this.fullRenderDirty = true;
   }
@@ -1943,12 +2159,87 @@ export class TerrainGrid {
         const key = `${chunkCol},${chunkRow}`;
         if (!this.dirtyChunks.has(key)) count += 1;
         this.dirtyChunks.add(key);
+        this.markTerrainRenderChunkDirty(chunkCol, chunkRow);
       }
     }
     if (count > 0 && this.isDebugFlagEnabled('SHOW_DIRTY_CHUNKS', SHOW_DIRTY_CHUNKS)) {
       console.log('[terrain dirty chunks]', { bounds, range, added: count, total: this.dirtyChunks.size });
     }
     return count;
+  }
+
+  getTerrainRenderChunkKey(chunkCol, chunkRow) {
+    return `${chunkCol},${chunkRow}`;
+  }
+
+  isTerrainRenderChunkInside(chunkCol, chunkRow) {
+    if (chunkCol < 0 || chunkRow < 0) return false;
+    const maxChunkCol = Math.ceil(this.cols / Math.max(1, this.chunkSizeCells));
+    const maxChunkRow = Math.ceil(this.rows / Math.max(1, this.chunkSizeCells));
+    return chunkCol < maxChunkCol && chunkRow < maxChunkRow;
+  }
+
+  getTerrainRenderChunk(chunkCol, chunkRow) {
+    if (!this.stableChunkRendererEnabled || !this.isTerrainRenderChunkInside(chunkCol, chunkRow)) return null;
+    const key = this.getTerrainRenderChunkKey(chunkCol, chunkRow);
+    let chunk = this.terrainRenderChunks.get(key);
+    if (!chunk) {
+      chunk = new TerrainRenderChunk(this, chunkCol, chunkRow);
+      this.terrainRenderChunks.set(key, chunk);
+    }
+    return chunk;
+  }
+
+  markTerrainRenderChunkDirty(chunkCol, chunkRow) {
+    if (!this.stableChunkRendererEnabled || !this.isTerrainRenderChunkInside(chunkCol, chunkRow)) return false;
+    const key = this.getTerrainRenderChunkKey(chunkCol, chunkRow);
+    const chunk = this.getTerrainRenderChunk(chunkCol, chunkRow);
+    if (!chunk) return false;
+    chunk.dirty = true;
+    this.dirtyChunks.add(key);
+    this.renderDirty = true;
+    return true;
+  }
+
+  markTileDirty(col, row) {
+    if (!this.isInside(col, row)) return false;
+    const chunkSize = Math.max(1, this.chunkSizeCells);
+    const markTileChunk = (tileCol, tileRow) => {
+      if (!this.isInside(tileCol, tileRow)) return;
+      this.markTerrainRenderChunkDirty(
+        Math.floor(tileCol / chunkSize),
+        Math.floor(tileRow / chunkSize),
+      );
+    };
+
+    // A foreground change can alter the exposed edge of its four neighbors.
+    // Mark only those owning chunks so mining never asks for a full planet redraw.
+    markTileChunk(col, row);
+    markTileChunk(col - 1, row);
+    markTileChunk(col + 1, row);
+    markTileChunk(col, row - 1);
+    markTileChunk(col, row + 1);
+
+    this.dirtyChunks.add(this.getTerrainRenderChunkKey(
+      Math.floor(col / chunkSize),
+      Math.floor(row / chunkSize),
+    ));
+    this.renderDirty = true;
+    this.fullRenderDirty = false;
+    return true;
+  }
+
+  markAllTerrainRenderChunksDirty() {
+    if (!this.stableChunkRendererEnabled) return;
+    const chunksX = Math.ceil(this.cols / Math.max(1, this.chunkSizeCells));
+    const chunksY = Math.ceil(this.rows / Math.max(1, this.chunkSizeCells));
+    for (let chunkRow = 0; chunkRow < chunksY; chunkRow += 1) {
+      for (let chunkCol = 0; chunkCol < chunksX; chunkCol += 1) {
+        this.markTerrainRenderChunkDirty(chunkCol, chunkRow);
+      }
+    }
+    this.dirtyBounds = null;
+    this.renderDirty = true;
   }
 
   applyImmediateMiningCutout(bounds, cells = []) {
@@ -3239,12 +3530,74 @@ export class TerrainGrid {
     ctx.restore();
   }
 
+  drawStableChunkedTerrain(ctx, camera = { x: 0, y: 0 }, viewportWidth = this.width, viewportHeight = this.height) {
+    if (typeof document === 'undefined') return;
+    const cameraX = Number(camera?.x) || 0;
+    const cameraY = Number(camera?.y) || 0;
+    const padding = this.cellSize * 2;
+    const sx = clamp(Math.floor(cameraX - padding), 0, Math.max(0, this.width - 1));
+    const sy = clamp(Math.floor(cameraY - padding), 0, Math.max(0, this.height - 1));
+    const sw = Math.min(this.width - sx, Math.ceil(viewportWidth + padding * 2));
+    const sh = Math.min(this.height - sy, Math.ceil(viewportHeight + padding * 2));
+    if (sw <= 0 || sh <= 0) return;
+
+    const chunkSize = Math.max(1, this.chunkSizeCells);
+    const startChunkCol = Math.floor(Math.floor(sx / this.cellSize) / chunkSize);
+    const startChunkRow = Math.floor(Math.floor(sy / this.cellSize) / chunkSize);
+    const endChunkCol = Math.floor(Math.ceil((sx + sw) / this.cellSize) / chunkSize);
+    const endChunkRow = Math.floor(Math.ceil((sy + sh) / this.cellSize) / chunkSize);
+    let rebuiltChunks = 0;
+
+    ctx.save();
+    for (let chunkRow = startChunkRow; chunkRow <= endChunkRow; chunkRow += 1) {
+      for (let chunkCol = startChunkCol; chunkCol <= endChunkCol; chunkCol += 1) {
+        const chunk = this.getTerrainRenderChunk(chunkCol, chunkRow);
+        if (!chunk) continue;
+        const wasDirty = chunk.dirty || !chunk.canvas;
+        chunk.render(ctx, cameraX, cameraY);
+        if (wasDirty) rebuiltChunks += 1;
+        if (!chunk.dirty) this.dirtyChunks.delete(this.getTerrainRenderChunkKey(chunkCol, chunkRow));
+      }
+    }
+
+    this.drawCachedDepthLightingOverlay(ctx, { x: cameraX, y: cameraY }, { sx, sy, sw, sh });
+    this.drawLiveDamageOverlays(ctx, { x: cameraX, y: cameraY }, { sx, sy, sw, sh });
+    ctx.restore();
+
+    if (this.isRecentMiningEdit() && rebuiltChunks > TERRAIN_REBUILD_CHUNK_WARNING_LIMIT) {
+      this.warnIfMiningRebuildInvariant({
+        functionName: 'drawStableChunkedTerrain',
+        chunksRebuilt: rebuiltChunks,
+        fullPlanetRebuild: false,
+      });
+    }
+    this.dirtyChunks.clear();
+    this.renderDirty = false;
+    this.fullRenderDirty = false;
+    this.dirtyBounds = null;
+  }
+
   draw(ctx, camera, viewportWidth, viewportHeight = this.height, options = {}) {
     const now = this.getClockNow();
     const nextRoughnessEnabled = TERRAIN_ROUGHNESS.enabled && options?.roughness !== false;
     const nextLightingEnabled = TERRAIN_LIGHTING.enabled && options?.lighting !== false;
     const nextLightingDebugEnabled = Boolean(options?.lightingDebug);
     const nextDepthDebugEnabled = Boolean(options?.depthDebug);
+    if (this.stableChunkRendererEnabled) {
+      this.roughnessRenderEnabled = false;
+      if (
+        nextLightingEnabled !== this.lightingRenderEnabled
+        || nextLightingDebugEnabled !== this.lightingDebugEnabled
+        || nextDepthDebugEnabled !== this.depthDebugEnabled
+      ) {
+        this.lightingRenderEnabled = nextLightingEnabled;
+        this.lightingDebugEnabled = nextLightingDebugEnabled;
+        this.depthDebugEnabled = nextDepthDebugEnabled;
+        this.markLightingOverlayDirty({ defer: false });
+      }
+      this.drawStableChunkedTerrain(ctx, camera, viewportWidth, viewportHeight);
+      return;
+    }
     if (nextRoughnessEnabled !== this.roughnessRenderEnabled) {
       this.roughnessRenderEnabled = nextRoughnessEnabled;
       this.renderDirty = true;
@@ -3993,7 +4346,7 @@ export class TerrainGrid {
     const minRow = clamp(Math.floor(visible.sy / this.cellSize) - 1, 0, this.rows - 1);
     const maxRow = clamp(Math.ceil((visible.sy + visible.sh) / this.cellSize) + 1, 0, this.rows - 1);
     ctx.save();
-    ctx.translate(-camera.x, 0);
+    ctx.translate(-(Number(camera?.x) || 0), -(Number(camera?.y) || 0));
     for (const index of this.damagedCells) {
       const row = Math.floor(index / this.cols);
       const col = index - row * this.cols;
@@ -4173,6 +4526,7 @@ export class TerrainGrid {
     this.wallRenderCanvas = null;
     this.wallRenderCtx = null;
     this.wallRenderDirty = true;
+    this.terrainRenderChunks?.clear();
     this.lightingCanvas = null;
     this.lightingCtx = null;
     this.lightingFieldCanvas = null;
@@ -4206,6 +4560,12 @@ export class TerrainGrid {
     maxChunks = 6,
   } = {}) {
     if (typeof document === 'undefined') return;
+    if (this.stableChunkRendererEnabled) {
+      this.markAllTerrainRenderChunksDirty();
+      this.ensureAirExposureMap();
+      if (this.lightingRenderEnabled || this.depthDebugEnabled) this.redrawLightingOverlayCache();
+      return;
+    }
     if (progressive) {
       this.beginProgressivePrewarm({ priorityPoint });
       this.processProgressivePrewarm({ budgetMs, maxChunks });
@@ -4218,6 +4578,11 @@ export class TerrainGrid {
 
   beginProgressivePrewarm({ priorityPoint = null, chunkSizeCells = null } = {}) {
     if (typeof document === 'undefined') return false;
+    if (this.stableChunkRendererEnabled) {
+      this.markAllTerrainRenderChunksDirty();
+      this.progressivePrewarm = null;
+      return true;
+    }
     if (this.renderCanvas && !this.renderDirty && !this.fullRenderDirty && !this.progressivePrewarm) return true;
     if (this.progressivePrewarm) return false;
 
@@ -4257,6 +4622,10 @@ export class TerrainGrid {
   }
 
   processProgressivePrewarm({ budgetMs = 4, maxChunks = 4 } = {}) {
+    if (this.stableChunkRendererEnabled) {
+      this.progressivePrewarm = null;
+      return true;
+    }
     const state = this.progressivePrewarm;
     if (!state) return !this.renderDirty;
     const canvas = this.getRenderCanvas();

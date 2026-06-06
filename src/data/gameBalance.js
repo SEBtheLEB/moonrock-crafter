@@ -200,6 +200,7 @@ export const gameBalance = {
   terrain: {
     cellSize: 17,
     chunkSizeCells: 24,
+    stableChunkSizeCells: 16,
     visualSubdivisions: 2,
     collisionSubdivisions: 2,
     visualDensityRadiusCells: 1.32,
@@ -245,6 +246,7 @@ export const gameBalance = {
     walls: {
       enabled: true,
       startDepth: 0.55,
+      minDepthTiles: 4,
       materialInfluenceRadius: 4,
       textureAlpha: 0.96,
       edgeAlpha: 0.18,

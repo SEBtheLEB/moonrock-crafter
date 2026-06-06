@@ -71,7 +71,9 @@ export class TerrainShadowSystem {
       const rebuildDue = !this.ready || !this.rebuildAt || terrain.getClockNow() >= this.rebuildAt;
       if (rebuildDue) this.redrawCache();
     }
-    ctx.drawImage(overlay, sx, sy, sw, sh, sx - camera.x, sy, sw, sh);
+    const cameraX = Number(camera?.x) || 0;
+    const cameraY = Number(camera?.y) || 0;
+    ctx.drawImage(overlay, sx, sy, sw, sh, sx - cameraX, sy - cameraY, sw, sh);
   }
 
   redrawCache() {

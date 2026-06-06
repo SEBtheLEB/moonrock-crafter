@@ -23,6 +23,12 @@ export class TerrainWallSystem {
       defer: true,
       bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
     });
+    if (terrain.stableChunkRendererEnabled) {
+      terrain.markTileDirty?.(col, row);
+      terrain.renderDirty = true;
+      terrain.fullRenderDirty = false;
+      return true;
+    }
     terrain.renderDirty = true;
     if (terrain.renderCanvas && !terrain.fullRenderDirty) {
       terrain.markDirtyCell(col, row, terrain.getDirtyPaddingCellsForMaterialChange(nextValue, nextValue));
@@ -69,15 +75,33 @@ export class TerrainWallSystem {
     const terrain = this.terrain;
     if (!terrain.isInside(col, row)) return false;
     const material = terrain.getCell(col, row);
-    if (material > 0 && !terrain.isConstructedMaterial(material)) return true;
-
-    const startDepth = Math.max(0, (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize);
+    if (terrain.isConstructedMaterial(material)) return false;
+    const minDepthTiles = Math.max(4, terrain.wallConfig.minDepthTiles ?? 4);
+    const startDepth = Math.max(
+      minDepthTiles * terrain.cellSize,
+      (terrain.wallConfig.startDepth ?? 0.55) * terrain.cellSize,
+    );
     const x = col * terrain.cellSize + terrain.cellSize * 0.5;
     const y = row * terrain.cellSize + terrain.cellSize * 0.5;
-    const depth = stableDepth && typeof terrain.getStablePlanetDepthAt === 'function'
+    const depth = (stableDepth || terrain.stableChunkRendererEnabled) && typeof terrain.getStablePlanetDepthAt === 'function'
       ? terrain.getStablePlanetDepthAt(x, y)
       : terrain.getTerrainDepthAt(x, y);
-    return depth >= startDepth;
+    if (depth < startDepth) return false;
+    if (material > 0) return this.getSolidDistanceToAir(col, row, minDepthTiles) >= minDepthTiles;
+    return true;
+  }
+
+  getSolidDistanceToAir(col, row, maxDistance = 4) {
+    const terrain = this.terrain;
+    for (let radius = 1; radius <= maxDistance; radius += 1) {
+      for (let y = row - radius; y <= row + radius; y += 1) {
+        for (let x = col - radius; x <= col + radius; x += 1) {
+          if (Math.abs(x - col) !== radius && Math.abs(y - row) !== radius) continue;
+          if (!terrain.isSolidCell(x, y)) return radius;
+        }
+      }
+    }
+    return maxDistance;
   }
 
   generateLayerForPlanet() {
@@ -100,6 +124,7 @@ export class TerrainWallSystem {
     terrain.wallRenderDirty = true;
     terrain.markAirExposureDirty({ defer: false });
     terrain.markLightingOverlayDirty({ defer: false, full: true });
+    terrain.markAllTerrainRenderChunksDirty?.();
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
     terrain.finishTerrainRebuildDebug?.(debug, {
@@ -122,9 +147,10 @@ export class TerrainWallSystem {
     for (let row = 0; row < terrain.rows; row += 1) {
       for (let col = 0; col < terrain.cols; col += 1) {
         const index = terrain.index(col, row);
-        if (!this.shouldHaveNaturalWallCell(col, row, { stableDepth: true })) continue;
         const material = terrain.getCell(col, row);
-        const nextWall = this.getTypeForTile(col, row, material || 1);
+        const nextWall = this.shouldHaveNaturalWallCell(col, row, { stableDepth: true })
+          ? this.getTypeForTile(col, row, material || 1)
+          : 0;
         if (terrain.wallCells[index] === nextWall) continue;
         terrain.wallCells[index] = nextWall;
         changed = true;
@@ -143,6 +169,7 @@ export class TerrainWallSystem {
     terrain.wallRenderDirty = true;
     terrain.markAirExposureDirty({ defer: false });
     terrain.markLightingOverlayDirty({ defer: false, full: true });
+    terrain.markAllTerrainRenderChunksDirty?.();
     terrain.renderDirty = true;
     terrain.fullRenderDirty = true;
     terrain.finishTerrainRebuildDebug?.(debug, {

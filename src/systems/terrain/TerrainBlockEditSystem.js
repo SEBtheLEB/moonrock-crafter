@@ -38,10 +38,21 @@ export class TerrainBlockEditSystem {
     if (terrain.getMaterialLight(previousValue) || terrain.getMaterialLight(nextValue)) {
       terrain.markLightingOverlayDirty({
         defer: true,
-        full: true,
+        bounds: { minCol: col, maxCol: col, minRow: row, maxRow: row },
       });
     }
     if ((previousValue > 0) !== (nextValue > 0)) terrain.invalidateSurfaceRadiusLookupNear(col, row);
+    if (terrain.stableChunkRendererEnabled) {
+      terrain.markTileDirty?.(col, row);
+      terrain.renderDirty = true;
+      terrain.fullRenderDirty = false;
+      terrain.finishTerrainRebuildDebug?.(debug, {
+        tilesProcessed: 1,
+        chunksRebuilt: terrain.dirtyChunks?.size || 0,
+        fullPlanetRebuild: false,
+      });
+      return;
+    }
     terrain.renderDirty = true;
     if (terrain.renderCanvas && !terrain.fullRenderDirty) {
       terrain.markDirtyCell(col, row, this.getDirtyPaddingCellsForMaterialChange(previousValue, nextValue));
@@ -60,6 +71,15 @@ export class TerrainBlockEditSystem {
     editedCells = [],
   } = {}) {
     const terrain = this.terrain;
+    if (terrain.stableChunkRendererEnabled) {
+      if (!keepSurfacePath) {
+        terrain.surfaceRadiusLookupCache?.clear();
+        terrain.markAirExposureDirty({ defer: false });
+        terrain.surfacePathCache = null;
+        terrain.collisionContours = null;
+      }
+      return;
+    }
     const touchedNaturalSurface = (
       (previousMaterial > 0 && !terrain.isConstructedMaterial(previousMaterial))
       || (nextMaterial > 0 && !terrain.isConstructedMaterial(nextMaterial))
@@ -167,7 +187,6 @@ export class TerrainBlockEditSystem {
     }
     if (broken.length) {
       let editBounds = null;
-      let qualityPadding = 0;
       let previousMaterial = 0;
       const editedCells = [];
       for (const cell of broken) {
@@ -180,10 +199,7 @@ export class TerrainBlockEditSystem {
           minRow: cell.row,
           maxRow: cell.row,
         });
-        qualityPadding = Math.max(qualityPadding, this.getDirtyPaddingCellsForMaterialChange(cell.material, 0));
-        if (terrain.renderCanvas && !terrain.fullRenderDirty) {
-          terrain.markDirtyCell(cell.col, cell.row, this.getFastEditDirtyPaddingCells());
-        }
+        terrain.markTileDirty?.(cell.col, cell.row);
       }
       this.invalidateEditedTerrainGeometry({
         keepSurfacePath: true,
@@ -191,16 +207,17 @@ export class TerrainBlockEditSystem {
         nextMaterial: 0,
         editedCells,
       });
-      if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, full: true });
-      terrain.markFastTerrainEdit(editBounds, qualityPadding);
+      terrain.markAirExposureDirty({ defer: true });
+      if (brokeEmissiveMaterial) terrain.markLightingOverlayDirty({ defer: true, bounds: editBounds });
       terrain.renderDirty = true;
-      if (!terrain.renderCanvas || terrain.fullRenderDirty) terrain.fullRenderDirty = true;
+      terrain.fullRenderDirty = false;
+      terrain.dirtyBounds = null;
       terrain.recordMiningEditDebug?.(editBounds, broken.length);
     }
     terrain.finishTerrainRebuildDebug?.(debug, {
       tilesProcessed,
       chunksRebuilt: terrain.dirtyChunks?.size || 0,
-      fullPlanetRebuild: Boolean(terrain.fullRenderDirty && !terrain.dirtyBounds),
+      fullPlanetRebuild: false,
       fromMining: true,
       brokenTiles: broken.length,
       bounds: broken.length ? broken.reduce((bounds, cell) => terrain.mergeBounds(bounds, {
