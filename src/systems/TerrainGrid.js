@@ -74,6 +74,22 @@ const LOCAL_SURFACE_CONTOUR_OPTIONS = {
     ?? Math.min(VISUAL_CONTOUR_OPTIONS.gridSnapAmount, 0.08),
 };
 
+const STABLE_CHUNK_FILL_CONTOUR_OPTIONS = {
+  ...VISUAL_CONTOUR_OPTIONS,
+  sampleSubdivisions: Math.max(1, TERRAIN_TUNING.stableChunkFillSubdivisions || 2),
+  densityRadiusCells: TERRAIN_TUNING.stableChunkFillDensityRadiusCells ?? 1.26,
+  densityThreshold: TERRAIN_TUNING.stableChunkFillDensityThreshold ?? 0.44,
+  gridSnapAmount: 0,
+  cornerRoundAmount: 0,
+};
+
+const STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS = {
+  ...STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
+  sampleSubdivisions: Math.max(1, TERRAIN_TUNING.stableChunkOutlineSubdivisions || 2),
+  densityRadiusCells: TERRAIN_TUNING.stableChunkOutlineDensityRadiusCells ?? 1.34,
+  densityThreshold: TERRAIN_TUNING.stableChunkOutlineDensityThreshold ?? 0.45,
+};
+
 const COLLISION_CONTOUR_OPTIONS = {
   sampleSubdivisions: TERRAIN_COLLISION_SUBDIVISIONS,
   densityRadiusCells: TERRAIN_COLLISION_DENSITY_RADIUS,
@@ -552,6 +568,11 @@ class TerrainRenderChunk {
     }
   }
 
+  traceStableChunkContourPath(ctx, predicate, bounds = this.getBounds(), options = STABLE_CHUNK_FILL_CONTOUR_OPTIONS) {
+    ctx.beginPath();
+    this.terrain.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
+  }
+
   drawSmoothWalls(ctx) {
     this.drawWalls(ctx);
   }
@@ -564,7 +585,12 @@ class TerrainRenderChunk {
       gradient.addColorStop(0, palette.top);
       gradient.addColorStop(0.48, palette.body);
       gradient.addColorStop(1, palette.deep);
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), { scale: 1.018 });
+      this.traceStableChunkContourPath(
+        worldCtx,
+        (col, row) => terrain.isNaturalSolidCell(col, row),
+        this.getBounds(),
+        STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
+      );
       worldCtx.fillStyle = gradient;
       worldCtx.fill();
 
@@ -575,8 +601,13 @@ class TerrainRenderChunk {
       const pattern = worldCtx.createPattern(tile, 'repeat');
       if (!pattern) return;
       worldCtx.save();
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), { scale: 1.018 });
-      worldCtx.clip('nonzero');
+      this.traceStableChunkContourPath(
+        worldCtx,
+        (col, row) => terrain.isNaturalSolidCell(col, row),
+        this.getBounds(),
+        STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
+      );
+      worldCtx.clip('evenodd');
       worldCtx.globalAlpha = 0.78;
       worldCtx.fillStyle = pattern;
       worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
@@ -597,9 +628,14 @@ class TerrainRenderChunk {
         );
         const pattern = worldCtx.createPattern(tile, 'repeat');
         if (!pattern) continue;
-        this.traceChunkCellShapes(worldCtx, (col, row) => terrain.getCell(col, row) === material, { scale: 1.012 });
+        this.traceStableChunkContourPath(
+          worldCtx,
+          (col, row) => terrain.getCell(col, row) === material,
+          this.getBounds(),
+          STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
+        );
         worldCtx.save();
-        worldCtx.clip('nonzero');
+        worldCtx.clip('evenodd');
         worldCtx.globalAlpha = material >= 4 ? 0.95 : 0.86;
         worldCtx.fillStyle = pattern;
         worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
@@ -670,168 +706,29 @@ class TerrainRenderChunk {
   drawSmoothOutline(ctx) {
     const terrain = this.terrain;
     const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
-    this.drawOrganicOutlinePass(ctx, 'rgba(5, 8, 12, 0.58)', Math.max(3, terrain.cellSize * 0.24), 0.045);
-    this.drawOrganicOutlinePass(ctx, withAlpha(palette.edge, 0.46), Math.max(1.2, terrain.cellSize * 0.08), 0.03);
-  }
-
-  drawOrganicOutlinePass(ctx, style, width, jitterScale = 0.035) {
-    const terrain = this.terrain;
-    const size = terrain.cellSize;
-    const cornerRadius = size * 0.36;
-    ctx.save();
-    ctx.strokeStyle = style;
-    ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    for (let row = 0; row < this.rows; row += 1) {
-      for (let col = 0; col < this.cols; col += 1) {
-        const tileCol = this.startCol + col;
-        const tileRow = this.startRow + row;
-        if (!terrain.isNaturalSolidCell(tileCol, tileRow)) continue;
-        const x = col * size;
-        const y = row * size;
-        const exposedTop = !terrain.isSolidCell(tileCol, tileRow - 1);
-        const exposedRight = !terrain.isSolidCell(tileCol + 1, tileRow);
-        const exposedBottom = !terrain.isSolidCell(tileCol, tileRow + 1);
-        const exposedLeft = !terrain.isSolidCell(tileCol - 1, tileRow);
-
-        // Sides stop short of exposed corners, then corner arcs bridge them.
-        // This keeps mining updates local while avoiding the hard 90-degree
-        // stair-step outline that made the planet feel tile-stamped.
-        if (exposedTop) {
-          this.traceOrganicEdge(
-            ctx,
-            x + (exposedLeft ? cornerRadius : 0),
-            y,
-            x + size - (exposedRight ? cornerRadius : 0),
-            y,
-            0,
-            -1,
-            tileCol,
-            tileRow,
-            11,
-            jitterScale,
-          );
-        }
-        if (exposedRight) {
-          this.traceOrganicEdge(
-            ctx,
-            x + size,
-            y + (exposedTop ? cornerRadius : 0),
-            x + size,
-            y + size - (exposedBottom ? cornerRadius : 0),
-            1,
-            0,
-            tileCol,
-            tileRow,
-            17,
-            jitterScale,
-          );
-        }
-        if (exposedBottom) {
-          this.traceOrganicEdge(
-            ctx,
-            x + size - (exposedRight ? cornerRadius : 0),
-            y + size,
-            x + (exposedLeft ? cornerRadius : 0),
-            y + size,
-            0,
-            1,
-            tileCol,
-            tileRow,
-            23,
-            jitterScale,
-          );
-        }
-        if (exposedLeft) {
-          this.traceOrganicEdge(
-            ctx,
-            x,
-            y + size - (exposedBottom ? cornerRadius : 0),
-            x,
-            y + (exposedTop ? cornerRadius : 0),
-            -1,
-            0,
-            tileCol,
-            tileRow,
-            29,
-            jitterScale,
-          );
-        }
-
-        if (exposedTop && exposedRight) {
-          this.traceOrganicCorner(ctx, x + size, y, 'tr', tileCol, tileRow, 31, jitterScale);
-        }
-        if (exposedRight && exposedBottom) {
-          this.traceOrganicCorner(ctx, x + size, y + size, 'br', tileCol, tileRow, 37, jitterScale);
-        }
-        if (exposedBottom && exposedLeft) {
-          this.traceOrganicCorner(ctx, x, y + size, 'bl', tileCol, tileRow, 41, jitterScale);
-        }
-        if (exposedLeft && exposedTop) {
-          this.traceOrganicCorner(ctx, x, y, 'tl', tileCol, tileRow, 43, jitterScale);
-        }
-      }
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  traceOrganicEdge(ctx, x1, y1, x2, y2, normalX, normalY, col, row, salt, jitterScale) {
-    const terrain = this.terrain;
-    const size = terrain.cellSize;
-    if (Math.hypot(x2 - x1, y2 - y1) <= size * 0.08) return;
-    const inset = Math.max(0.5, size * 0.018);
-    const ax = x1 + (x2 - x1 === 0 ? 0 : Math.sign(x2 - x1) * inset);
-    const ay = y1 + (y2 - y1 === 0 ? 0 : Math.sign(y2 - y1) * inset);
-    const bx = x2 - (x2 - x1 === 0 ? 0 : Math.sign(x2 - x1) * inset);
-    const by = y2 - (y2 - y1 === 0 ? 0 : Math.sign(y2 - y1) * inset);
-    const tangentX = Math.sign(x2 - x1);
-    const tangentY = Math.sign(y2 - y1);
-    const midX = (ax + bx) * 0.5
-      + normalX * signedHash2D(col, row, terrain.seed, salt) * size * jitterScale
-      + tangentX * signedHash2D(row, col, terrain.seed, salt + 5) * size * jitterScale * 0.42;
-    const midY = (ay + by) * 0.5
-      + normalY * signedHash2D(row, col, terrain.seed, salt + 3) * size * jitterScale
-      + tangentY * signedHash2D(col, row, terrain.seed, salt + 7) * size * jitterScale * 0.42;
-    ctx.moveTo(ax, ay);
-    ctx.quadraticCurveTo(midX, midY, bx, by);
-  }
-
-  traceOrganicCorner(ctx, cornerX, cornerY, corner, col, row, salt, jitterScale) {
-    const terrain = this.terrain;
-    const size = terrain.cellSize;
-    const radius = size * 0.36;
-    const outward = Math.max(1.5, size * (0.16 + jitterScale * 0.9));
-    const wobbleX = signedHash2D(col, row, terrain.seed, salt) * size * jitterScale * 0.5;
-    const wobbleY = signedHash2D(row, col, terrain.seed, salt + 3) * size * jitterScale * 0.5;
-    const configs = {
-      tr: {
-        start: { x: cornerX - radius, y: cornerY },
-        end: { x: cornerX, y: cornerY + radius },
-        control: { x: cornerX + outward + wobbleX, y: cornerY - outward + wobbleY },
-      },
-      br: {
-        start: { x: cornerX, y: cornerY - radius },
-        end: { x: cornerX - radius, y: cornerY },
-        control: { x: cornerX + outward + wobbleX, y: cornerY + outward + wobbleY },
-      },
-      bl: {
-        start: { x: cornerX + radius, y: cornerY },
-        end: { x: cornerX, y: cornerY - radius },
-        control: { x: cornerX - outward + wobbleX, y: cornerY + outward + wobbleY },
-      },
-      tl: {
-        start: { x: cornerX, y: cornerY + radius },
-        end: { x: cornerX + radius, y: cornerY },
-        control: { x: cornerX - outward + wobbleX, y: cornerY - outward + wobbleY },
-      },
-    };
-    const config = configs[corner];
-    if (!config) return;
-    ctx.moveTo(config.start.x, config.start.y);
-    ctx.quadraticCurveTo(config.control.x, config.control.y, config.end.x, config.end.y);
+    this.withWorldContext(ctx, (worldCtx, bounds) => {
+      const predicate = (col, row) => terrain.isNaturalSolidCell(col, row);
+      worldCtx.save();
+      worldCtx.lineCap = 'round';
+      worldCtx.lineJoin = 'round';
+      terrain.strokeSampledMarchingEdges(
+        worldCtx,
+        'rgba(5, 8, 12, 0.58)',
+        Math.max(3, terrain.cellSize * 0.24),
+        bounds,
+        predicate,
+        STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS,
+      );
+      terrain.strokeSampledMarchingEdges(
+        worldCtx,
+        withAlpha(palette.edge, 0.46),
+        Math.max(1.2, terrain.cellSize * 0.08),
+        bounds,
+        predicate,
+        STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS,
+      );
+      worldCtx.restore();
+    });
   }
 
   drawWalls(ctx) {
