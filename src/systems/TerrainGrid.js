@@ -74,22 +74,6 @@ const LOCAL_SURFACE_CONTOUR_OPTIONS = {
     ?? Math.min(VISUAL_CONTOUR_OPTIONS.gridSnapAmount, 0.08),
 };
 
-const STABLE_CHUNK_FILL_CONTOUR_OPTIONS = {
-  ...VISUAL_CONTOUR_OPTIONS,
-  sampleSubdivisions: Math.max(1, TERRAIN_TUNING.stableChunkFillSubdivisions || 2),
-  densityRadiusCells: TERRAIN_TUNING.stableChunkFillDensityRadiusCells ?? 1.26,
-  densityThreshold: TERRAIN_TUNING.stableChunkFillDensityThreshold ?? 0.44,
-  gridSnapAmount: 0,
-  cornerRoundAmount: 0,
-};
-
-const STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS = {
-  ...STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
-  sampleSubdivisions: Math.max(1, TERRAIN_TUNING.stableChunkOutlineSubdivisions || 2),
-  densityRadiusCells: TERRAIN_TUNING.stableChunkOutlineDensityRadiusCells ?? 1.34,
-  densityThreshold: TERRAIN_TUNING.stableChunkOutlineDensityThreshold ?? 0.45,
-};
-
 const COLLISION_CONTOUR_OPTIONS = {
   sampleSubdivisions: TERRAIN_COLLISION_SUBDIVISIONS,
   densityRadiusCells: TERRAIN_COLLISION_DENSITY_RADIUS,
@@ -555,7 +539,7 @@ class TerrainRenderChunk {
     ctx.restore();
   }
 
-  traceChunkCellShapes(ctx, predicate, { scale = 1 } = {}) {
+  traceChunkCellShapes(ctx, predicate, { scale = 1, organic = false } = {}) {
     const terrain = this.terrain;
     ctx.beginPath();
     for (let row = 0; row < this.rows; row += 1) {
@@ -563,14 +547,53 @@ class TerrainRenderChunk {
         const tileCol = this.startCol + col;
         const tileRow = this.startRow + row;
         if (!predicate(tileCol, tileRow)) continue;
-        terrain.traceCellShape(ctx, tileCol, tileRow, { scale });
+        if (organic) this.traceOrganicBlockShape(ctx, tileCol, tileRow, { scale });
+        else terrain.traceCellShape(ctx, tileCol, tileRow, { scale });
       }
     }
   }
 
-  traceStableChunkContourPath(ctx, predicate, bounds = this.getBounds(), options = STABLE_CHUNK_FILL_CONTOUR_OPTIONS) {
-    ctx.beginPath();
-    this.terrain.buildSampledMarchingCellPath(ctx, predicate, bounds, options);
+  traceOrganicBlockShape(ctx, tileCol, tileRow, { scale = 1 } = {}) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    const centerX = tileCol * size + size * 0.5;
+    const centerY = tileRow * size + size * 0.5;
+    const half = size * 0.5 * scale;
+    const basePoints = [
+      [-0.44, -0.5],
+      [-0.12, -0.53],
+      [0.2, -0.49],
+      [0.48, -0.34],
+      [0.53, -0.08],
+      [0.49, 0.24],
+      [0.34, 0.49],
+      [0.02, 0.53],
+      [-0.28, 0.49],
+      [-0.5, 0.32],
+      [-0.53, 0.03],
+      [-0.49, -0.27],
+    ];
+    const points = basePoints.map(([x, y], index) => {
+      const jitter = signedHash2D(tileCol, tileRow, terrain.seed, 1100 + index * 17) * size * 0.055;
+      const tangent = signedHash2D(tileRow, tileCol, terrain.seed, 1400 + index * 19) * size * 0.018;
+      const length = Math.hypot(x, y) || 1;
+      const normalX = x / length;
+      const normalY = y / length;
+      return {
+        x: centerX + x * size * scale + normalX * jitter - normalY * tangent,
+        y: centerY + y * size * scale + normalY * jitter + normalX * tangent,
+      };
+    });
+    if (!points.length) return;
+    const firstMid = midpoint(points[0], points[1]);
+    ctx.moveTo(firstMid.x, firstMid.y);
+    for (let index = 1; index <= points.length; index += 1) {
+      const current = points[index % points.length];
+      const next = points[(index + 1) % points.length];
+      const mid = midpoint(current, next);
+      ctx.quadraticCurveTo(current.x, current.y, mid.x, mid.y);
+    }
+    ctx.closePath();
   }
 
   drawSmoothWalls(ctx) {
@@ -585,12 +608,10 @@ class TerrainRenderChunk {
       gradient.addColorStop(0, palette.top);
       gradient.addColorStop(0.48, palette.body);
       gradient.addColorStop(1, palette.deep);
-      this.traceStableChunkContourPath(
-        worldCtx,
-        (col, row) => terrain.isNaturalSolidCell(col, row),
-        this.getBounds(),
-        STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
-      );
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
+        scale: 1.06,
+        organic: true,
+      });
       worldCtx.fillStyle = gradient;
       worldCtx.fill();
 
@@ -601,13 +622,11 @@ class TerrainRenderChunk {
       const pattern = worldCtx.createPattern(tile, 'repeat');
       if (!pattern) return;
       worldCtx.save();
-      this.traceStableChunkContourPath(
-        worldCtx,
-        (col, row) => terrain.isNaturalSolidCell(col, row),
-        this.getBounds(),
-        STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
-      );
-      worldCtx.clip('evenodd');
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
+        scale: 1.06,
+        organic: true,
+      });
+      worldCtx.clip('nonzero');
       worldCtx.globalAlpha = 0.78;
       worldCtx.fillStyle = pattern;
       worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
@@ -628,14 +647,12 @@ class TerrainRenderChunk {
         );
         const pattern = worldCtx.createPattern(tile, 'repeat');
         if (!pattern) continue;
-        this.traceStableChunkContourPath(
-          worldCtx,
-          (col, row) => terrain.getCell(col, row) === material,
-          this.getBounds(),
-          STABLE_CHUNK_FILL_CONTOUR_OPTIONS,
-        );
+        this.traceChunkCellShapes(worldCtx, (col, row) => terrain.getCell(col, row) === material, {
+          scale: 1.035,
+          organic: true,
+        });
         worldCtx.save();
-        worldCtx.clip('evenodd');
+        worldCtx.clip('nonzero');
         worldCtx.globalAlpha = material >= 4 ? 0.95 : 0.86;
         worldCtx.fillStyle = pattern;
         worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
@@ -667,22 +684,6 @@ class TerrainRenderChunk {
         const y = row * size;
         const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
         const color = data.edge || '#9c9185';
-        const rightSolid = terrain.getCell(tileCol + 1, tileRow) > 0;
-        const downSolid = terrain.getCell(tileCol, tileRow + 1) > 0;
-
-        ctx.globalAlpha = material > 1 ? 0.11 : 0.055;
-        ctx.strokeStyle = withAlpha(mixHex(color, '#050509', 0.28), 0.75);
-        ctx.lineWidth = Math.max(0.7, size * 0.035);
-        ctx.beginPath();
-        if (rightSolid && hash2D(tileCol, tileRow, terrain.seed, material * 379) > 0.36) {
-          ctx.moveTo(x + size, y + size * 0.18);
-          ctx.lineTo(x + size, y + size * 0.82);
-        }
-        if (downSolid && hash2D(tileRow, tileCol, terrain.seed, material * 383) > 0.36) {
-          ctx.moveTo(x + size * 0.18, y + size);
-          ctx.lineTo(x + size * 0.82, y + size);
-        }
-        ctx.stroke();
 
         const speck = hash2D(tileCol, tileRow, terrain.seed, material * 389);
         if (speck > 0.38) {
@@ -697,6 +698,24 @@ class TerrainRenderChunk {
             Math.max(1, size * 0.08),
           );
         }
+        if (hash2D(tileCol, tileRow, terrain.seed, material * 409) > 0.58) {
+          const startX = x + size * (0.26 + hash2D(tileCol, tileRow, terrain.seed, material * 413) * 0.34);
+          const startY = y + size * (0.28 + hash2D(tileRow, tileCol, terrain.seed, material * 419) * 0.32);
+          const length = size * (0.16 + hash2D(tileCol, tileRow, terrain.seed, material * 421) * 0.2);
+          const angle = hash2D(tileRow, tileCol, terrain.seed, material * 431) * Math.PI * 2;
+          ctx.globalAlpha = material > 1 ? 0.2 : 0.13;
+          ctx.strokeStyle = withAlpha(mixHex(color, '#050509', 0.34), 0.8);
+          ctx.lineWidth = Math.max(0.7, size * 0.035);
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.quadraticCurveTo(
+            startX + Math.cos(angle + 0.7) * length * 0.38,
+            startY + Math.sin(angle + 0.7) * length * 0.38,
+            startX + Math.cos(angle) * length,
+            startY + Math.sin(angle) * length,
+          );
+          ctx.stroke();
+        }
       }
     }
     ctx.restore();
@@ -706,27 +725,25 @@ class TerrainRenderChunk {
   drawSmoothOutline(ctx) {
     const terrain = this.terrain;
     const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
-    this.withWorldContext(ctx, (worldCtx, bounds) => {
-      const predicate = (col, row) => terrain.isNaturalSolidCell(col, row);
+    this.withWorldContext(ctx, (worldCtx) => {
       worldCtx.save();
       worldCtx.lineCap = 'round';
       worldCtx.lineJoin = 'round';
-      terrain.strokeSampledMarchingEdges(
-        worldCtx,
-        'rgba(5, 8, 12, 0.58)',
-        Math.max(3, terrain.cellSize * 0.24),
-        bounds,
-        predicate,
-        STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS,
-      );
-      terrain.strokeSampledMarchingEdges(
-        worldCtx,
-        withAlpha(palette.edge, 0.46),
-        Math.max(1.2, terrain.cellSize * 0.08),
-        bounds,
-        predicate,
-        STABLE_CHUNK_OUTLINE_CONTOUR_OPTIONS,
-      );
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
+        scale: 0.985,
+        organic: true,
+      });
+      worldCtx.strokeStyle = 'rgba(5, 8, 12, 0.46)';
+      worldCtx.lineWidth = Math.max(1.8, terrain.cellSize * 0.12);
+      worldCtx.stroke();
+
+      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
+        scale: 0.965,
+        organic: true,
+      });
+      worldCtx.strokeStyle = withAlpha(palette.edge, 0.34);
+      worldCtx.lineWidth = Math.max(0.85, terrain.cellSize * 0.045);
+      worldCtx.stroke();
       worldCtx.restore();
     });
   }
