@@ -495,7 +495,6 @@ class TerrainRenderChunk {
     this.drawSmoothOreTerrain(ctx);
     this.drawConstructedTerrain(ctx);
     this.drawBlockCellDetail(ctx);
-    this.drawSmoothOutline(ctx);
 
     ctx.restore();
     ctx.globalCompositeOperation = 'source-over';
@@ -559,29 +558,29 @@ class TerrainRenderChunk {
     const centerX = tileCol * size + size * 0.5;
     const centerY = tileRow * size + size * 0.5;
     const half = size * 0.5 * scale;
-    const basePoints = [
-      [-0.44, -0.5],
-      [-0.12, -0.53],
-      [0.2, -0.49],
-      [0.48, -0.34],
-      [0.53, -0.08],
-      [0.49, 0.24],
-      [0.34, 0.49],
-      [0.02, 0.53],
-      [-0.28, 0.49],
-      [-0.5, 0.32],
-      [-0.53, 0.03],
-      [-0.49, -0.27],
-    ];
-    const points = basePoints.map(([x, y], index) => {
+    const exposedTop = !terrain.isSolidCell(tileCol, tileRow - 1);
+    const exposedRight = !terrain.isSolidCell(tileCol + 1, tileRow);
+    const exposedBottom = !terrain.isSolidCell(tileCol, tileRow + 1);
+    const exposedLeft = !terrain.isSolidCell(tileCol - 1, tileRow);
+    const basePoints = terrain.getCellShapePoints(tileCol, tileRow, { scale });
+    const points = basePoints.map((point, index) => {
+      const onExposedTop = exposedTop && point.y <= centerY - half * 0.72;
+      const onExposedRight = exposedRight && point.x >= centerX + half * 0.72;
+      const onExposedBottom = exposedBottom && point.y >= centerY + half * 0.72;
+      const onExposedLeft = exposedLeft && point.x <= centerX - half * 0.72;
+      if (!onExposedTop && !onExposedRight && !onExposedBottom && !onExposedLeft) return point;
+      const normalX = (onExposedRight ? 1 : 0) + (onExposedLeft ? -1 : 0);
+      const normalY = (onExposedBottom ? 1 : 0) + (onExposedTop ? -1 : 0);
+      const normalLength = Math.hypot(normalX, normalY) || 1;
+      const unitX = normalX / normalLength;
+      const unitY = normalY / normalLength;
+      const tangentX = -unitY;
+      const tangentY = unitX;
       const jitter = signedHash2D(tileCol, tileRow, terrain.seed, 1100 + index * 17) * size * 0.055;
-      const tangent = signedHash2D(tileRow, tileCol, terrain.seed, 1400 + index * 19) * size * 0.018;
-      const length = Math.hypot(x, y) || 1;
-      const normalX = x / length;
-      const normalY = y / length;
+      const tangent = signedHash2D(tileRow, tileCol, terrain.seed, 1400 + index * 19) * size * 0.02;
       return {
-        x: centerX + x * size * scale + normalX * jitter - normalY * tangent,
-        y: centerY + y * size * scale + normalY * jitter + normalX * tangent,
+        x: point.x + unitX * jitter + tangentX * tangent,
+        y: point.y + unitY * jitter + tangentY * tangent,
       };
     });
     if (!points.length) return;
