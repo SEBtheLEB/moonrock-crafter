@@ -74,6 +74,25 @@ const LOCAL_SURFACE_CONTOUR_OPTIONS = {
     ?? Math.min(VISUAL_CONTOUR_OPTIONS.gridSnapAmount, 0.08),
 };
 
+const ORGANIC_CHUNK_CONTOUR_OPTIONS = {
+  ...VISUAL_CONTOUR_OPTIONS,
+  sampleSubdivisions: TERRAIN_TUNING.organicChunkSubdivisions ?? Math.max(2, VISUAL_CONTOUR_OPTIONS.sampleSubdivisions),
+  densityRadiusCells: TERRAIN_TUNING.organicChunkDensityRadiusCells ?? Math.max(1.48, VISUAL_CONTOUR_OPTIONS.densityRadiusCells),
+  densityThreshold: TERRAIN_TUNING.organicChunkDensityThreshold ?? 0.43,
+  smoothingIterations: TERRAIN_TUNING.organicChunkSmoothingIterations ?? 2,
+  smoothingAmount: TERRAIN_TUNING.organicChunkSmoothingAmount ?? 0.2,
+  minSegmentLength: TERRAIN_TUNING.organicChunkMinSegmentLength ?? 2.4,
+  gridSnapAmount: TERRAIN_TUNING.organicChunkGridSnapAmount ?? 0.06,
+  cornerRoundAmount: TERRAIN_TUNING.organicChunkCornerRoundAmount ?? 0.24,
+};
+
+const ORGANIC_CHUNK_RIM_OPTIONS = {
+  ...ORGANIC_CHUNK_CONTOUR_OPTIONS,
+  sampleSubdivisions: TERRAIN_TUNING.organicChunkRimSubdivisions ?? ORGANIC_CHUNK_CONTOUR_OPTIONS.sampleSubdivisions,
+  densityRadiusCells: TERRAIN_TUNING.organicChunkRimDensityRadiusCells ?? ORGANIC_CHUNK_CONTOUR_OPTIONS.densityRadiusCells,
+  smoothingAmount: TERRAIN_TUNING.organicChunkRimSmoothingAmount ?? ORGANIC_CHUNK_CONTOUR_OPTIONS.smoothingAmount,
+};
+
 const COLLISION_CONTOUR_OPTIONS = {
   sampleSubdivisions: TERRAIN_COLLISION_SUBDIVISIONS,
   densityRadiusCells: TERRAIN_COLLISION_DENSITY_RADIUS,
@@ -132,6 +151,7 @@ const SHOW_TERRAIN_REBUILD_DEBUG = false;
 const SHOW_DIRTY_CHUNKS = false;
 const SHOW_ROUGH_EDGE_DEBUG = false;
 const SHOW_CACHE_RESOLUTION_DEBUG = false;
+const DEBUG_TERRAIN_RENDERER = false;
 const TERRAIN_REBUILD_CHUNK_WARNING_LIMIT = 4;
 const TERRAIN_RECENT_MINE_REBUILD_WINDOW_MS = 600;
 const TERRAIN_LOCAL_CONTOUR_CONTEXT_CELLS = Math.max(4, TERRAIN_TUNING.localContourContextCells || 4);
@@ -144,6 +164,7 @@ if (typeof globalThis !== 'undefined') {
   if (typeof globalThis.SHOW_DIRTY_CHUNKS === 'undefined') globalThis.SHOW_DIRTY_CHUNKS = SHOW_DIRTY_CHUNKS;
   if (typeof globalThis.SHOW_ROUGH_EDGE_DEBUG === 'undefined') globalThis.SHOW_ROUGH_EDGE_DEBUG = SHOW_ROUGH_EDGE_DEBUG;
   if (typeof globalThis.SHOW_CACHE_RESOLUTION_DEBUG === 'undefined') globalThis.SHOW_CACHE_RESOLUTION_DEBUG = SHOW_CACHE_RESOLUTION_DEBUG;
+  if (typeof globalThis.DEBUG_TERRAIN_RENDERER === 'undefined') globalThis.DEBUG_TERRAIN_RENDERER = DEBUG_TERRAIN_RENDERER;
 }
 
 const TERRAIN_LIGHTING = {
@@ -480,6 +501,7 @@ class TerrainRenderChunk {
 
   rebuild() {
     if (!this.syncCanvas()) return;
+    const startedAt = this.terrain.getClockNow?.() ?? (typeof performance !== 'undefined' ? performance.now() : Date.now());
     const ctx = this.ctx;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -492,14 +514,15 @@ class TerrainRenderChunk {
     // dirty-region canvas and global rough-contour mutation path.
     this.drawSmoothWalls(ctx);
     this.drawSmoothNaturalTerrain(ctx);
-    this.drawSmoothOreTerrain(ctx);
+    this.drawSmoothOutline(ctx);
     this.drawConstructedTerrain(ctx);
-    this.drawBlockCellDetail(ctx);
+    this.drawRendererDebug(ctx, startedAt);
 
     ctx.restore();
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     this.dirty = false;
+    this.terrain.debugLastRebuildMs = (this.terrain.getClockNow?.() ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())) - startedAt;
   }
 
   render(ctx, cameraX = 0, cameraY = 0) {
@@ -601,63 +624,43 @@ class TerrainRenderChunk {
 
   drawSmoothNaturalTerrain(ctx) {
     const terrain = this.terrain;
-    this.withWorldContext(ctx, (worldCtx) => {
+    const naturalPredicate = (col, row) => terrain.isNaturalSolidCell(col, row);
+    this.withWorldContext(ctx, (worldCtx, bounds) => {
       const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
       const gradient = worldCtx.createLinearGradient(0, 0, 0, terrain.height);
       gradient.addColorStop(0, palette.top);
       gradient.addColorStop(0.48, palette.body);
       gradient.addColorStop(1, palette.deep);
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
-        scale: 1.06,
-        organic: true,
-      });
+      this.traceChunkNaturalMass(worldCtx, naturalPredicate, bounds);
       worldCtx.fillStyle = gradient;
       worldCtx.fill();
 
       const tile = terrain.getTextureTile(
-        `stable-stone:${terrain.seed}:${terrain.biome}`,
+        `organic-stone:${terrain.seed}:${terrain.biome}:v2`,
         (tileCtx, width, height) => terrain.drawStoneTextureTile(tileCtx, width, height, palette),
       );
       const pattern = worldCtx.createPattern(tile, 'repeat');
       if (!pattern) return;
       worldCtx.save();
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
-        scale: 1.06,
-        organic: true,
-      });
-      worldCtx.clip('nonzero');
-      worldCtx.globalAlpha = 0.78;
+      worldCtx.clip('evenodd');
+      worldCtx.globalAlpha = 0.82;
       worldCtx.fillStyle = pattern;
-      worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
+      worldCtx.fillRect(
+        this.startCol * terrain.cellSize,
+        this.startRow * terrain.cellSize,
+        this.canvas.width,
+        this.canvas.height,
+      );
+      this.drawEmbeddedOrePatches(worldCtx, bounds);
+      this.drawNaturalSpecks(worldCtx, bounds);
       worldCtx.restore();
     });
   }
 
   drawSmoothOreTerrain(ctx) {
-    const terrain = this.terrain;
-    this.withWorldContext(ctx, (worldCtx) => {
-      for (const [materialKey, data] of Object.entries(TERRAIN_MATERIALS)) {
-        const material = Number(materialKey);
-        if (material <= 1 || terrain.isConstructedMaterial(material)) continue;
-        if (!terrain.hasMaterialInBounds(material, this.getBounds(), 0)) continue;
-        const tile = terrain.getTextureTile(
-          `stable-ore:${terrain.seed}:${material}:${data.color}:${data.edge}`,
-          (tileCtx, width, height) => terrain.drawOreTextureTile(tileCtx, width, height, data, material),
-        );
-        const pattern = worldCtx.createPattern(tile, 'repeat');
-        if (!pattern) continue;
-        this.traceChunkCellShapes(worldCtx, (col, row) => terrain.getCell(col, row) === material, {
-          scale: 1.035,
-          organic: true,
-        });
-        worldCtx.save();
-        worldCtx.clip('nonzero');
-        worldCtx.globalAlpha = material >= 4 ? 0.95 : 0.86;
-        worldCtx.fillStyle = pattern;
-        worldCtx.fillRect(this.startCol * terrain.cellSize, this.startRow * terrain.cellSize, this.canvas.width, this.canvas.height);
-        worldCtx.restore();
-      }
-    });
+    // Natural ores are now rendered as embedded patches clipped into the
+    // organic terrain mass in drawSmoothNaturalTerrain(). Constructed
+    // materials still use the normal tile renderer.
   }
 
   drawConstructedTerrain(ctx) {
@@ -724,27 +727,143 @@ class TerrainRenderChunk {
   drawSmoothOutline(ctx) {
     const terrain = this.terrain;
     const palette = BIOME_PALETTES[terrain.biome] || BIOME_PALETTES.scrap;
-    this.withWorldContext(ctx, (worldCtx) => {
+    const naturalPredicate = (col, row) => terrain.isNaturalSolidCell(col, row);
+    this.withWorldContext(ctx, (worldCtx, bounds) => {
       worldCtx.save();
       worldCtx.lineCap = 'round';
       worldCtx.lineJoin = 'round';
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
-        scale: 0.985,
-        organic: true,
-      });
-      worldCtx.strokeStyle = 'rgba(5, 8, 12, 0.46)';
-      worldCtx.lineWidth = Math.max(1.8, terrain.cellSize * 0.12);
-      worldCtx.stroke();
-
-      this.traceChunkCellShapes(worldCtx, (col, row) => terrain.isNaturalSolidCell(col, row), {
-        scale: 0.965,
-        organic: true,
-      });
-      worldCtx.strokeStyle = withAlpha(palette.edge, 0.34);
-      worldCtx.lineWidth = Math.max(0.85, terrain.cellSize * 0.045);
+      terrain.strokeSampledMarchingEdges(
+        worldCtx,
+        'rgba(5, 8, 12, 0.42)',
+        Math.max(1.7, terrain.cellSize * 0.1),
+        bounds,
+        naturalPredicate,
+        ORGANIC_CHUNK_RIM_OPTIONS,
+      );
+      terrain.strokeSampledMarchingEdges(
+        worldCtx,
+        withAlpha(palette.edge, 0.78),
+        Math.max(1.1, terrain.cellSize * 0.058),
+        bounds,
+        naturalPredicate,
+        ORGANIC_CHUNK_RIM_OPTIONS,
+      );
+      worldCtx.strokeStyle = withAlpha(mixHex(palette.edge, '#ffffff', 0.18), 0.26);
+      worldCtx.lineWidth = Math.max(0.55, terrain.cellSize * 0.026);
       worldCtx.stroke();
       worldCtx.restore();
     });
+  }
+
+  traceChunkNaturalMass(ctx, predicate, bounds) {
+    const terrain = this.terrain;
+    ctx.beginPath();
+    terrain.buildSampledMarchingCellPath(ctx, predicate, bounds, ORGANIC_CHUNK_CONTOUR_OPTIONS);
+    terrain.debugContours = (terrain.debugContours || 0) + 1;
+  }
+
+  drawEmbeddedOrePatches(ctx, bounds) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    const minCol = clamp(bounds.minCol - 1, 0, terrain.cols - 1);
+    const maxCol = clamp(bounds.maxCol + 1, 0, terrain.cols - 1);
+    const minRow = clamp(bounds.minRow - 1, 0, terrain.rows - 1);
+    const maxRow = clamp(bounds.maxRow + 1, 0, terrain.rows - 1);
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const material = terrain.getCell(col, row);
+        if (material <= 1 || terrain.isConstructedMaterial(material)) continue;
+        const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+        const centerX = col * size + size * 0.5;
+        const centerY = row * size + size * 0.5;
+        const pointCount = 11;
+        const baseRadius = size * (material >= 4 ? 0.36 : 0.3);
+        ctx.beginPath();
+        for (let point = 0; point < pointCount; point += 1) {
+          const angle = (point / pointCount) * Math.PI * 2;
+          const radialNoise = hash2D(col + point * 13, row - point * 7, terrain.seed, material * 977);
+          const radius = baseRadius * (0.72 + radialNoise * 0.56);
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          if (point === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        if (material === 6) {
+          ctx.save();
+          ctx.shadowColor = withAlpha(data.edge, 0.38);
+          ctx.shadowBlur = Math.max(2, size * 0.18);
+          ctx.fillStyle = withAlpha(data.color, 0.72);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalAlpha = material >= 4 ? 0.82 : 0.68;
+        ctx.fillStyle = mixHex(data.color, '#ffffff', material >= 4 ? 0.08 : 0.02);
+        ctx.fill();
+        ctx.globalAlpha = material >= 4 ? 0.42 : 0.26;
+        ctx.strokeStyle = data.edge || data.color;
+        ctx.lineWidth = Math.max(0.7, size * 0.045);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+
+  drawNaturalSpecks(ctx, bounds) {
+    const terrain = this.terrain;
+    const size = terrain.cellSize;
+    ctx.save();
+    for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+      for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+        const material = terrain.getCell(col, row);
+        if (material <= 0 || terrain.isConstructedMaterial(material)) continue;
+        if (hash2D(col, row, terrain.seed, material * 409) <= 0.54) continue;
+        const data = TERRAIN_MATERIALS[material] || TERRAIN_MATERIALS[1];
+        const x = col * size + size * (0.22 + hash2D(row, col, terrain.seed, material * 397) * 0.56);
+        const y = row * size + size * (0.22 + hash2D(col, row, terrain.seed, material * 401) * 0.52);
+        ctx.globalAlpha = material > 1 ? 0.18 : 0.1;
+        ctx.fillStyle = hash2D(row, col, terrain.seed, material * 421) > 0.62
+          ? withAlpha(mixHex(data.edge || data.color, '#ffffff', 0.12), 0.9)
+          : 'rgba(8, 7, 8, 0.76)';
+        ctx.fillRect(x, y, Math.max(1, size * 0.08), Math.max(1, size * 0.06));
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  drawRendererDebug(ctx, startedAt = 0) {
+    if (typeof globalThis === 'undefined' || !globalThis.DEBUG_TERRAIN_RENDERER) return;
+    const terrain = this.terrain;
+    const elapsed = (terrain.getClockNow?.() ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())) - startedAt;
+    const size = terrain.cellSize;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(97, 226, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, this.canvas.width - 1, this.canvas.height - 1);
+    ctx.strokeStyle = 'rgba(97, 226, 255, 0.08)';
+    for (let col = 1; col < this.cols; col += 1) {
+      const x = col * size + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, this.canvas.height);
+      ctx.stroke();
+    }
+    for (let row = 1; row < this.rows; row += 1) {
+      const y = row * size + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(this.canvas.width, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(97, 226, 255, 0.85)';
+    ctx.font = '10px monospace';
+    ctx.fillText(`${this.chunkCol},${this.chunkRow} ${elapsed.toFixed(1)}ms`, 4, 12);
+    ctx.restore();
   }
 
   drawWalls(ctx) {
@@ -3781,6 +3900,8 @@ export class TerrainGrid {
     const endChunkCol = Math.floor(Math.ceil((sx + sw) / this.cellSize) / chunkSize);
     const endChunkRow = Math.floor(Math.ceil((sy + sh) / this.cellSize) / chunkSize);
     let rebuiltChunks = 0;
+    this.debugDirtyChunks = this.dirtyChunks.size;
+    this.debugContours = 0;
 
     ctx.save();
     for (let chunkRow = startChunkRow; chunkRow <= endChunkRow; chunkRow += 1) {
@@ -3806,6 +3927,7 @@ export class TerrainGrid {
       });
     }
     this.dirtyChunks.clear();
+    this.debugDirtyChunks = this.dirtyChunks.size;
     this.renderDirty = false;
     this.fullRenderDirty = false;
     this.dirtyBounds = null;
